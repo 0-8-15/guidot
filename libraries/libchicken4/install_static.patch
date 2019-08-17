@@ -1,0 +1,16 @@
+--- rules.make.orig	2017-12-11 17:48:05.000000000 +0100
++++ rules.make	2019-07-10 15:04:50.217307880 +0200
+@@ -379,12 +379,10 @@
+ 		$(lib).import.so "$(DESTDIR)$(IEGGDIR)" $(NL))
+ endif
+ 
+-# XXX Shouldn't this be part of the non-static lib part?
++ifndef STATICBUILD
+ 	$(foreach setup-lib,$(SETUP_API_OBJECTS_1),\
+ 		$(INSTALL_PROGRAM) $(INSTALL_PROGRAM_EXECUTABLE_OPTIONS) \
+ 		$(setup-lib).so "$(DESTDIR)$(IEGGDIR)" $(NL))
+-
+-ifndef STATICBUILD
+ ifneq ($(POSTINSTALL_PROGRAM),true)
+ 	$(foreach prog,$(INSTALLED_PROGRAMS),\
+ 		$(POSTINSTALL_PROGRAM) $(POSTINSTALL_PROGRAM_FLAGS) \

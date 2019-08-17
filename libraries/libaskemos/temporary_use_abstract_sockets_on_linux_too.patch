@@ -1,0 +1,11 @@
+--- /home/u/build/ball/ball/chicken/srfi-106.scm	2019-08-07 13:24:07.968748901 +0200
++++ chicken/srfi-106.scm	2019-08-07 19:10:00.028166932 +0200
+@@ -215,7 +215,7 @@
+ 
+ #endif
+ 
+-#if defined(__ANDROID__) || defined(_WIN32)
++#if defined(__ANDROID__) || defined(_WIN32) || defined(__linux__)
+ #include <stddef.h>
+ static socklen_t set_socket_name(struct sockaddr_un *socket_name, const char *filename)
+ {

@@ -1,0 +1,10 @@
+--- chicken/timeout.scm~	2019-08-12 15:21:53.000000000 +0200
++++ chicken/timeout.scm	2019-08-12 15:29:09.242756371 +0200
+@@ -574,6 +574,7 @@
+       (let ((now (make-time 'time-utc 0 (time-second now))))
+ 	(%!*system-time* now)          ; update system wide cache
+         (and parent-process
++             #f
+              (guard
+               (ex (else (logerr " Failed to send alive signal.\n")
+                         (dead-parent)))

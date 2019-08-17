@@ -1,0 +1,11 @@
+--- defaults.make.orig	2019-07-12 21:30:24.578912914 +0200
++++ defaults.make	2019-07-12 21:30:35.702896795 +0200
+@@ -424,7 +424,7 @@
+ 	$(call echo, >>, $@,# define C_TARGET_SHARE_HOME "$(TARGET_PREFIX)/share")
+ 	$(call echo, >>, $@,#endif)
+ 	$(call echo, >>, $@,#ifndef C_TARGET_INCLUDE_HOME)
+-	$(call echo, >>, $@,# define C_TARGET_INCLUDE_HOME "$(TARGET_PREFIX)/include/chicken")
++	$(call echo, >>, $@,# define C_TARGET_INCLUDE_HOME "$(TARGET_PREFIX)/include/chicken$(PROGRAM_SUFFIX)")
+ 	$(call echo, >>, $@,#endif)
+ 	$(call echo, >>, $@,#ifndef C_TARGET_STATIC_LIB_HOME)
+ 	$(call echo, >>, $@,# define C_TARGET_STATIC_LIB_HOME "$(TARGET_PREFIX)/lib")
