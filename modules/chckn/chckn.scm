@@ -275,7 +275,58 @@ c-declare-end
 (define execv (c-lambda (char-string char**) int "execv"))
 (define get-environ (c-lambda () char** "get_environ"))
 
-	  
+
+(cond-expand
+ ;; TBD: not for WIN32
+ (else (c-declare #<<c-declare-end
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <errno.h>
+typedef struct {
+  int pid;
+  int status;
+  int norm;
+  int sig;
+} G_waitpid_arg;
+
+c-declare-end
+)
+ (c-define-type G_waitpid (pointer "G_waitpid_arg"))
+ (namespace ("chckn#" c-waitpid-arg c-waitpid))
+ (define c-waitpid-arg (c-lambda () G_waitpid "___result_voidstar = malloc(sizeof(G_waitpid_arg));"))
+ (define c-waitpid (c-lambda (G_waitpid int) void "
+  G_waitpid_arg *a = ___arg1;
+  if(a!=NULL) {
+    a->pid = waitpid(___arg2, &a->status, WNOHANG);
+    if( a->pid==-1 ) {
+      a->sig = errno;
+      a->norm = 0;
+    } else {
+      a->norm = WIFEXITED(a->status);
+      if(a->norm) a->sig = WEXITSTATUS(a->status);
+      else if(WIFSIGNALED(a->status)) a->sig = WTERMSIG(a->status);
+      else a->sig = WSTOPSIG(a->status);
+    }
+  }
+  // ___result_voidstar = a;
+"))
+
+ (define (process-wait pid)
+   (let loop ((status (c-waitpid-arg)))
+     (c-waitpid status pid)
+     (let ((r ((c-lambda (G_waitpid) int "___result = ___arg1->pid;") status))
+           (norm ((c-lambda (G_waitpid) bool "___result = ___arg1->norm;") status))
+           (sig ((c-lambda (G_waitpid) int "___result = ___arg1->sig;") status)))
+       (if (= r -1)
+           (if ((c-lambda (int) bool "___result = ___arg1 == EINTR;") sig)
+               (loop status)
+               (values sig #f -1)) ;;(error ((c-lambda (int) char-string "strerror") sig)
+           (values sig norm r)))))
+
+ (namespace (""))
+
+))
+
 (define (ballroll args)
   (set! args (cons "dummy" args))
   (let ((n (length args)))
@@ -303,7 +354,7 @@ c-declare-end
        (pdsc (string-ref pds 0)))
 
   (define (*char-pds? c) (char=? c pdsc))
-  
+
   (define (chop-pds str)
     (and str
 	 (let lp ((len (string-length str)))
@@ -313,7 +364,7 @@ c-declare-end
 		 ((fx< len (string-length str))
 		  (substring str 0 len))
 		 (else str)))))
-  
+
   (define (conc-dirs dirs)
     ;; (##sys#check-list dirs 'make-pathname)
     (let loop ((strs dirs))
@@ -322,7 +373,7 @@ c-declare-end
 	  (let ((s1 (car strs)))
 	    (if (zero? (string-length s1))
 		(loop (cdr strs))
-		(string-append 
+		(string-append
 		 (chop-pds (car strs))
 		 pds
 		 (loop (cdr strs))) ) ) ) ) )
