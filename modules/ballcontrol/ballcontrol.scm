@@ -111,6 +111,9 @@
 (define kernel-server
   (let ((process #f)
 	(mux (make-mutex 'ks)))
+    (define (cleanup!)
+      (set! process #f)
+      (possibly-remove-control-socket! #;(and (not-using-fork-alike) srv)))
     (lambda args
       (dynamic-wind
 	  (lambda () (mutex-lock! mux))
@@ -118,11 +121,22 @@
 	      (lambda ()
 		(if (and (null? (cdr args)) (not (car args)))
 		    (let ((srv process))
-		      (set! process #f)
-		      ;; FIXME: always wait for it!
-		      (if (port? srv) (process-status srv))
-		      (possibly-remove-control-socket! #;(and (not-using-fork-alike) srv))
-		      srv)
+                      (cond
+                       ((port? srv)
+                        (process-status srv) (cleanup!) srv)
+                       ((and srv (eq? (subprocess-style) 'fork))
+                        (receive
+                         (c n p) (process-wait srv)
+                         (if (or (= p srv)
+                                 (= p -1))
+                             (begin
+                               (if (= p -1) (log-error "failed to wait for process " srv " ECHILD: " c "?? if so, someone stole the value" ))
+                               (cleanup!)
+                               (list c n p))
+                             #f)))
+                       (else
+                        ;; FIXME: always wait for it!
+                        #f)))
 		    (begin
 		      (when process (error "kernel already running"))
 		      (set! process (apply (car args) (cdr args)))
