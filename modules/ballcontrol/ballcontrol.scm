@@ -48,13 +48,15 @@
     (let ((catching
 	   (lambda (ex)
 	     (mutex-unlock! conn)
-	     (raise ex)))
+	     #;(raise ex)
+             #!eof))
 	  (catch-clean
 	   (lambda (ex)
 	     (log-error "kernel control connection change failed.\n Setting to #f." ex)
 	     (mutex-specific-set! conn (debug 'Clean #f))
 	     (mutex-unlock! conn)
-	     (raise ex))))
+	     #;(raise ex)
+             #!eof)))
       (lambda (proc #!optional (values values) (mode 'wait))
 	(mutex-lock! conn)
 	(let ((v (mutex-specific conn)))
