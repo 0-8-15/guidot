@@ -1,1 +1,1 @@
-idle_tmScheduleRate = 30000;
+idle_tmScheduleRate = 0;
