@@ -149,17 +149,27 @@
    ((not (rep-exists?))
     (log-error "data directory does not exist" kernel-data-directory))
    ((not (kernel-server))
+    (foreground-service! #t)
     (kernel-server fork-process "ball" "-start" kernel-data-directory))
    (else (log-error "Not starting kernel server, still " (kernel-server)))))
 
 (define (restart-kernel-server!)
-  (unless
-   (eq? (subprocess-style) 'pthread)
-   (when (debug 'current-server ((debug 'retrieving-current-server-via kernel-server))) (debug 'cleanedUp (kernel-server #f)))
-   (debug 'closedConnection (close-kernel-connection!))
-   (debug 'started (start-kernel-server!))
-   (or (wait-for-kernel-server 20)
-       (log-error "Kernel server did not restart!"))))
+  (if (eq? (subprocess-style) 'pthread)
+      (begin
+        (log-error "can not (yet) restart kernel when running as pthread")
+       #f)
+      (begin
+        (when (debug 'current-server (kernel-server))
+              (let loop ()
+                (unless (kernel-server #f)
+                        (thread-sleep! 0.1)
+                        (loop))))
+        (close-kernel-connection!)
+        (start-kernel-server!)
+        (or (wait-for-kernel-server 20)
+            (begin
+              (log-error "Kernel server did not restart!")
+              #f)))))
 
 (define (%write-kernel! p msg)
   (write msg p)
@@ -194,19 +204,22 @@
 	   (else (error "protocol error")))))))
 
 (define (stop-kernel-server!0)
+  (foreground-service! #f)
   (with-ball-kernel
    (lambda (p)
      (when
       p
       (%write-kernel! p '("stop" "-f"))
+      (thread-sleep! 1)
       (close-port p)
       #f))
    values 'set)
-  (let ((srv (kernel-server)))
-    (when srv (kernel-server #f))
+  (let loop ((srv (kernel-server)))
+    (when srv (unless (kernel-server #f) (thread-sleep! 0.1) (loop (kernel-server #f))))
     #;(when (and (not-using-fork-alike) (debug 'kernel-server srv))
 	  (thread-sleep! 5)
-	  (terminate))))
+	  (terminate)))
+  (close-kernel-connection!))
 
 (set! stop-kernel-server! stop-kernel-server!0)
 
