@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!-- (C) 2000, 2001, 2006, 2017 Jörg F. Wittenberger see http://www.askemos.org -->
+<html
+    xmlns="http://www.w3.org/1999/xhtml"
+    xmlns:core="http://www.askemos.org/2000/CoreAPI#"
+    >
+ <head>
+  <title>BAIL-XSLT mixture reflexive</title>
+ </head>
+ <body>
+  <h1>BAIL-XSLT mixture reflexive</h1>
+  <p>The <u>B</u>ALL <u>A</u>pplication <u>I</u>nterface
+  <u>L</u>anguage embedded in XSLT.</p>
+  <p>This is the <em>reflexive</em> version. Presentation and behavior
+  are both scripted at the place in question.</p>
+  <p>This is saying that the "contract" essenstially allows the agent
+  (a.k.a place) under this contract to change state in arbitrary ways.
+  Efficiently the contract may be replaced by new revisions without
+  restrictions. This is useful for "private property" like "entry
+  points".</p>
+  <h2>Read Method</h2>
+  <p>This is envoked when the subject answer an idempotent message to
+  display the current state.</p>
+  <p>It applies the code in the current state to the request message.</p>
+  <core:method request="message" this="current-place" type="read">
+   <programlisting class="executable">bail/read current-place message</programlisting>
+  </core:method>
+  <h2>The Proposal</h2>
+  <p>This script produces a proposed update according to the code in
+  the current state.  It runs in the first phase of a transaction.
+  The result of this script is available as the third parameter in the
+  <code>accept</code> procedure (see below).</p>
+  <core:method request="message" this="current-place" type="propose">
+   <programlisting class="executable">bail/propose current-place message</programlisting>
+  </core:method>
+  <h2>Taking Effect</h2>
+  <p>Once the agreement process has commenced, the <code>accept</code>
+  script is invoked to update the local current state.</p>
+  <core:method plan="update" request="message" this="current-place" type="accept">
+   <programlisting class="executable">bail/accept current-place message update</programlisting>
+  </core:method>
+ </body>
+</html>
+

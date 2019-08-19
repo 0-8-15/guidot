@@ -1,0 +1,786 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<xsl:stylesheet xmlns:core="http://www.askemos.org/2000/CoreAPI#" xmlns:d="http://www.askemos.org/2013/bail/" xmlns:xsl="http://www.w3.org/1999/XSL/Transform" version="1.0">
+ <editor:state xmlns:editor="urn:editor">
+  <body></body>
+  <content-type>text/xml</content-type>
+  <expression>(grove-root (current-node))</expression>
+  <to></to>
+  <type></type>
+ </editor:state>
+ <xsl:variable name="state">
+  <d:copy-of select="((sxpath &apos;(state *)) (grove-root (current-node)))"></d:copy-of>
+ </xsl:variable>
+ <xsl:variable name="body">
+  <d:copy-of>
+  ((me "ball-info" 'TrustedCode)
+   (cons (message-creator msg)
+    (let ((s (data (form-field 'select (current-node))) ))
+      (cond
+       ((equal? s "")
+        '("local-id" "systemtime"  "pstore-cache-size"))
+       ((equal? s "network")
+        '("local-id" "known-hosts" "httpchannels"))
+       ((equal? s "x509")
+        '("local-id" "cert" "cacert"))
+       ((equal? s "dnszone") '("dnszone"))
+       ((equal? s "kernelthreads") '("kernelthreads" "timeeventqueue"))
+       (else (cons "local-id" (list (data s))))))))
+</d:copy-of>
+ </xsl:variable>
+ <xsl:variable name="hidden-host">
+  <d:input name="host" type="hidden" d:value="(data (select-elements (xsl-variable &quot;body&quot;) &apos;local-id))"></d:input>
+ </xsl:variable>
+ <xsl:template match="request[@type=&quot;read&quot;]">
+  <xsl:variable name="hidden-select">
+   <d:input name="select" type="hidden" d:value="(data (form-field &apos;select (current-node)))"></d:input>
+  </xsl:variable>
+  <xsl:choose>
+   <d:when test="(is-meta-form? msg)">
+    <d:copy-of select="(message-body (metaview me msg))"></d:copy-of>
+   </d:when>
+   <d:when test="pair?( message-destination( current-message() ) ) ">
+<!--
+
+  This forwarding is good if we use this directly as the code for the
+  user "system" itself.  If the system control panel is a place of its
+  own, we do not need this.
+
+  -->
+    <core:forward></core:forward>
+   </d:when>
+   <d:when test="(eq? &apos;dnszone (gi (xsl-variable &quot;body&quot;)))">
+    <d:apply-templates select="(xsl-variable &quot;body&quot;)"></d:apply-templates>
+   </d:when>
+   <xsl:otherwise>
+    <html xmlns="http://www.w3.org/1999/xhtml">
+     <head>
+      <title><d:copy-of select="(data (select-elements
+         (xsl-variable &quot;body&quot;) &apos;local-id))"></d:copy-of> fiXml system info</title>
+      <meta content="text/html; charset=UTF-8" http-equiv="Content-Type"></meta>
+      <style type="text/css">
+table { border:solid black 1px; border-collapse:collapse; }
+td, th { border:solid black 1px; border-collapse:collapse; }
+body { border:solid black 1px; padding:3px; font-family: Arial, Helmet; font-size: 10pt;}
+.x509text {font-size: x-small; overflow: auto; max-width: 40em; }
+.x509pem {font-size: x-small; }
+.x509 { max-width: 60em; }
+      </style>
+      <d:link d:href="read-locator list( &quot;favicon.ico&quot; literal(public-oid()) )" rel="icon" type="image/x-icon"></d:link>
+      <d:link d:href="read-locator list( &quot;favicon.ico&quot; literal(public-oid()) )" rel="shortcut icon" type="image/x-icon"></d:link>
+     </head>
+     <body bgcolor="white">
+       <d:if test="null? message-protection(current-place())">
+	 <h1>Warning: Setup without access protection!</h1>
+	 <p>The automatic setup did not restrict access to this control interface.  It might still be publically accessible.  Push this button to</p>
+	 <d:form method="post">
+	   <input name="xmlns" type="hidden" value="http://www.askemos.org/2000/CoreAPI#"/>
+	   <input name="action" type="hidden" value="protect"/>
+	   <input type="submit" value="Restrict access to this user:"/>
+	   <d:input name="challenge" size="60" type="text" d:value="literal message-creator(msg)"/>
+	 </d:form>
+       </d:if>
+     <h1>kernel information</h1>
+      <span xml:space="preserve">
+<a href="?select=">summary</a>
+<a href="?select=kernelthreads">threads</a>
+<a href="?select=network">network</a>
+<a href="?select=dnszone">dns</a>
+<a href="?select=channels">entries</a>
+<a href="?select=limits">limits</a>
+<a href="?select=x509">certs</a>
+<a href="?select=user-x509">cm</a>
+<!-- These where supported at a point:
+<a href="?select=fixml-user-debug-data">user debug</a>
+<a href="?select=profile-information">profiling</a>
+-->
+</span>
+      <hr></hr>
+      <d:if test="(and
+ (service-level &apos;Adc5dd0c30f6e63932811ed60e019bb2d &apos;A8334f0c029a3088e3b04e90abb1ac3a3)
+ (not (node-list-empty? (select-elements
+        (xsl-variable &quot;body&quot;) &apos;local-id))))">
+       <d:form method="post">
+        <d:copy-of select="(xsl-variable &quot;hidden-host&quot;)"></d:copy-of>
+        <d:input name="select" type="hidden" d:value="(data (form-field &apos;select (current-node)))"></d:input>
+        <input name="action" type="submit" value="restart"></input>
+        <d:if test="(service-level &apos;A9d00a3f86e066679d35767cdacaa00a0)">
+         <a href="?xmlns=mind">debug</a>
+        </d:if>
+       </d:form>
+      </d:if>
+      <d:apply-templates select="(xsl-variable &quot;body&quot;)"></d:apply-templates>
+     </body>
+    </html>
+   </xsl:otherwise>
+  </xsl:choose>
+ </xsl:template>
+ <xsl:template match="dnszone">
+  <core:output media-type="text/plain" method="text">
+   <xsl:apply-templates></xsl:apply-templates>
+  </core:output>
+ </xsl:template>
+ <xsl:template match="limits">
+  <h2>limits</h2>
+  <d:form method="post">
+   <xsl:apply-templates></xsl:apply-templates>
+   <d:if test="(service-level &apos;Adc5dd0c30f6e63932811ed60e019bb2d &apos;A8334f0c029a3088e3b04e90abb1ac3a3)">
+    <d:copy-of select="(xsl-variable &quot;hidden-host&quot;)"></d:copy-of>
+    <input name="select" type="hidden" value="limits"></input>
+    <input name="action" type="hidden" value="set-limits"></input>
+    <table border="0" style="border:none">
+     <tr>
+      <td>
+       <label>New Administrator Secret</label>
+      </td>
+      <td>
+       <input name="administrator-password" type="password" value=""></input>
+      </td>
+     </tr>
+     <tr>
+      <td>
+       <label>New Operator Secret</label>
+      </td>
+      <td>
+       <input name="operator-password" type="password" value=""></input>
+      </td>
+     </tr>
+     <tr>
+      <td>
+<!--
+       <label>Operator Secret</label>-->
+      </td>
+      <td>
+<!--
+       <input name="password" type="password" value=""></input>-->
+       <input type="submit" value="set limits"></input>
+      </td>
+     </tr>
+    </table>
+   </d:if>
+  </d:form>
+ </xsl:template>
+ <xsl:template match="systemtime">
+  <h3>Node Time: <xsl:apply-templates></xsl:apply-templates></h3>
+ </xsl:template>
+ <xsl:template name="certificate-display">
+  <table class="x509">
+   <tr>
+    <td>
+     <pre class="x509text">
+      <d:copy-of select="(guard (ex (else (data (current-node))))
+(x509-text (data (current-node))))"></d:copy-of>
+     </pre>
+    </td>
+    <td>
+     <pre class="x509pem">
+      <xsl:apply-templates></xsl:apply-templates>
+     </pre>
+    </td>
+   </tr>
+  </table>
+ </xsl:template>
+ <xsl:template match="administrator">Administrator: <xsl:apply-templates></xsl:apply-templates></xsl:template>
+ <xsl:template match="cacert">
+  <h2>Certificate Authority Certificate</h2>
+  <xsl:call-template name="certificate-display"></xsl:call-template>
+  <d:if test="(service-level)">
+   <fieldset>
+    <legend>manage</legend>
+    <table border="0">
+     <tr>
+      <td valign="top">
+       <d:form enctype="multipart/form-data" method="post">
+        <table border="0">
+         <tr>
+          <td>
+           <label> CA Cert File </label>
+          </td>
+          <td>
+           <d:copy-of select="(xsl-variable &quot;hidden-host&quot;)"></d:copy-of>
+           <d:copy-of select="(xsl-variable &quot;hidden-select&quot;)"></d:copy-of>
+           <input name="action" type="hidden" value="store-cacert"></input>
+           <input name="cacert" type="file"></input>
+           <input type="submit" value="Submit CA Cert"></input>
+          </td>
+         </tr>
+<!--
+         <tr>
+          <td>
+           <label> Password </label>
+          </td>
+          <td>
+           <input name="password" type="password" value=""></input>
+          </td>
+         </tr>-->
+         <tr>
+          <td colspan="2">
+           <textarea cols="65" name="cacert" rows="20"></textarea>
+          </td>
+         </tr>
+        </table>
+       </d:form>
+      </td>
+      <td valign="top">
+       <d:form method="post">
+        <table border="0">
+         <tr>
+          <td>
+           <label> Password </label>
+          </td>
+          <td>
+           <d:copy-of select="(xsl-variable &quot;hidden-host&quot;)"></d:copy-of>
+           <d:copy-of select="(xsl-variable &quot;hidden-select&quot;)"></d:copy-of>
+           <input name="action" type="hidden" value="create-new-ca"></input>
+           <input name="password" type="password"></input>
+           <input type="submit" value="Create New CA"></input>
+          </td>
+         </tr>
+        </table>
+       </d:form>
+       <br></br>
+       <d:form method="post">
+        <table border="0">
+         <tr>
+          <td> Source URL </td>
+          <td>
+           <input name="source" size="40" type="text"></input>
+          </td>
+         </tr>
+         <tr>
+          <td> Remote User (optional) </td>
+          <td>
+           <input name="rname" size="40" type="text"></input>
+           <d:input name="localuser" type="hidden" d:value="literal (message-creator msg)"></d:input>
+          </td>
+         </tr>
+         <tr>
+          <td>
+           <label> CN </label>
+          </td>
+          <td>
+           <d:copy-of select="(xsl-variable &quot;hidden-select&quot;)"></d:copy-of>
+           <d:input name="cn" size="40" type="text" d:value="
+(data (select-elements (xsl-variable &quot;body&quot;) &apos;local-id))
+"></d:input>
+          </td>
+         </tr>
+<!--
+         <tr>
+          <td>
+           <label> Password </label>
+          </td>
+          <td>
+           <input name="password" type="password"></input>
+          </td>
+         </tr>-->
+         <tr>
+          <td></td>
+          <td>
+           <d:input name="user" type="hidden" d:value="literal (message-creator msg)"></d:input>
+           <d:copy-of select="(xsl-variable &quot;hidden-host&quot;)"></d:copy-of>
+           <d:copy-of select="(xsl-variable &quot;hidden-select&quot;)"></d:copy-of>
+           <input name="action" type="hidden" value="ca-connect"></input>
+           <input type="submit" value="Fetch CA"></input>
+          </td>
+         </tr>
+        </table>
+       </d:form>
+      </td>
+     </tr>
+    </table>
+   </fieldset>
+  </d:if>
+ </xsl:template>
+ <xsl:template match="cert">
+  <h2>
+   <d:a d:href="(string-append &quot;https://&quot; (data (select-elements (xsl-variable &quot;body&quot;) &apos;local-id)))">Local X509 Certificate</d:a>
+  </h2>
+  <xsl:call-template name="certificate-display"></xsl:call-template>
+  <d:if test="(service-level)">
+   <fieldset>
+    <legend>manage</legend>
+    <table border="0">
+     <tr>
+      <td valign="top">
+       <d:form method="post">
+        <table>
+         <tr>
+          <td>
+           <label> CN </label>
+          </td>
+          <td>
+           <d:copy-of select="(xsl-variable &quot;hidden-host&quot;)"></d:copy-of>
+           <d:input name="user" type="hidden" d:value="literal (message-creator msg)"></d:input>
+           <d:copy-of select="(xsl-variable &quot;hidden-select&quot;)"></d:copy-of>
+           <d:input name="cn" size="45" type="text" d:value="
+(data (select-elements (xsl-variable &quot;body&quot;) &apos;local-id))
+"></d:input>
+          </td>
+         </tr>
+         <tr>
+          <td>
+<!--
+           <label> Password </label>-->
+          </td>
+          <td title="Request a new key for this notary (the 'L' in the X509 subject) with no organisational role ('O').">
+<!--
+           <input name="password" type="password" value=""></input>-->
+           <input name="action" type="hidden" value="create-new-key"></input>
+           <input type="submit" value="Create New Key"></input>
+          </td>
+         </tr>
+        </table>
+       </d:form>
+      </td>
+      <td>
+       <d:form enctype="multipart/form-data" method="post">
+        <table>
+         <tr>
+          <td>
+           <label> Certificate File </label>
+          </td>
+          <td>
+           <input name="cert" type="file"></input>
+          </td>
+         </tr>
+         <tr>
+          <td>
+<!--
+           <label> Password </label>-->
+          </td>
+          <td>
+<!--
+           <input name="password" type="password" value=""></input>-->
+           <d:copy-of select="(xsl-variable &quot;hidden-host&quot;)"></d:copy-of>
+           <d:copy-of select="(xsl-variable &quot;hidden-select&quot;)"></d:copy-of>
+           <input name="action" type="hidden" value="store-cert"></input>
+           <input type="submit" value="Submit Host Cert"></input>
+          </td>
+         </tr>
+         <tr>
+          <td colspan="2">
+           <textarea cols="65" name="cert" rows="20"></textarea>
+          </td>
+         </tr>
+        </table>
+       </d:form>
+      </td>
+     </tr>
+    </table>
+   </fieldset>
+  </d:if>
+ </xsl:template>
+ <xsl:template match="user-cert-data">
+  <div style="border:1px solid black;">
+   <h2>X509 Certificate Management</h2>
+   <d:for-each select="(node-list
+ ((sxpath &apos;(req)) (current-node))
+; ((sxpath &apos;(key)) (current-node))
+ ((sxpath &apos;(cert)) (current-node)))">
+    <d:copy-of select="(literal (gi (current-node)))"></d:copy-of>
+    <xsl:call-template name="certificate-display"></xsl:call-template>
+   </d:for-each>
+   <fieldset>
+    <legend>request</legend>
+    <d:form enctype="multipart/form-data" method="post">
+     <d:copy-of select="(xsl-variable &quot;hidden-host&quot;)"></d:copy-of>
+     <d:copy-of select="(xsl-variable &quot;hidden-select&quot;)"></d:copy-of>
+     <d:input name="user" type="hidden" d:value="literal (message-creator msg)"></d:input>
+     <input name="action" type="hidden" value="manage-user-cert"></input>
+     <d:input name="number" type="hidden" d:value="literal (version-identifier me)"></d:input>
+     <table border="1" style="border:1px solid black; border-collapse: collapse;">
+      <tr>
+       <td colspan="2">
+        <input name="cert" type="file"></input>
+        <input name="op" type="submit" value="store"></input>
+       </td>
+      </tr>
+      <tr>
+       <td colspan="2">
+        <textarea cols="65" name="cert" rows="20"></textarea>
+       </td>
+      </tr>
+      <tr>
+       <td>
+        <label>User</label>
+       </td>
+       <td>
+        <d:input name="name" size="43" type="text" d:value="literal (message-creator msg)"></d:input>
+       </td>
+      </tr>
+      <tr>
+       <td>
+        <label> Client OID (optional)</label>
+       </td>
+       <td>
+        <d:input name="client" size="43" type="text" d:value="literal (public-oid)"></d:input>
+       </td>
+      </tr>
+      <tr>
+       <td>
+        <label> CN (SSL)</label>
+       </td>
+       <td>
+        <input name="cn" size="43" type="text" value="localhost"></input>
+       </td>
+      </tr>
+      <tr>
+       <td>
+        <label> Duration </label>
+       </td>
+       <td>
+        <select name="days">
+         <option value="50">Month</option>
+         <option value="385">Year</option>
+        </select>
+       </td>
+      </tr>
+      <tr>
+       <td>
+        <label>CA</label>
+       </td>
+       <td>
+        <input name="enable-ca" type="checkbox"></input>
+       </td>
+      </tr>
+      <tr>
+       <td>
+        <label> Password </label>
+       </td>
+       <td>
+        <input name="password" type="password" value=""></input>
+       </td>
+      </tr>
+      <tr>
+       <td></td>
+       <td>
+        <input name="op" type="submit" value="new"></input>
+        <input name="op" type="submit" value="sign"></input>
+        <input name="op" type="submit" value="delete"></input>
+       </td>
+      </tr>
+     </table>
+    </d:form>
+   </fieldset>
+   <fieldset>
+    <legend>set host cert</legend>
+    <d:form method="post">
+     <d:copy-of select="(xsl-variable &quot;hidden-host&quot;)"></d:copy-of>
+     <d:input name="user" type="hidden" d:value="literal (message-creator msg)"></d:input>
+     <input name="action" type="hidden" value="manage-user-cert"></input>
+     <input name="op" type="hidden" value="store-as-host"></input>
+     <d:copy-of select="(xsl-variable &quot;hidden-select&quot;)"></d:copy-of>
+     <table border="1" style="border:1px solid black; border-collapse: collapse;">
+      <tr>
+<!--
+       <td>
+        <label>Hostmaster Password</label>
+       </td>
+       <td>
+        <input name="password" type="password" value=""></input>
+       </td>-->
+       <td>
+        <input type="submit" value="set host cert"></input>
+       </td>
+      </tr>
+     </table>
+    </d:form>
+   </fieldset>
+  </div>
+ </xsl:template>
+ <xsl:template match="hosts">
+  <h3>supporting hosts</h3>
+<!--
+
+  <table>
+   <tr>
+    <td>
+    </td>
+    <td>
+-->
+  <ol>
+   <xsl:apply-templates></xsl:apply-templates>
+  </ol>
+<!--
+    </td>
+   </tr>
+  </table>
+-->
+ </xsl:template>
+ <xsl:template match="host">
+  <li>
+   <code>
+    <xsl:apply-templates></xsl:apply-templates>
+   </code>
+  </li>
+ </xsl:template>
+ <xsl:template match="local-id">
+  <h3>local id: <xsl:apply-templates></xsl:apply-templates></h3>
+ </xsl:template>
+ <xsl:template match="debugmessages">
+  <h2>debug messages for <d:copy-of select="(attribute-string &apos;entryname (current-node))"></d:copy-of></h2>
+  <pre style="border:solid 1px">
+   <xsl:apply-templates></xsl:apply-templates>
+  </pre>
+ </xsl:template>
+ <xsl:template match="debugmessage">
+  <xsl:apply-templates></xsl:apply-templates>
+  <hr></hr>
+ </xsl:template>
+ <xsl:template match="timeoutlist">
+  <h2>timeout queue</h2>
+  <table border="1" cellpadding="2px" style="font-size:smaller">
+   <xsl:apply-templates></xsl:apply-templates>
+  </table>
+ </xsl:template>
+ <xsl:template match="timeoutlistentry">
+  <tr>
+   <xsl:apply-templates></xsl:apply-templates>
+  </tr>
+ </xsl:template>
+ <xsl:template match="timeoutdate">
+  <td>
+   <xsl:apply-templates></xsl:apply-templates>
+  </td>
+ </xsl:template>
+ <xsl:template match="timeoutobject">
+  <td>
+   <xsl:apply-templates></xsl:apply-templates>
+  </td>
+ </xsl:template>
+ <xsl:template match="kernelthreads">
+  <h2>kernel threads</h2>
+  <pre style="border:solid 1px">
+   <xsl:apply-templates></xsl:apply-templates>
+  </pre>
+ </xsl:template>
+ <xsl:template match="channels">
+  <d:form method="post">
+   <fieldset>
+    <legend>create channel</legend>
+    <table>
+     <tr>
+      <td colspan="2">
+       <label> here </label>
+       <input name="name" size="10" type="text"></input>
+       <label> from host </label>
+       <input name="from" size="55" type="text"></input>
+       <label> user </label>
+       <input name="rname" size="10" type="text"></input>
+      </td>
+     </tr>
+     <tr>
+      <td>
+       <label>Secret</label>
+      </td>
+      <td>
+       <input name="secret1" size="20" type="password"></input>
+      </td>
+     </tr>
+     <tr>
+      <td>
+       <label>Secret (for verification)</label>
+      </td>
+      <td>
+       <input name="secret2" size="20" type="password"></input>
+      </td>
+     </tr>
+<!--
+
+
+      <tr>
+        <td>OID</td>
+        <td><input type="text" size="34" name="oid" value="" /></td>
+      </tr>
+
+
+-->
+     <tr>
+      <td>Initial Data</td>
+      <td>
+       <input name="data" size="20" type="text" value="xslt-user"></input>
+      </td>
+     </tr>
+     <tr>
+      <td>Contract</td>
+      <td>
+       <input name="contract" size="20" type="text" value="xslt-method"></input>
+      </td>
+     </tr>
+     <tr>
+      <td>
+       <label> Administrator Secret </label>
+      </td>
+      <td>
+       <input name="password" type="password" value=""></input>
+       <d:copy-of select="(xsl-variable &quot;hidden-host&quot;)"></d:copy-of>
+       <input name="action" type="hidden" value="create-channel"></input>
+       <d:copy-of select="(xsl-variable &quot;hidden-select&quot;)"></d:copy-of>
+       <input type="submit" value="create"></input>
+      </td>
+     </tr>
+    </table>
+   </fieldset>
+  </d:form>
+  <d:form method="post">
+   <fieldset>
+    <legend>remove channel</legend>
+    <table>
+     <tr>
+      <td>
+       <label> Name </label>
+      </td>
+      <td>
+       <input name="name" size="10" type="text"></input>
+      </td>
+      <td>
+       <label> Administrator Secret </label>
+      </td>
+      <td>
+       <input name="password" type="password" value=""></input>
+       <d:copy-of select="(xsl-variable &quot;hidden-host&quot;)"></d:copy-of>
+       <input name="action" type="hidden" value="remove-channel"></input>
+       <d:copy-of select="(xsl-variable &quot;hidden-select&quot;)"></d:copy-of>
+       <input type="submit" value="remove"></input>
+      </td>
+     </tr>
+    </table>
+   </fieldset>
+  </d:form>
+  <p><a href="/LOGOUT">change login name</a>
+:
+<a href="/">home</a></p>
+  <ol style="border:solid 1px">
+   <xsl:apply-templates mode="rdf"></xsl:apply-templates>
+  </ol>
+ </xsl:template>
+ <xsl:template match="li" mode="rdf">
+  <li>
+   <d:copy-of select="(make element
+ gi: &apos;a
+ attributes: `((href ,(read-locator (list (attribute-string &apos;href (current-node))))))
+
+ (attribute-string &apos;resource (current-node))
+)
+"></d:copy-of>
+  </li>
+ </xsl:template>
+ <xsl:template match="http-channels">
+  <h2>Connections</h2>
+  <d:copy-of select="children (current-node)"></d:copy-of>
+ </xsl:template>
+ <xsl:template match="known-hosts">
+  <d:form method="post">
+   <fieldset>
+    <legend>connect</legend>
+    <label>host</label>
+    <input name="to" size="45" type="text"></input>
+    <input name="action" type="hidden" value="connect"></input>
+    <d:copy-of select="(xsl-variable &quot;hidden-select&quot;)"></d:copy-of>
+   </fieldset>
+  </d:form>
+  <h2>Host Map</h2>
+  <d:copy-of>
+sxml $ `
+ table
+  tr th("Certified Location") th("Network Address")
+  $$ ,(node-list-map
+      (lambda (tr)
+        (document-element
+         (sxml `(tr ,@((sxpath '((td 1))) tr)
+                   ,(let ((v (data ((sxpath '((td 2))) tr))))
+                      `(td (a (@ (href "https://" ,v)) ,v)))
+                   . ,(node-list-rest (node-list-rest (children tr)))))))
+		   (children (children (current-node))))
+  </d:copy-of>
+ </xsl:template>
+ <xsl:template match="other">
+  <pre>
+   <d:copy-of select="(current-node)"></d:copy-of>
+  </pre>
+ </xsl:template>
+ <xsl:template match="table">
+  <table border="1" cellpadding="2px">
+   <xsl:apply-templates></xsl:apply-templates>
+  </table>
+ </xsl:template>
+ <xsl:template match="tr">
+  <tr>
+   <xsl:apply-templates></xsl:apply-templates>
+  </tr>
+ </xsl:template>
+ <xsl:template match="td">
+  <td>
+   <xsl:apply-templates></xsl:apply-templates>
+  </td>
+ </xsl:template>
+ <xsl:template match="th">
+  <th>
+   <xsl:apply-templates></xsl:apply-templates>
+  </th>
+ </xsl:template>
+ <xsl:template match="h2">
+  <h2>
+   <xsl:apply-templates></xsl:apply-templates>
+  </h2>
+ </xsl:template>
+ <xsl:template match="p">
+  <p>
+   <xsl:apply-templates></xsl:apply-templates>
+  </p>
+ </xsl:template>
+ <xsl:template match="pre">
+  <pre>
+   <xsl:apply-templates></xsl:apply-templates>
+  </pre>
+ </xsl:template>
+ <xsl:template match="li">
+  <li>
+   <xsl:apply-templates></xsl:apply-templates>
+  </li>
+ </xsl:template>
+ <xsl:template match="ol">
+  <ol>
+   <xsl:apply-templates></xsl:apply-templates>
+  </ol>
+ </xsl:template>
+ <xsl:template match="input">
+  <d:copy-of select="(current-node)"></d:copy-of>
+ </xsl:template>
+<!--
+
+FIXME: the "select" and the "input" match should be unified, but
+that's a test case for more XSLT completion.
+
+-->
+ <xsl:template match="select">
+  <d:copy-of select="(current-node)"></d:copy-of>
+ </xsl:template>
+ <xsl:template match="request[@type=&quot;write&quot;]">
+  <xsl:choose>
+   <d:when test="(not (or (service-level) (error &quot;local operator only&quot;)))"></d:when>
+   <d:when test="(and (is-meta-form? msg) (service-level))">
+    <d:copy-of select="(message-body (metactrl me msg))"></d:copy-of>
+   </d:when>
+   <xsl:otherwise>
+    <core:reply>
+     <core:become>
+      <d:copy-of select="(grove-root (current-node))"/><!-- no
+ change; supress warning -->
+     </core:become>
+     <d:copy-of>
+(node-list
+ (make element gi: 'output
+  attributes:
+    `((location
+       ,(read-locator  (message-location msg)
+          body: (make element gi: 'form (form-field 'select (current-node)))))))
+ (make element gi: 'TrustedCode attributes: '((name "ball-control"))
+       ((sxpath '(form)) (current-node))))
+     </d:copy-of>
+    </core:reply>
+   </xsl:otherwise>
+  </xsl:choose>
+ </xsl:template>
+</xsl:stylesheet>
+

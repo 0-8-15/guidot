@@ -1,0 +1,21 @@
+;; (C) 2018, JFW             -*-scheme-*-
+
+(sxml
+ `(letseq
+   (bindings
+    (bind (@ (name "public")) (id ($$ ,literal ,(public-oid))))
+    (bind
+     (@ (name "reflexive"))
+     (new
+      (@ (action "public"))
+      (output
+       ($$ ,xml-parse ,(filedata (make-pathname '("app") "reflexive-xdslt" "xml"))))))
+    )
+   (new
+    (@ (action "reflexive") (secret "none"))
+    (link (@ (name "xslt-method")) (ref "reflexive"))
+    (link (@ (name "xslt-bail-reflexive")) (ref "reflexive"))
+    (link (@ (name "public")) (ref "public"))
+    (output
+       ($$ ,xml-parse ,(filedata (make-pathname '("policy") "sysinf" "xml")))))
+   ))
