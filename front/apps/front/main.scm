@@ -235,20 +235,24 @@
 
 (define myip #f)  ;; deprecated
 
-(define-macro (define-once name missing . body)
+(define %local-void-value (list #!eof))
+(define (%is-local-void? value)
+  (eq? value %local-void-value))
+(define-macro (define-once/or name missing . body)
   (let ((refresh (gensym 'refresh))
-	(value (gensym 'value)))
+	(value (gensym name)))
     `(define ,name
-       (let ((,value #f))
+       (let ((,value %local-void-value))
 	 (lambda (#!optional (,refresh #f))
-	   (if ,refresh (set! ,value #f))
-	   (unless (and ,value (not (eq? ,refresh 'void)))
-		   (set! ,value (begin . ,body)))
-	   (or ,value ,missing))))))
+	   (if ,refresh (set! ,value %local-void-value))
+	   (if (and (%is-local-void? ,value) (not (eq? ,refresh 'void)))
+               (set! ,value (begin . ,body)))
+           ;; FIXME: That's a bit strange: these values can NOT be #f!!!
+	   (if (or (%is-local-void? ,value) (not ,value)) ,missing ,value))))))
 
 (define *entry-missing* "<Entry Missing>")
 
-(define-once local-connect-string *entry-missing*
+(define-once/or local-connect-string *entry-missing*
   (and (check-kernel-server!)
        (let ((ip (onion-address)))
 	 (if ip
@@ -275,21 +279,20 @@
 	     (if (procedure? postproc) (postproc)))
        #f)))
 
-(define cached-kernel-value-void (list 'none))
 (define-macro (define-cached-kernel-value name valid? convert . query)
-  (let ((cache (gensym 'cached-kernel-value))
+  (let ((cache (gensym name))
 	(reload (gensym))
 	(tmp (gensym)))
     `(define ,name
-       (let ((,cache cached-kernel-value-void))
+       (let ((,cache %local-void-value))
 	 (lambda (#!optional (,reload #f))
-	   (if (or ,reload (eq? ,cache cached-kernel-value-void))
+	   (if (or ,reload (%is-local-void? ,cache))
 	       (if (check-kernel-server!)
 		   (let ((,tmp (call-kernel . ,query)))
 		     (if (procedure? ,convert) (set! ,tmp (,convert ,tmp)))
 		     (if (or (not ,valid?) (,valid? ,tmp))
 			 (set! ,cache ,tmp)))))
-	   (if (eq? ,cache cached-kernel-value-void)
+	   (if (%is-local-void? ,cache)
 	       (if (procedure? ,convert) (,convert) ,convert)
 	       ,cache))))))
 
@@ -377,7 +380,7 @@ Is the service not yet running?")))
 
 (define (main-entry-string) (if (main-entry) (symbol->string (main-entry)) *entry-missing*))
 
-(define-once main-entry-name *entry-missing*
+(define-once/or main-entry-name *entry-missing*
   (let ((e (assoc (main-entry) (map reverse (entry-points)))))
     (and e (cadr e))))
 
@@ -397,7 +400,17 @@ Is the service not yet running?")))
 	 (dbset 'selected-channel #f))
        #f))))
 
-(define-once kernel-connections "None"
+(define-cached-kernel-value kernel-connections #f '("n/a")
+  'begin
+  '(let ((v (fold
+             (lambda (x i)
+               (if (eq? x (public-oid)) i
+                   (cons (if (oid? x) (oid->string x) x) i)))
+             '()
+             (quorum-others (http-all-hosts)))))
+     (if (null? v) '("none") v)))
+
+#;(define-once/or kernel-connections0 '("n/a")
   (with-output-to-string
     (lambda ()
       (display "Connections\n")
@@ -440,7 +453,7 @@ Is the service not yet running?")))
      ;; (glgui-suspend) ;; FIXME: minimize!
      #f)))
 
-#;(define-once interesting-pages '()
+#;(define-once/or interesting-pages '()
   (append
    (list "")
    (map car (entry-points))))
