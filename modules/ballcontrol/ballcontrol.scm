@@ -153,23 +153,29 @@
     (kernel-server fork-process "ball" "-start" kernel-data-directory))
    (else (log-error "Not starting kernel server, still " (kernel-server)))))
 
-(define (restart-kernel-server!)
-  (if (eq? (subprocess-style) 'pthread)
-      (begin
-        (log-error "can not (yet) restart kernel when running as pthread")
-       #f)
-      (begin
-        (when (debug 'current-server (kernel-server))
-              (let loop ()
-                (unless (kernel-server #f)
-                        (thread-sleep! 0.1)
-                        (loop))))
-        (close-kernel-connection!)
-        (start-kernel-server!)
-        (or (wait-for-kernel-server 20)
-            (begin
-              (log-error "Kernel server did not restart!")
-              #f)))))
+(define restart-kernel-server!
+  (let ((in-restart #f))
+    (lambda ()
+      (if (eq? (subprocess-style) 'pthread)
+          (begin
+            (log-error "can not (yet) restart kernel when running as pthread")
+            #f)
+          (if (not in-restart)
+              (begin
+                (set! in-restart #t)
+                (when (debug 'current-server (kernel-server))
+                      (let loop ((n 200))
+                        (unless (kernel-server #f)
+                                (thread-sleep! 0.1)
+                                (loop (- n 1)))))
+                (close-kernel-connection!)
+                (unless (kernel-server) (start-kernel-server!))
+                (let ((r (wait-for-kernel-server 60)))
+                  (set! in-restart #f))
+                (or r
+                    (begin
+                      (log-error "Kernel server did not restart!")
+                      #f))))))))
 
 (define (%write-kernel! p msg)
   (write msg p)
