@@ -1,0 +1,1525 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xsl:stylesheet xmlns:ac="http://www.askemos.org/2000/CoreAPI#" xmlns:d="http://www.askemos.org/2005/NameSpaceDSSSL/" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xmlns:xsql="http://www.askemos.org/2006/XSQL/" xmlns:bail="http://www.askemos.org/2013/bail/" version="1.0" xml:space="default">
+  <!--
+
+WARNING -+- WARNING
+
+This is really outdated code.  Do NOT take it as an example!
+
+WARNING -+- WARNING
+
+  -->
+ <xsl:variable name="date-format">~Y-~m-~d ~H:~M:~S ~z</xsl:variable>
+<!--
+ <xsl:variable name="date-format">~Y-~m-~dT~H:~M:~S.~N~z</xsl:variable>
+-->
+ <xsl:variable name="form"><xsl:copy-of select="form"/></xsl:variable>
+ <xsl:template name="l10n">
+  <xsl:param name="n">no message</xsl:param>
+  <d:copy-of select="(guard (ex (else (xsl-variable &quot;n&quot;))) (sql-ref (sql-query &quot;select display from l10n where orig = ?1&quot; (data (xsl-variable &quot;n&quot;)))))"/>
+ </xsl:template>
+ <xsl:variable name="headline">
+  <p><sup>¿</sup><d:a d:href="(read-locator (sxml `(form (_v ,(if (service-level) &quot;register&quot; &quot;&quot;)))))">hoist</d:a><sub>?</sub>
+The <i><u>h</u>ell <u>o</u>f <u>i</u>ssues <u>s</u>imply <u>t</u>racked</i>.</p>
+ </xsl:variable>
+<!--
+  Creates an hidden input field for known users and a prompt for public.
+-->
+ <xsl:variable name="form-author">
+  <d:copy-of select="#CONTENT">
+   (if (not (eq? (msg 'dc-creator) (public-oid)))
+       (sxml `(input (@ (type "hidden") (name "author") (value ,(literal (msg 'dc-creator))))))
+       (sxml `(p "Author: " (input (@ (type "text") (name "author") )))))
+  </d:copy-of>
+ </xsl:variable>
+
+<!--
+
+Basic Request Dispatch
+
+-->
+ <xsl:template match="request[@type='read']">
+  <xsl:choose>
+   <d:when test="node-list-empty? (children (current-node))">
+    <xsl:call-template name="read-default"/>
+   </d:when>
+   <xsl:otherwise>
+    <xsl:apply-templates mode="read"/>
+   </xsl:otherwise>
+  </xsl:choose>
+ </xsl:template>
+<!--
+
+ All core request get the metainfo, that's not perfect, but not too harmful either.
+
+-->
+ <xsl:template match="ac:*" mode="read">
+  <!-- Apply same view as inherited from basic object.  -->
+  <d:copy-of select="(metaview me msg)"/>
+ </xsl:template>
+ <xsl:template match="form" mode="read">
+  <xsl:call-template name="read-default"/>
+ </xsl:template>
+ <xsl:template name="read-default">
+  <html xmlns="http://www.w3.org/1999/xhtml">
+   <head>
+    <title>hoist</title>
+    <meta content="application/xhtml+xml; charset=UTF-8" http-equiv="Content-Type" />
+    <style lang="text/css">
+.remark {
+ margin: 0ex 2em;
+ padding: 0.5ex;
+ background: #f8f68d;
+}
+.remark p {
+ padding:0ex;margin:0ex;
+}
+.future {
+ text-align: center;
+ background-color: white;
+}
+.soon {
+ text-align: center;
+ background-color: #f0f000;
+}
+.now {
+ text-align: center;
+ background-color: lightgrey;
+}
+.past {
+ text-align: center;
+ background-color: darkgrey;
+}
+td {
+ vertical-align:top;
+ <!-- padding: 0.1ex,0.5ex,0.1ex,0.5ex; -->
+ padding:0px;
+}
+pre { max-width: 80em; overflow: auto; }
+.DeleteButton {
+ font-size:50%;
+ height:2em;
+}
+.footnotes {
+ position: relative; left: 2em;
+}
+    </style>
+   </head>
+   <body>
+    <xsl:choose>
+     <d:when test="(service-level)">
+      <xsl:call-template name="service-view"/>
+     </d:when>
+     <xsl:otherwise>
+      <xsl:call-template name="client-view"/>
+     </xsl:otherwise>
+    </xsl:choose>
+   </body>
+  </html>
+ </xsl:template>
+ <xsl:template match="request[@type='write']">
+  <ac:reply>
+   <ac:update>create table if not exists messages (moment data, request text)</ac:update>
+   <ac:update parameterized="yes">
+    <template>insert into messages (moment, request) values (?1, ?2)</template>
+    <with-param><bail:copy-of>literal $ message-date $ current-message</bail:copy-of></with-param>
+    <with-param><bail:copy-of>(xml-format (current-node))</bail:copy-of></with-param>
+   </ac:update>
+   <xsl:choose>
+    <d:when test="(service-level)">
+     <xsl:call-template name="call-service"/>
+    </d:when>
+    <xsl:otherwise>
+     <xsl:call-template name="call-client"/>
+    </xsl:otherwise>
+   </xsl:choose>
+   <d:output media-type="text/plain" method="xml" d:location="(read-locator (sxml `(form . ,(fold (lambda (n i) (if (node-list-empty? (form-field n (current-node))) i (cons (node-list-first (form-field n (current-node))) i))) '() '(_v id)))))">Erfolg</d:output>
+  </ac:reply>
+ </xsl:template>
+ <xsl:template name="client-view">
+    <bail:copy-of>
+guard
+ exception
+  else
+    node-list
+     xsl-variable "headline"
+     xsl-variable "maintainance"
+     make element gi: 'pre (literal exception)
+ node-list
+  xsl-variable "headline"
+  xsl-variable (sql-ref (sql-query "select v from extern
+    join state on state.s = extern.s
+    where state.s = 1 and extern.n = ?1" (data (form-field '_v (current-node)))))
+    </bail:copy-of>
+ </xsl:template>
+ <xsl:template name="service-view">
+    <bail:copy-of>
+guard
+ exception
+  else
+    node-list
+     make element gi: 'pre (literal exception)
+     xsl-variable "teaser"
+ node-list
+  xsl-variable "headline"
+  guard
+   exception (else (empty-node-list))
+   make element gi: 'H1 (literal "Changes " (sql-ref "select count(*) from messages"))
+  xsl-variable (sql-ref (sql-query "select v from intern
+    join state on state.s = intern.s
+    where state.s = 1 and intern.n = ?1" (data (form-field '_v (current-node)))))
+    </bail:copy-of>
+ </xsl:template>
+ <xsl:template name="call-client">
+  <d:copy-of select="#CONTENT">xsl-variable apply:
+   sql-ref (sql-query "select
+             client.t
+             from state join client on state.s = client.s
+             where state.s = 1 and
+             client.a = ?1" (data (form-field '_a (current-node))))
+  </d:copy-of>
+ </xsl:template>
+ <xsl:template name="call-service">
+  <d:copy-of select="#CONTENT">xsl-variable apply:
+  guard
+   exception (else "sin")
+   sql-ref (sql-query "select
+             service.t
+             from state join service on state.s = service.s
+             where state.s = 1 and
+             service.a = ?1" (data (form-field '_a (current-node))))
+  </d:copy-of>
+ </xsl:template>
+ <xsl:variable name="maintainance">
+  <h1>Hold On</h1>
+  <p>System in maintainance.</p>
+ </xsl:variable>
+ <xsl:variable name="teaser">
+  <h1>Hoist</h1>
+  <h2>System Maintainance.</h2>
+  <h3>Current State</h3>
+  <div>
+   <xsl:variable name="selection">
+    <xsql:query rowset-element="" row-element="tr" max-rows="1000">
+     <d:copy-of select="data (form-field 'sql (current-node))"/>
+    </xsql:query>
+   </xsl:variable>
+   <d:form method="get">
+    <input type="hidden" name="_v" value="a"/>
+    <input type="submit"/>
+    <br/>
+    <textarea name="sql" cols="80" rows="20">
+     <d:copy-of select="data (form-field 'sql (current-node))"/>
+    </textarea>
+   </d:form>
+   <d:if test="(not (string-null? (data (form-field 'sql (current-node)))))">
+    <table>
+     <d:for-each select="xsl-variable &quot;selection&quot;">
+      <d:apply-templates select="(current-node)" mode="listing"/>
+     </d:for-each>
+    </table>
+   </d:if>
+  </div>
+  <h3>Options</h3>
+  <p>There are three reasons to come here:
+a) either your Hoist was just created
+b) the database is broken - in this case it's probably lost
+c) an error in the hoist program.</p>
+  <p>In in case (a) create, otherwise try to fix it here:</p>
+  <d:form method="post">
+   <input name="_a" type="hidden" value="sin"/>
+   <input type="submit" value="start"/>
+   <fieldset>
+    <legend>Exclude Default</legend>
+    <input type="checkbox" name="no-default" value="1"/>
+   </fieldset>
+   <fieldset>
+    <legend>SQL</legend>
+    <textarea name="custom" cols="80" rows="40">
+insert into project (id,name,link,description,pr,pl) values(null,'WSW','askemos.org','Why',1,1);
+insert into project (id,name,link,description,pr,pl) values(null,'WSH','ball.askemos.org','How',1,1);
+insert into project (id,name,link,description,pr,pl) values(null,'NOW','ball.askemos.org','SW',1,1);
+insert into project (id,name,link,description,pr,pl) values(null,'BIZ','softeyes.net','Food For Thought',1,0);
+insert into milestone (project,name) values(1, '0.8.8 Documentation');
+insert into milestone (project,name) values(4, 'Abschluß');
+insert into issue(project,subject) values(4,'Gesellschafterversammlung 2010');
+insert into dependency(goal,need) values(2,1);
+insert into issue(project,subject) values(2,'Jersey Color Poll incomplete');
+insert into event(issue,moment,author,comment) values(2,2.45558e+06,'Adc5dd0c30f6e63932811ed60e019bb2d','# Top Of The Heap
+I [promised](/A4a1d7ed2554e387d7295db88dbeb4e50/Askemos%20-%20fiXml/20101207-Quahlurne-run.html)
+attack scenarios...those where pending real work till forgotten.
+
+To load them off my brain
+here a (to be ordered) list of
+attack targets I''ll cover:
+* askemos/ball - the whole "software" layer (including dependencies)
+* cryptography - short term use only
+* trust model (openssl/gnutls, setup) - SPOF vs. WOT
+* attack network topology
+* collaborate - that''s the downside of democracy
+    </textarea>
+   </fieldset>
+  </d:form>
+ </xsl:variable><!--
+
+Initiation: The Model.
+
+-->
+ <xsl:template name="sin">
+  <d:if test="(node-list-empty? (form-field 'no-default (current-node)))">
+   <ac:update>
+ create table state (s integer primary key on conflict replace, name text unique);
+ create table service (s text, a text, t text, unique (s,a));
+ insert into service values(1,'register', 'register');
+ insert into service values(1,'register-edit', 'register-edit');
+ insert into service values(1,'milestone', 'milestone');
+ insert into service values(1,'milestone-edit', 'milestone-edit');
+ insert into service values(1,'milestone-delete', 'milestone-delete');
+ insert into service values(1,'report', 'report');
+ insert into service values(1,'report-edit', 'report-edit');
+ insert into service values(1,'report-move', 'report-move');
+ insert into service values(1,'event', 'event');
+ insert into service values(1,'event-delete', 'event-delete');
+ insert into service values(1,'attach', 'attach');
+
+ create table client (s text, a text, t text, unique (s,a));
+ insert into client values(1,'report', 'report');
+ insert into client values(1,'event', 'event');
+ insert into client values(1,'attach', 'attach-object');
+
+ insert into state(s, name) values(1, 'run');
+
+ create table intern (s integer, n text, v text, unique(s,n));
+ insert into intern values(1, '', 'overview'); -- default view
+ insert into intern values(1, 'home', 'overview');
+ insert into intern values(1, 'register', 'register');
+ insert into intern values(1, 'register-edit', 'register-edit');
+ insert into intern values(1, 'milestone-edit', 'milestone-edit');
+ insert into intern values(1, 'report', 'report');
+ insert into intern values(1, 'report-edit', 'report-edit');
+ insert into intern values(1, 'event', 'event');
+ insert into intern values(1, 'attach', 'attach');
+
+ create table extern (s integer, n text, v text, unique(s,n));
+ insert into extern values(1, '', 'public-projects'); -- default view
+ insert into extern values(1, 'register', 'public-projects'); -- default view
+ insert into extern values(1, 'report', 'report');
+ insert into extern values(1, 'event', 'event');
+ insert into extern values(1, 'attach', 'attach-object');
+
+ create table l10n (orig text unique, display text not null, unique(orig,display));
+ create index l10n_orig on l10n(orig);
+   </ac:update>
+   <ac:update>
+ create table issue_state(s integer primary key, n text);
+ insert into issue_state values(-4, 'spam');     -- stealing time
+ insert into issue_state values(-3, 'rejected'); -- abandoned
+ insert into issue_state values(-2, 'recall');   -- no action required
+ insert into issue_state values(-1, 'seen');     -- reserved for mail
+ insert into issue_state values(1, 'submitted'); -- source not trusted (public?)
+ insert into issue_state values(2, 'accepted');  -- "no SPAM" check passed
+ insert into issue_state values(3, 'verified');  -- verified by peer
+ insert into issue_state values(4, 'shelling');  -- beeing dealt with
+ insert into issue_state values(5, 'doomed');    -- apparently dead
+ insert into issue_state values(6, 'solved');    -- approved
+
+ create table dim(id integer primary key, n text unique);
+ insert into dim(n) values('Day');
+ insert into dim(n) values('Mandy'); -- ;-)
+ insert into dim(n) values('€');
+ insert into dim(n) values('£');
+ insert into dim(n) values('$');
+
+ create table project (id integer primary key autoincrement,
+  name text unique, link text, description text,
+  pr boolean default 0, -- public reports
+  pl boolean default 0  -- public listing
+ );
+
+ create table milestone (id integer primary key autoincrement,
+  project integer not null, due date, name text, description text,
+  weight real default 0, dim integer default 1,
+  deleted boolean default 0,
+  foreign key (project) references project(id),
+  foreign key (dim) references dim(id)
+ );
+
+ create table issue(id integer primary key autoincrement,
+  project integer, subject text, state integer,
+  weight real default 0, dim integer default 1,
+  foreign key (state) references issue_state(id),
+  foreign key (project) references project(id),
+  foreign key (dim) references dim(id) );
+
+ create table dependency(goal integer, need integer,
+  foreign key (goal) references milestone(id),
+  foreign key (need) references issue(id),
+  primary key(goal, need) on conflict ignore);
+
+ create table event(id integer primary key autoincrement,
+  issue integer, moment datetime, author text, comment text,
+  deleted boolean default 0,
+  foreign key (issue) references issue(id) );
+
+ create table attachment(id integer primary key autoincrement,
+  event integer, oid text not NULL, title text,
+  unique (event,oid),
+  foreign key (event) references event(id) );
+
+   </ac:update>
+  </d:if>
+  <d:if test="(not (string-null? (data (form-field 'custom (current-node)))))">
+   <ac:update>
+    <d:copy-of select="(data (form-field 'custom (current-node)))"/>
+   </ac:update>
+  </d:if>
+ </xsl:template><!--
+
+General View Format (Utilities).
+
+-->
+ <xsl:variable name="other-page-form-elements-sans-offset">
+  <d:copy-of select="((sxpath '((not@ _o))) (message-body msg))"/>
+ </xsl:variable>
+ <xsl:template name="other-page">
+  <xsl:param name="offset">0</xsl:param>
+  <xsl:param name="text">$=</xsl:param>
+  <d:copy-of select="#CONTENT">
+ let* ((form-other (xsl-variable "other-page-form-elements-sans-offset"))
+       (form-rest (if (pair? form-other) form-other (list form-other))))
+  define href
+   read-locator
+    (sxml `(form (_o ,(literal (xsl-variable "offset")))
+                 . ,form-rest))
+  define text (xsl-variable apply: "l10n" param: "n" (xsl-variable "text"))
+  sxml `(a (@ (href ,href)) ,(data text))
+  </d:copy-of>
+ </xsl:template>
+ <xsl:template name="add-listing-deco">
+  <xsl:param name="heading"/>
+  <xsl:param name="row-element">tr</xsl:param>
+  <xsl:param name="select-count">*</xsl:param>
+  <xsl:param name="select">id as td</xsl:param>
+  <xsl:param name="query"/>
+  <xsl:param name="group-by"/>
+  <xsl:param name="order-by"/>
+  <xsl:param name="offset"><d:copy-of select="(or (string-&gt;number (data (form-field '_o (current-node)))) 0)"/></xsl:param>
+  <xsl:variable name="total">
+   <xsql:value-of>
+    select count(<xsl:copy-of select="$select-count"/>) from <xsl:copy-of select="$query"/>
+   </xsql:value-of>
+  </xsl:variable>
+  <xsl:variable name="table">
+   <xsql:query rowset-element="table" d:row-element="xsl-variable &quot;row-element&quot;">
+    <xsql:copy-of>
+    select <xsl:copy-of select="$select"/>
+    from <xsl:copy-of select="$query"/>
+     <d:if test="(not (node-list-empty? (xsl-variable &quot;group-by&quot;)))">
+      group by <xsl:copy-of select="$group-by"/>
+     </d:if>
+     <d:if test="(not (node-list-empty? (xsl-variable &quot;order-by&quot;)))">
+      order by <xsl:copy-of select="$order-by"/>
+     </d:if>
+    limit 25 offset <d:copy-of select="literal (or (string-&gt;number (data (form-field '_o (current-node)))) 0)"/>
+    </xsql:copy-of>
+   </xsql:query>
+  </xsl:variable>
+  <d:if test="not (node-list-empty? (children (xsl-variable &quot;table&quot;)))">
+  <p>
+   <d:copy-of select="#CONTENT">
+ node-list
+  literal (min 25 (- (string-&gt;number (xsl-variable "total")) (xsl-variable "offset"))) " ("
+  (xsl-variable apply: "other-page"
+    param: "offset" (max 0 (- (xsl-variable "offset") 25)) param: "text" "previous")
+  " "
+  (xsl-variable apply: "other-page"
+    param: "offset" (min (string-&gt;number (xsl-variable "total")) (+ (xsl-variable "offset") 25)) param: "text" "following")
+  ") "
+  xsl-variable apply: "l10n" param: "n" "from offset"
+  literal " " (xsl-variable "offset") " "
+  xsl-variable apply: "l10n" param: "n" "out of"
+  " "
+  xsl-variable "total"
+   </d:copy-of>
+  </p>
+  <table>
+   <xsl:copy-of select="$heading"/>
+   <d:apply-templates select="(children (xsl-variable &quot;table&quot;))" mode="listing"/>
+  </table>
+  </d:if>
+ </xsl:template>
+ <xsl:template name="add-table-deco">
+  <xsl:param name="heading"/>
+  <xsl:param name="table"/>
+  <table>
+   <d:copy-of select="(xsl-variable &quot;heading&quot;)"/>
+   <d:apply-templates select="(children (xsl-variable &quot;table&quot;))" mode="listing"/>
+  </table>
+ </xsl:template>
+ <xsl:template mode="listing-column" match="*">
+  <td>
+   <d:apply-templates select="(current-node)" mode="listing"/>
+  </td>
+ </xsl:template>
+ <xsl:template mode="listing" match="tr">
+  <tr>
+   <xsl:apply-templates mode="listing-column"/>
+  </tr>
+ </xsl:template>
+ <xsl:template mode="listing" match="th">
+  <th>
+   <xsl:apply-templates mode="listing"/>
+  </th>
+ </xsl:template>
+ <xsl:template mode="listing" match="td">
+  <xsl:apply-templates mode="listing"/>
+ </xsl:template>
+ <xsl:template mode="listing" match="attachments">
+  <xsl:variable name="selection">
+   <xsql:query rowset-element="" row-element="tr">
+  select
+   '[↗' || id || ']' as td
+   ,title as td
+   ,oid as '<d:copy-of select="if (service-level) &quot;link&quot; &quot;public-link&quot;"/>'
+  from
+   attachment
+  where event = '<d:copy-of select="sql-quote (data (current-node))"/>'
+   </xsql:query>
+  </xsl:variable>
+  <table class="footnotes">
+   <d:apply-templates mode="listing" select="xsl-variable &quot;selection&quot;"/>
+  </table>
+ </xsl:template>
+ <xsl:template mode="listing" match="link">
+  <d:copy-of select=" (sxml `(a (@ (href ,(if (string-&gt;oid (data (current-node)))                         (read-locator (list (data (current-node))))    (data (current-node)))))    ,(data (current-node))))"/>
+ </xsl:template>
+ <xsl:template mode="listing" match="public-link">
+  <d:copy-of select="(if (string-&gt;oid (data (current-node))) (sxml `(a (@ (href ,(read-locator (list (data (current-node)))))) ,(data (current-node)))) (data (current-node)))"/>
+ </xsl:template>
+ <xsl:template mode="listing" match="project">
+  <tr>
+   <td>
+    <d:copy-of select="sxml `(a (@ (href &quot;http://&quot; ,(data ((sxpath '(link)) (current-node))))) ,(data ((sxpath '(name)) (current-node))))"/>
+   </td>
+   <d:apply-templates mode="listing-column" select="((sxpath '((not@ name link))) (current-node))"/>
+  </tr>
+ </xsl:template>
+ <xsl:template mode="listing" match="event-delete-button">
+  <d:form method="post">
+   <d:input type="hidden" name="id" d:value="(data (current-node)) "/>
+   <input type="hidden" name="_a" value="event-delete"/>
+   <input type="submit" class="DeleteButton" value="--"/>
+  </d:form>
+ </xsl:template>
+ <xsl:template mode="listing" match="event">
+  <tr>
+   <d:for-each select="((sxpath '((not@ attachments comment))) (current-node))">
+    <td>
+     <d:apply-templates mode="listing" select="(current-node)"/>
+    </td>
+   </d:for-each>
+  </tr>
+  <tr>
+   <td colspan="4">
+    <pre>
+     <d:apply-templates mode="listing" select="((sxpath '(comment)) (current-node))"/>
+    </pre>
+   </td>
+  </tr>
+  <tr>
+   <td colspan="4">
+     <d:apply-templates mode="listing" select="((sxpath '(attachments)) (current-node))"/>
+   </td>
+  </tr>
+ </xsl:template>
+ <xsl:template mode="listing" match="moment">
+  <d:copy-of select="#CONTENT">
+ begin
+  define s (data (current-node))
+  define d
+   guard
+    ex (else (message-date msg))
+    guard
+      ex (else (string-&gt;date s "~Y-~m-~d"))
+      (string-&gt;date s (data (xsl-variable "date-format")))
+  define x (date-&gt;time-utc d) 
+  define n (date-&gt;time-utc (message-date msg))
+  define c
+   cond
+    (time&gt;? n x) "past"
+    (time&gt;? (make-time 'time-duration 0 86400) (time-difference x n) ) "now"
+    (time&gt;? (make-time 'time-duration 0 172800) (time-difference x n) ) "soon"
+    else "future"
+  sxml `(div (@ (class ,c)) ,s)
+  </d:copy-of>
+ </xsl:template>
+ <xsl:template mode="listing" match="pr-link">
+  <bail:copy-of>
+define qry "select count (id) from issue where project = ?1 and issue.state between 1 and 4"
+(sxml `(a (@ (href ,(read-locator (sxml `(form (_v "report") (id ,(data (current-node))))))))
+          ,(sql-ref (sql-query qry (data (current-node))))))
+  </bail:copy-of>
+ </xsl:template>
+ <xsl:template mode="listing" match="re-link">
+  <d:copy-of select="(sxml `(a (@ (href ,(read-locator (sxml `(form (_v &quot;report-edit&quot;) (id ,(data (current-node)))))))) ,(data (current-node)))) "/>
+ </xsl:template>
+ <xsl:template mode="listing" match="re-subject">
+  <tr>
+   <td>
+  <d:copy-of select="#CONTENT">
+begin
+ define subject (data ((sxpath '(subject)) (current-node)))
+ define subtxt (if (string-null? subject) "???" subject)
+ sxml
+  quasiquote
+   a (@ (href ,(read-locator
+                (sxml `(form (_v "report-edit")
+                         (id ,(data ((sxpath '(re-link)) (current-node)))))))))
+     ,subtxt
+  </d:copy-of>
+  </td>
+ </tr>
+ </xsl:template>
+ <xsl:template mode="listing" match="p-link">
+  <bail:copy-of>
+(sxml
+ `(a (@ (href ,(read-locator (sxml `(form (_v "register-edit") (id ,(data (current-node))))))))
+     ,(sql-ref (sql-query "select count (id) from milestone where project = ?1 and not milestone.deleted" (data (current-node))))))
+  </bail:copy-of>
+ </xsl:template>
+ <xsl:template mode="listing" match="m-link">
+  <bail:copy-of>
+define val (current-node)
+
+define params
+  sxml `(form (_v "milestone-edit") (id ,(data val)))
+
+if (or (not val) (member (data val) '("#f" "")))
+ (empty-node-list)
+ sxml $ quasiquote
+  a (@ (href ,(read-locator params)))
+   ,(data val)
+  </bail:copy-of>
+ </xsl:template>
+ <xsl:template mode="listing" match="milestone-delete-button">
+  <d:form method="post">
+   <d:input type="hidden" name="id" d:value="(data (current-node)) "/>
+   <input type="hidden" name="_a" value="milestone-delete"/>
+   <input type="submit" class="DeleteButton" value="--"/>
+  </d:form>
+ </xsl:template>
+ <xsl:template mode="listing" match="oid-link">
+  <d:copy-of select="(sxml `(a (@ (href ,(read-locator (list (data (current-node)))))) ,(data (current-node)))) "/>
+ </xsl:template>
+ <xsl:template mode="listing" match="delatt">
+  <d:input name="delete" type="checkbox" d:value="(data (current-node))"/>
+ </xsl:template>
+ <xsl:template mode="listing" match="new-event">
+  <d:copy-of select="(sxml `(a (@ (href ,(read-locator (sxml `(form (_v &quot;event&quot;) (id ,(data (current-node)))))))) ,(sql-ref `(select count(event.id) from event join issue on event.issue = issue.id where issue.id = ,(data (current-node)))))) "/>
+ </xsl:template>
+ <xsl:template mode="listing" match="deldep">
+  <d:input name="deldep" type="checkbox" d:value="(data (current-node))"/>
+ </xsl:template>
+ <xsl:template mode="listing" match="ea-link">
+  <bail:copy-of>
+(sxml
+ `(a (@ (href ,(read-locator (sxml `(form (_v "attach") (id ,(data (current-node))))))))
+     ,(sql-ref (sql-query "select count(id) from attachment where event = ?1" (data (current-node))))))
+  </bail:copy-of>
+ </xsl:template>
+ <xsl:variable name="def-dim">
+  <xsql:query id-attribute-column="id" rowset-element="" max-rows="1000">select id, n from dim</xsql:query>
+ </xsl:variable>
+ <xsl:template mode="selection" match="dim">
+  <xsl:variable name="selected">
+   <d:copy-of select="(data (current-node))"/>
+  </xsl:variable>
+  <d:select d:name="(attribute-string 'name (current-node))">
+   <d:for-each select="(xsl-variable &quot;def-dim&quot;)">
+    <d:copy-of select="(sxml `(option (@ (value ,(attribute-string 'num (current-node))) . ,(if (equal? (xsl-variable &quot;selected&quot;) (attribute-string 'num (current-node))) '((selected &quot;selected&quot;)) '())) ,(data (current-node)))) "/>
+   </d:for-each>
+  </d:select>
+ </xsl:template>
+ <xsl:variable name="def-is">
+  <xsql:query id-attribute-column="s" rowset-element="" max-rows="1000">select s, n from issue_state</xsql:query>
+ </xsl:variable>
+ <xsl:template mode="selection" match="issue-state">
+  <xsl:variable name="selected">
+   <d:copy-of select="(data (current-node))"/>
+  </xsl:variable>
+  <d:select d:name="(attribute-string 'name (current-node))">
+   <d:for-each select="(xsl-variable &quot;def-is&quot;)">
+    <d:copy-of select="(sxml `(option (@ (value ,(attribute-string 'num (current-node))) . ,(if (equal? (xsl-variable &quot;selected&quot;) (attribute-string 'num (current-node))) '((selected &quot;selected&quot;)) '())) ,(data (current-node)))) "/>
+   </d:for-each>
+  </d:select>
+ </xsl:template>
+ <xsl:template name="list-milestones">
+  <xsl:param name="project"/>
+  <xsl:param name="issues">1=1</xsl:param>
+  <xsl:call-template name="add-listing-deco">
+   <xsl:with-param name="heading">
+    <tr>
+     <th><bail:copy-of>xsl-variable apply: "l10n" param: "n" "#"</bail:copy-of></th>
+     <th style="width:10ex"><bail:copy-of>xsl-variable apply: "l10n" param: "n" "due"</bail:copy-of></th>
+     <th><bail:copy-of>xsl-variable apply: "l10n" param: "n" "open issues"</bail:copy-of></th>
+     <th><bail:copy-of>xsl-variable apply: "l10n" param: "n" "title"</bail:copy-of></th>
+     <d:if test="(node-list-empty? (xsl-variable &quot;project&quot;)) ">
+      <th><bail:copy-of>xsl-variable apply: "l10n" param: "n" "project"</bail:copy-of></th>
+     </d:if>
+     <th><bail:copy-of>xsl-variable apply: "l10n" param: "n" "description"</bail:copy-of></th>
+    </tr>
+   </xsl:with-param>
+   <xsl:with-param name="select-count">distinct milestone.id</xsl:with-param>
+   <xsl:with-param name="select">
+milestone.id as 'm-link', coalesce(milestone.due,'') as moment
+,sum(case when issue.state between 2 and 5 then 1 else 0 end) as td
+,milestone.name as td
+     <d:if test="(node-list-empty? (xsl-variable &quot;project&quot;)) ">
+,project.name as td
+     </d:if>
+,coalesce(milestone.description,'') as td
+<d:if test="(service-level)">
+,milestone.id as 'milestone-delete-button'
+</d:if>
+   </xsl:with-param>
+   <xsl:with-param name="query">
+milestone
+left join dependency on dependency.goal = milestone.id
+left join issue on issue.id = dependency.need
+left join project on milestone.project = project.id -- for project.name only
+where
+    <xsl:copy-of select="$issues"/>
+    <d:if test="(not (node-list-empty? (xsl-variable &quot;project&quot;))) ">
+and
+milestone.project = '<d:copy-of select="sql-quote (data (xsl-variable &quot;project&quot;)) "/>'
+    </d:if>
+--and milestone.due &gt;= '<d:copy-of select="(date-&gt;string (message-date msg) (data (xsl-variable &quot;date-format&quot;)))"/>'
+and not milestone.deleted
+   </xsl:with-param>
+   <xsl:with-param name="group-by">milestone.id</xsl:with-param>
+   <xsl:with-param name="order-by">
+case sum(case when issue.state between 2 and 5 then 1 else 0 end) when 0 then 2 else 1 end
+,milestone.due
+   </xsl:with-param>
+  </xsl:call-template>
+ </xsl:template>
+ <xsl:template name="list-comments">
+  <xsl:param name="issue">
+   <d:copy-of select="form-field 'id (current-node)"/>
+  </xsl:param>
+  <xsl:call-template name="add-listing-deco">
+   <xsl:with-param name="row-element">event</xsl:with-param>
+   <xsl:with-param name="heading">
+    <tr>
+     <th><d:copy-of select="(xsl-variable apply: &quot;l10n&quot; param: &quot;n&quot; &quot;date&quot;)"/></th>
+     <th><d:copy-of select="(xsl-variable apply: &quot;l10n&quot; param: &quot;n&quot; &quot;author&quot;)"/></th>
+     <th><d:copy-of select="(xsl-variable apply: &quot;l10n&quot; param: &quot;n&quot; &quot;attachments&quot;)"/></th>
+    </tr>
+   </xsl:with-param>
+   <xsl:with-param name="select">
+moment as td, author as 'link', comment, id as 'ea-link'
+<d:if test="(service-level)">
+,id as 'event-delete-button'
+</d:if>
+,id as 'attachments'
+   </xsl:with-param>
+   <xsl:with-param name="query">
+event where issue =
+'<d:copy-of select="sql-quote (data (xsl-variable &quot;issue&quot;))"/>'
+and not event.deleted
+   </xsl:with-param>
+   <xsl:with-param name="order-by">moment desc</xsl:with-param>
+  </xsl:call-template>
+ </xsl:template>
+<!--
+
+Views & their Controllers
+
+-->
+ <xsl:variable name="public-projects">
+  <xsl:variable name="projects">
+    <xsql:query id-attribute-column="id" rowset-element="" row-element="project" max-rows="200">
+select id, name, link, description as td, id as 'pr-link'
+from project
+where pr
+order by name
+</xsql:query>
+  </xsl:variable>
+  <table>
+    <tr>
+     <th><d:copy-of select="(xsl-variable apply: &quot;l10n&quot; param: &quot;n&quot; &quot;title&quot;)"/></th>
+     <th><d:copy-of select="(xsl-variable apply: &quot;l10n&quot; param: &quot;n&quot; &quot;description&quot;)"/></th>
+     <th style="width:2em;line-height:1ex;"><small>send message</small></th>
+    </tr>
+    <d:for-each select="xsl-variable &quot;projects&quot;">
+     <d:apply-templates select="(current-node)" mode="listing"/>
+   </d:for-each>
+  </table>
+ </xsl:variable>
+ <xsl:variable name="project-list">
+  <xsl:variable name="projects">
+    <xsql:query parameterized="yes" id-attribute-column="id" rowset-element="" row-element="project" max-rows="200">
+     <template>
+select
+p.id, p.name as name, p.link as link, p.description as td
+
+, p.id as 'p-link'
+, (case next_due.due when next_due.due then next_due.due else '%' end) as moment
+
+, p.id as 'pr-link'
+, n.submitted as td
+, n.accepted as td
+, n.verified as td
+, n.shelling as td
+, n.doomed as td
+, n.solved as td
+, n.ghost as td
+
+from project as p
+left join milestone on milestone.project = p.id
+left join dependency on dependency.goal = milestone.id
+left join issue on p.id = issue.project
+left join
+ (select project.id as id,
+  sum(case state when 1 then 1 else 0 end) as submitted,
+  sum(case state when 2 then 1 else 0 end) as accepted,
+  sum(case state when 3 then 1 else 0 end) as verified,
+  sum(case state when 4 then 1 else 0 end) as shelling,
+  sum(case state when 5 then 1 else 0 end) as doomed,
+  sum(case state when 6 then 1 else 0 end) as solved,
+  sum(case when state &lt; -1 then 1 else 0 end) as ghost
+  from project left join issue on issue.project = project.id
+  group by project.id
+ ) n on p.id = n.id
+left join
+ (select milestone.project as id, min(milestone.due) as due
+  from milestone
+  join dependency on dependency.goal = milestone.id
+  join issue on issue.id = dependency.need
+  where
+  issue.state between 1 and 4
+  or
+  ( issue.state = 5 and milestone.due > ?1 )
+  group by milestone.project
+ ) as next_due on next_due.id = p.id
+where milestone.deleted is null or not milestone.deleted
+group by p.id -- milestone.id
+order by
+case when next_due.due is null then 2 else 1 end
+,next_due.due, p.id
+     </template>
+<with-param><bail:copy-of>(date->string (message-date (current-message)) (data (xsl-variable "date-format")))</bail:copy-of>
+</with-param>
+</xsql:query>
+  </xsl:variable>
+  <table>
+    <tr>
+     <th><d:copy-of select="(xsl-variable apply: &quot;l10n&quot; param: &quot;n&quot; &quot;title&quot;)"/></th>
+     <th><d:copy-of select="(xsl-variable apply: &quot;l10n&quot; param: &quot;n&quot; &quot;description&quot;)"/></th>
+     <th colspan="2">+</th>
+     <th colspan="7">-</th>
+    </tr>
+    <tr>
+     <th colspan="2"/>
+     <th/>
+     <th style="width:10ex"><a title="due">§</a></th>
+     <th><a title="open">!</a></th>
+     <th><a title="submitted">¿</a></th>
+     <th><a title="accepted">?</a></th>
+     <th><a title="vefified">∃</a></th>
+     <th><a title="shelling">¢</a></th>
+     <th><a title="doomed">ε</a></th>
+     <th><a title="solved">†</a></th>
+     <th><a title="killed">⊥</a></th>
+    </tr>
+    <d:for-each select="xsl-variable &quot;projects&quot;">
+     <d:apply-templates select="(current-node)" mode="listing"/>
+   </d:for-each>
+  </table>
+ </xsl:variable>
+ <xsl:variable name="c-p-name">
+  <d:copy-of select="sql-ref (sql-query &quot;select name from project where id = ?1&quot; (data (form-field 'id (current-node))))"/>
+ </xsl:variable>
+ <xsl:variable name="issues-unassigned">
+  <xsl:variable name="issues">
+    <xsql:query id-attribute-column="id" rowset-element="" row-element="re-subject">
+select id as 're-link', subject
+from issue
+left join dependency on dependency.need = issue.id
+where dependency.need is null
+and state between 2 and 4
+</xsql:query>
+  </xsl:variable>
+  <d:if test="not (node-list-empty? (xsl-variable &quot;issues&quot;))">
+   <h2><d:copy-of select="(xsl-variable apply: &quot;l10n&quot; param: &quot;n&quot; &quot;wild&quot;)"/></h2>
+   <table>
+     <d:for-each select="xsl-variable &quot;issues&quot;">
+      <d:apply-templates select="(current-node)" mode="listing"/>
+    </d:for-each>
+   </table>
+  </d:if>
+ </xsl:variable>
+ <xsl:variable name="issues-submitted">
+  <xsl:variable name="issues">
+    <xsql:query id-attribute-column="id" rowset-element="" row-element="re-subject">
+select id as 're-link', subject
+from issue
+where state = 1
+</xsql:query>
+  </xsl:variable>
+  <d:if test="not (node-list-empty? (xsl-variable &quot;issues&quot;))">
+   <h2><d:copy-of select="(xsl-variable apply: &quot;l10n&quot; param: &quot;n&quot; &quot;new&quot;)"/></h2>
+   <table>
+     <d:for-each select="xsl-variable &quot;issues&quot;">
+      <d:apply-templates select="(current-node)" mode="listing"/>
+    </d:for-each>
+   </table>
+  </d:if>
+ </xsl:variable>
+ <xsl:variable name="overview">
+  <d:copy-of select="xsl-variable &quot;issues-unassigned&quot;"/>
+  <d:copy-of select="xsl-variable &quot;project-list&quot;"/>
+  <d:copy-of select="xsl-variable &quot;issues-submitted&quot;"/>
+ </xsl:variable>
+ <xsl:variable name="register">
+  <d:copy-of select="xsl-variable &quot;overview&quot;"/>
+  <h2><d:copy-of select="(xsl-variable apply: &quot;l10n&quot; param: &quot;n&quot; &quot;new project&quot;)"/></h2>
+  <d:form method="post">
+   <input name="_a" type="hidden" value="register"/>
+   <input name="_v" type="hidden" value="register"/>
+   <p><d:copy-of select="(xsl-variable apply: &quot;l10n&quot; param: &quot;n&quot; &quot;project title&quot;)"/>:
+ <input name="name" type="text" size="40"/></p>
+   <p><d:copy-of select="(xsl-variable apply: &quot;l10n&quot; param: &quot;n&quot; &quot;link&quot;)"/>:
+ <input name="link" type="text" size="40"/><input type="submit" value="register new project"/></p>
+   <p><d:copy-of select="(xsl-variable apply: &quot;l10n&quot; param: &quot;n&quot; &quot;description&quot;)"/>:</p>
+   <textarea name="description" cols="40" rows="5"/>
+  </d:form>
+  <xsl:call-template name="list-milestones">
+   <xsl:with-param name="issues">issue.state between 2 and 5</xsl:with-param>
+  </xsl:call-template>
+ </xsl:variable>
+ <xsl:template name="register">
+  <ac:update>
+insert into project(name, link, description) values(
+'<d:copy-of select="sql-quote (data (form-field 'name (current-node)))"/>',
+'<d:copy-of select="sql-quote (data (form-field 'link (current-node)))"/>',
+'<d:copy-of select="sql-quote (data (form-field 'description (current-node)))"/>')
+  </ac:update>
+ </xsl:template>
+ <xsl:variable name="milestone-list">
+  <h3><d:copy-of select="(xsl-variable apply: &quot;l10n&quot; param: &quot;n&quot; &quot;milestones&quot;)"/></h3>
+  <d:copy-of select="xsl-variable apply: &quot;list-milestones&quot; param: &quot;project&quot; (form-field 'id (current-node))"/>
+ </xsl:variable>
+ <xsl:variable name="register-edit">
+  <h2>
+   <d:a d:href="read-locator (format &quot;_v=report&amp;id=~a&quot; (data (form-field 'id (current-node))))">
+    <d:copy-of select="xsl-variable &quot;c-p-name&quot;"/>
+   </d:a>
+  </h2>
+  <d:form method="post">
+   <fieldset>
+   <input name="_v" type="hidden" value="register-edit"/>
+   <d:input name="id" type="hidden" d:value="(data (form-field 'id (current-node)))"/>
+   <input name="_a" type="hidden" value="register-edit"/>
+   <p>
+    <span><d:copy-of select="(xsl-variable apply: &quot;l10n&quot; param: &quot;n&quot; &quot;project title&quot;)"/>:</span>
+    <d:input name="name" type="text" d:value="sql-ref (sql-query &quot;select name from project where id = ?1&quot; (data (form-field 'id (current-node))))"/>
+    <span><d:copy-of select="(xsl-variable apply: &quot;l10n&quot; param: &quot;n&quot; &quot;link&quot;)"/>:</span>
+    <d:input name="link" type="text" d:value="sql-ref (sql-query &quot;select link from project where id = ?1&quot; (data (form-field 'id (current-node))))"/>
+   </p>
+   <p>
+    <span><d:copy-of select="(xsl-variable apply: &quot;l10n&quot; param: &quot;n&quot; &quot;description&quot;)"/></span>
+    <input type="submit" value="change project"/>
+   </p>
+<textarea name="description" cols="40" rows="5"><xsql:value-of>select description from project where id = <d:copy-of select="sql-quote (data (form-field 'id (current-node)))"/></xsql:value-of></textarea>
+   <bail:copy-of>
+define p
+   (sql-query `(select pr : pl from project where id = ,(data (form-field 'id (current-node)))))
+SXML $ p
+  $$( ,xsl-variable apply: "l10n" param: "n" "Public Reports ")
+  input (@ (name "pr") (type "checkbox") (value "1")
+         . ,(if (equal? (sql-ref p 0 0) 0) '() '((checked "checked"))))
+  $$( ,xsl-variable apply: "l10n" param: "n" "Public Listings ")
+  input (@ (name "pl") (type "checkbox") (value "1")
+         . ,(if (equal? (sql-ref p 0 1) 0) '() '((checked "checked"))))
+   </bail:copy-of>
+   </fieldset>
+  </d:form>
+  <d:copy-of select="xsl-variable &quot;milestone-list&quot;"/>
+  <h3><d:copy-of select="(xsl-variable apply: &quot;l10n&quot; param: &quot;n&quot; &quot;new milestone&quot;)"/></h3>
+  <d:form method="post">
+   <p><d:copy-of select="(xsl-variable apply: &quot;l10n&quot; param: &quot;n&quot; &quot;title&quot;)"/>:
+ <input name="name" type="text" size="60"/>
+<input name="_v" type="hidden" value="register-edit"/>
+<d:input name="id" type="hidden" d:value="(data (form-field 'id (current-node)))"/>
+<input name="_a" type="hidden" value="milestone"/>
+<input type="submit" value="!"/></p>
+   <textarea name="description" cols="60" rows="5"/>
+  </d:form>
+ </xsl:variable>
+ <xsl:template name="register-edit">
+  <ac:update parameterized="yes">
+<!--
+ This is is step-by-step version.  It's more obvious, what's going on.
+ The second version however is safer, scales better and is and more powerful.
+
+insert or replace into project(id, name, link, description, pl, pr) values(
+'<d:copy-of select="sql-quote (data (form-field &apos;id (current-node)))"></d:copy-of>',
+'<d:copy-of select="sql-quote (data (form-field &apos;name (current-node)))"></d:copy-of>',
+'<d:copy-of select="sql-quote (data (form-field &apos;link (current-node)))"></d:copy-of>',
+'<d:copy-of select="sql-quote (data (form-field &apos;description (current-node)))"></d:copy-of>',
+'<d:copy-of select="sql-quote (data (form-field &apos;pr (current-node)))"></d:copy-of>',
+'<d:copy-of select="sql-quote (data (form-field &apos;pl (current-node)))"></d:copy-of>'
+)
+-->
+   <template>
+insert or replace into project(id, name, link, description, pl, pr)
+values(?1, ?2, ?3, ?4, ?5, ?6)
+   </template>
+   <bail:copy-of>
+(define (extract x)
+  (let ((v (form-field x (current-node))))
+    (if (node-list-empty? v) "0" (data v))))
+
+(define (exwrap x)
+  (sxml `(with-param ,(extract x))))
+
+map exwrap '(id name link description pr pl)
+   </bail:copy-of>
+  </ac:update>
+ </xsl:template>
+ <xsl:template name="milestone">
+  <ac:update parameterized="yes">
+   <template>insert into milestone(project,name,description) values(?1, ?2, ?3)</template>
+   <bail:copy-of>
+(define (exwrap x)
+  (sxml `(with-param ,(data (form-field x)))))
+map exwrap '(project name description)
+   </bail:copy-of>
+  </ac:update>
+ </xsl:template>
+ <xsl:variable name="milestone-edit">
+  <h2><d:a d:href="read-locator (sxml `(form (_v &quot;register-edit&quot;) (id ,(sql-ref (sql-query &quot;select project.id from project join milestone on project.id = milestone.project where milestone.id = ?1&quot; (data (form-field 'id (current-node))))))))"><d:copy-of select="sql-ref (sql-query &quot;select project.name from project join milestone on project.id = milestone.project where milestone.id = ?1&quot; (data (form-field 'id (current-node))))"/></d:a></h2>
+  <h3><d:copy-of select="sql-ref (sql-query &quot;select name from milestone where id = ?&quot; (data (form-field 'id (current-node))))"/></h3>
+  <d:form method="post">
+   <input name="_v" type="hidden" value="milestone-edit"/>
+   <d:input name="id" type="hidden" d:value="(data (form-field 'id (current-node)))"/>
+   <input name="_a" type="hidden" value="milestone-edit"/>
+   <p><d:copy-of select="(xsl-variable apply: &quot;l10n&quot; param: &quot;n&quot; &quot;title&quot;)"/>:
+ <d:input name="name" type="text" size="60" d:value="sql-ref (sql-query &quot;select name from milestone where id = ?1&quot; (data (form-field 'id (current-node))))"/></p>
+   <p><bail:copy-of>xsl-variable apply: "l10n" param: "n" "description"</bail:copy-of>:</p>
+<textarea name="description" cols="40" rows="5"><xsql:value-of parameterized="yes">
+ <template>select coalesce(description, '') from milestone where id = ?1</template>
+ <with-param><xsl:value-of select="form/id"/></with-param>
+</xsql:value-of></textarea>
+   <p><bail:copy-of>xsl-variable apply: "l10n" param: "n" "due"</bail:copy-of>: <d:input name="due" type="text" d:value="sql-ref (sql-query &quot;select coalesce(due,'') from milestone where id = ?1&quot; (data (form-field 'id (current-node))))"/>
+Weight: <d:input name="weight" type="text" d:value="sql-ref (sql-query &quot;select weight from milestone where id = ?1&quot; (data (form-field 'id (current-node))))"/>
+    <d:apply-templates mode="selection" select="(sxml `(dim (@ (name &quot;dim&quot;)) ,(sql-ref (sql-query &quot;select dim from milestone where id = ?1&quot; (data (form-field 'id (current-node)))))))"/>
+   </p>
+   <input type="submit" value="change milestone"/>
+   <h3><d:copy-of select="(xsl-variable apply: &quot;l10n&quot; param: &quot;n&quot; &quot;depends on&quot;)"/></h3>
+   <xsl:call-template name="add-listing-deco">
+    <xsl:with-param name="heading">
+     <tr>
+      <th><d:copy-of select="(xsl-variable apply: &quot;l10n&quot; param: &quot;n&quot; &quot;#&quot;)"/></th>
+      <th><d:copy-of select="(xsl-variable apply: &quot;l10n&quot; param: &quot;n&quot; &quot;%&quot;)"/></th>
+      <th><d:copy-of select="(xsl-variable apply: &quot;l10n&quot; param: &quot;n&quot; &quot;title&quot;)"/></th>
+     </tr>
+    </xsl:with-param>
+    <xsl:with-param name="select">
+issue.id as 're-link'
+, issue_state.n as td
+, issue.subject as td
+    </xsl:with-param>
+    <xsl:with-param name="query">
+dependency
+join issue on issue.id = dependency.need
+join issue_state on issue.state = issue_state.s
+where goal = '<d:copy-of select="sql-quote (data (form-field 'id (current-node)))"/>'
+and issue.state &gt; -3
+    </xsl:with-param>
+    <xsl:with-param name="order-by">case when issue.state &gt;= 0 then issue.state else 6 - issue.state end</xsl:with-param>
+   </xsl:call-template>
+   <p><d:copy-of select="(xsl-variable apply: &quot;l10n&quot; param: &quot;n&quot; &quot;add&quot;)"/>:</p>
+   <select name="adddep">
+    <option value="" selected="selected"/>
+    <xsql:query rowset-element="" row-element="option" id-attribute-column="id" id-attribute="value" max-rows="300">
+select issue.id as id, issue.subject as span
+from issue
+join project on issue.project = project.id
+join milestone on milestone.project = project.id
+left join dependency on dependency.goal = milestone.id and dependency.need = issue.id
+where
+milestone.id = '<d:copy-of select="sql-quote (data (form-field 'id (current-node)))"/>'
+and
+dependency.need is null
+and issue.state between 1 and 5
+   </xsql:query>
+   </select>
+  </d:form>
+ </xsl:variable>
+ <xsl:template name="milestone-edit">
+  <ac:update parameterized="yes">
+   <template>
+    update milestone set
+    name=?2, description=?3, weight=?4, dim=?5, due=?6
+    where milestone.id=?1
+</template>
+   <bail:copy-of>
+(define (exwrap x)
+  (sxml `(with-param ,(data (form-field x)))))
+map exwrap '(id name description weight dim due)
+   </bail:copy-of>
+  </ac:update>
+  <xsl:for-each select="form/deldep">
+   <ac:update parameterized="yes">
+    <template>delete from dependency where goal = ?1 and need = ?2</template>
+    <with-param><xsl:value-of select="$form/id"/></with-param>
+    <with-param><xsl:value-of select="."/></with-param>
+   </ac:update>
+  </xsl:for-each>
+  <xsl:for-each select="form/adddep">
+   <ac:update parameterized="yes">
+    <template>insert or ignore into dependency(goal,need) values(?1,?2)</template>
+    <with-param><xsl:value-of select="$form/id"/></with-param>
+    <with-param><xsl:value-of select="."/></with-param>
+   </ac:update>
+  </xsl:for-each>
+ </xsl:template>
+ <xsl:template name="milestone-delete">
+  <xsl:param name="id">
+   <d:copy-of select="sql-quote (data (form-field 'id (current-node)))"/>
+  </xsl:param>
+  <d:output d:location="read-locator (format &quot;_v=register-edit&amp;id=~D&quot; (sql-ref (sql-query &quot;select project from milestone where id = ?1&quot; (data (xsl-variable &quot;id&quot;)))))"/>
+  <ac:update parameterized="yes">
+   <template>update milestone set deleted = not deleted where id = ?1</template>
+   <with-param><xsl:value-of select="form/id"/></with-param>
+  </ac:update>
+ </xsl:template>
+ <xsl:variable name="event">
+  <xsl:variable name="newform">
+   <h3><d:copy-of select="(xsl-variable apply: &quot;l10n&quot; param: &quot;n&quot; &quot;comment&quot;)"/></h3>
+   <d:form method="post">
+    <input name="_v" type="hidden" value="event"/>
+    <d:input name="id" type="hidden" d:value="(data (form-field 'id (current-node)))"/>
+    <d:copy-of select="xsl-variable &quot;form-author&quot;"/>
+    <input name="_a" type="hidden" value="event"/>
+    <textarea name="comment" cols="80" rows="10"/>
+    <br/>
+    <input type="submit" value="submit comment"/>
+   </d:form>
+  </xsl:variable>
+  <h2><d:copy-of select="sql-ref (sql-query &quot;select project.name from project join issue on project.id = issue.project where issue.id = ?1&quot; (data (form-field 'id (current-node))))"/></h2>
+  <p><d:copy-of select="sql-ref (sql-query &quot;select project.description from project join issue on project.id = issue.project where issue.id = ?1&quot; (data (form-field 'id (current-node))))"/></p>
+  <xsl:choose>
+  <d:when test="(or (service-level) (&gt; (sql-ref (sql-query &quot;select pl from project join issue on project.id = issue.project where issue.id = ?1&quot; (data (form-field 'id (current-node))))) 0))">
+   <h3><d:copy-of select="(xsl-variable apply: &quot;l10n&quot; param: &quot;n&quot; &quot;issue&quot;)"/>: <d:copy-of select="  (let* ((id (data (form-field 'id (current-node))))         (v (sql-query &quot;select issue.subject, issue.id                         from issue left join event on event.issue = issue.id                         where issue.id = ?1&quot; id)))   (sxml `(a (@ (href ,(read-locator          (sxml `(form (_v &quot;report-edit&quot;) (id ,(sql-ref v 0 1)))))))      ,(sql-ref v 0 0))))"/></h3>
+   <div class="remark">
+    <p>TODO: Add notification mechanism(s) (RSS, eMail etc.).</p>
+    <p>For the time being keep a bookmark on this URL and <b>reload</b> occasionally.</p>
+   </div>
+   <d:copy-of select="xsl-variable &quot;newform&quot;"/>
+   <xsl:call-template name="list-comments">
+    <xsl:with-param name="issue">
+     <d:copy-of select="form-field 'id (current-node)"/>
+    </xsl:with-param>
+   </xsl:call-template>
+  </d:when>
+  <xsl:otherwise>
+   <d:copy-of select="xsl-variable &quot;newform&quot;"/>
+  </xsl:otherwise>
+  </xsl:choose>
+ </xsl:variable>
+ <xsl:template name="event">
+  <xsl:param name="issue">
+<!--   <d:copy-of select="error &quot;comments are disabled because of SPAM, thank you&quot;"/>
+-->
+   <d:copy-of select="sql-quote (data (form-field 'id (current-node)))"/>
+  </xsl:param>
+  <d:output d:location="read-locator (format &quot;_v=attach&amp;id=~D&quot; (sql-ref '(select max(id + 1) from event)))"/>
+  <ac:update parameterized="yes">
+   <template>insert into event(issue,moment,author,comment) values(?1,?2,?3,?4)</template>
+   <with-param select="$issue"/>
+   <with-param bail:select="(date-&gt;string (message-date (current-message)) (data (xsl-variable &quot;date-format&quot;)))"/>
+   <with-param select="form/author"/>
+   <with-param select="form/comment"/>
+  </ac:update>
+ </xsl:template>
+ <xsl:template name="event-delete">
+  <xsl:param name="id">
+   <d:copy-of select="sql-quote (data (form-field 'id (current-node)))"/>
+  </xsl:param>
+  <d:output d:location="read-locator (format &quot;_v=event&amp;id=~D&quot; (sql-ref (sql-query &quot;select issue from event where id = ?1&quot; (data (xsl-variable &quot;id&quot;)))))"/>
+  <ac:update>
+update event set deleted = not deleted where id =
+'<d:copy-of select="data (xsl-variable &quot;id&quot;)"/>'
+  </ac:update>
+ </xsl:template>
+ <xsl:variable name="report">
+  <h2>
+   <d:a d:href="read-locator (format &quot;_v=register-edit&amp;id=~a&quot; (data (form-field 'id (current-node))))">
+    <d:copy-of select="xsl-variable &quot;c-p-name&quot;"/>
+   </d:a>
+  </h2>
+  <p><xsql:value-of parameterized="yes">
+    <template>select description from project where id = ?1</template>
+    <with-param><xsl:value-of select="form/id"/></with-param>
+   </xsql:value-of></p>
+  <h3><d:copy-of select="(xsl-variable apply: &quot;l10n&quot; param: &quot;n&quot; &quot;new report&quot;)"/></h3>
+  <d:form method="post">
+   <input name="_v" type="hidden" value="report"/>
+   <d:input name="id" type="hidden" d:value="(data (form-field 'id (current-node)))"/>
+   <input name="_a" type="hidden" value="report"/>
+   <d:copy-of select="xsl-variable &quot;form-author&quot;"/>
+   <p><d:copy-of select="(xsl-variable apply: &quot;l10n&quot; param: &quot;n&quot; &quot;title&quot;)"/>: <input name="subject" type="text" size="60"/> <input type="submit" value="!"/></p>
+   <textarea name="comment" cols="80" rows="10"/>
+  </d:form>
+  <d:if test="(or (service-level) (&gt; (sql-ref (sql-query &quot;select pl from project where id = ?1&quot; (data (form-field 'id (current-node))))) 0))">
+   <h3><bail:copy-of>xsl-variable apply: "l10n" param: "n" "issues"</bail:copy-of></h3>
+   <xsl:call-template name="add-listing-deco">
+    <xsl:with-param name="heading">
+     <tr>
+      <th><bail:copy-of>xsl-variable apply: "l10n" param: "n" "title"</bail:copy-of></th>
+      <th><bail:copy-of>xsl-variable apply: "l10n" param: "n" "state"</bail:copy-of></th>
+      <th><d:copy-of select="(xsl-variable apply: &quot;l10n&quot; param: &quot;n&quot; &quot;due&quot;)"/></th>
+      <th><d:copy-of select="(xsl-variable apply: &quot;l10n&quot; param: &quot;n&quot; &quot;comments&quot;)"/></th>
+      <d:if test="(service-level)">
+       <th>±</th>
+      </d:if>
+      <th colspan="2"><d:copy-of select="(xsl-variable apply: &quot;l10n&quot; param: &quot;n&quot; &quot;milestone&quot;)"/></th>
+     </tr>
+    </xsl:with-param>
+    <xsl:with-param name="select">
+subject as td, ord.n as td
+,coalesce(milestone.due,'') as moment
+,issue.id as 'new-event'
+      <d:if test="(service-level)">
+, issue.id as 're-link'
+      </d:if>
+,milestone.id as 'm-link'
+,milestone.name as td
+    </xsl:with-param>
+    <xsl:with-param name="query">
+issue
+-- we need to pre-sort on milestone.due if available:
+left join dependency on dependency.need = issue.id
+left join milestone on dependency.goal = milestone.id
+join
+ (select s, n,
+  (case
+   when s is null or s = 0 or s = 1 then 42
+   when s between 1 and 5 then s
+   when s = -1 then 23
+   when s = -2 then 69
+   when s &lt;= -3 then null
+   else 88 end
+  ) as p from issue_state where s &gt; -3) as ord on ord.s = issue.state
+join
+ (select s, n,
+  (case
+   when s is null or s between 1 and 5 then 1
+   else 88 end
+  ) as p from issue_state) as ord1 on ord1.s = ord.s
+where
+issue.project = '<d:copy-of select="sql-quote (data (form-field 'id (current-node)))"/>'
+    </xsl:with-param>
+    <xsl:with-param name="order-by">ord1.p,milestone.due,ord.p</xsl:with-param>
+   </xsl:call-template>
+  </d:if>
+ </xsl:variable>
+ <xsl:template name="report">
+  <xsl:variable name="issue-id">
+   <xsql:value-of>select max(id) + 1 from issue</xsql:value-of>
+  </xsl:variable>
+  <ac:update parameterized="yes">
+   <template>insert into issue(state,project,subject) values(1,?1,?2)</template>
+    <with-param><xsl:value-of select="form/id"/></with-param>
+    <with-param><xsl:value-of select="form/subject"/></with-param>
+  </ac:update>
+  <d:if test="(not (string-null? (data (form-field 'comment (current-node)))))">
+   <xsl:call-template name="event">
+    <xsl:with-param name="issue">
+     <d:copy-of select="xsl-variable &quot;issue-id&quot;"/>
+    </xsl:with-param>
+   </xsl:call-template>
+  </d:if>
+  <d:output d:location="read-locator (format &quot;_v=event&amp;id=~a&quot; (xsl-variable &quot;issue-id&quot;))"/>
+ </xsl:template>
+ <xsl:variable name="report-edit">
+  <xsl:variable name="goals">
+   <xsql:query rowset-element="table" row-element="tr">
+select milestone.id as 'm-link', milestone.name as td, milestone.id as 'deldep'
+from milestone
+join dependency on milestone.id = dependency.goal
+where dependency.need =
+'<d:copy-of select="sql-quote (data (form-field 'id (current-node)))"/>'
+order by milestone.name
+   </xsql:query>
+  </xsl:variable>
+  <h2><d:a d:href="read-locator (sxml `(form (_v &quot;register-edit&quot;) (id ,(sql-ref (sql-query &quot;select project.id from project join issue on project.id = issue.project where issue.id = ?1&quot; (data (form-field 'id (current-node))))))))"><d:copy-of select="sql-ref (sql-query &quot;select project.name from project join issue on project.id = issue.project where issue.id = ?1&quot; (data (form-field 'id (current-node))))"/></d:a></h2>
+  <h3><d:copy-of select="(xsl-variable apply: &quot;l10n&quot; param: &quot;n&quot; &quot;issue&quot;)"/></h3>
+  <d:if test="node-list-empty? ((sxpath '(tr)) (xsl-variable &quot;goals&quot;))">
+   <d:form method="post">
+   <fieldset>
+    <input name="_v" type="hidden" value="report-edit"/>
+    <d:input name="id" type="hidden" d:value="(data (form-field 'id (current-node)))"/>
+    <input name="_a" type="hidden" value="report-move"/>
+    <input type="submit" value="Move to:"/>
+    <select name="to">
+     <option value="" selected="selected"/>
+      <xsql:query rowset-element="" row-element="option" id-attribute-column="id" id-attribute="value">
+select project.id as id, project.name as span
+from project
+left join issue on project.id = issue.project
+ and not not issue.id = '<d:copy-of select="sql-quote (data (form-field 'id (current-node)))"/>'
+where
+issue.id is null
+group by project.id
+     </xsql:query>
+    </select>
+    <select name="into">
+     <option value="" selected="selected"/>
+      <xsql:query rowset-element="" row-element="option" id-attribute-column="id" id-attribute="value">
+select l.id as id, l.subject as span
+from issue as l
+left join issue as r on l.project = r.project and l.id != r.id
+where r.id =
+'<d:copy-of select="sql-quote (data (form-field 'id (current-node)))"/>'
+     </xsql:query>
+    </select>
+   </fieldset>
+   </d:form>
+  </d:if>
+  <d:form method="post">
+   <input name="_v" type="hidden" value="report-edit"/>
+   <d:input name="id" type="hidden" d:value="(data (form-field 'id (current-node)))"/>
+   <input name="_a" type="hidden" value="report-edit"/>
+   <p><d:copy-of select="(xsl-variable apply: &quot;l10n&quot; param: &quot;n&quot; &quot;title&quot;)"/>:
+ <d:input name="subject" type="text" d:value="sql-ref (sql-query &quot;select issue.subject from issue where issue.id = ?1&quot; (data (form-field 'id (current-node))))" size="60"/></p>
+   <p><d:copy-of select="(xsl-variable apply: &quot;l10n&quot; param: &quot;n&quot; &quot;weight&quot;)"/>:
+ <d:input name="weight" type="text" d:value="format &quot;~0,2F&quot; (sql-ref (sql-query &quot;select issue.weight from issue where issue.id = ?1&quot; (data (form-field 'id (current-node)))))"/>
+    <d:apply-templates mode="selection" select="(sxml `(dim (@ (name &quot;dim&quot;)) ,(sql-ref (sql-query &quot;select dim from issue where issue.id = ?1&quot; (data (form-field 'id (current-node))))) ))"/>
+   </p>
+   <p><d:copy-of select="(xsl-variable apply: &quot;l10n&quot; param: &quot;n&quot; &quot;state&quot;)"/>:
+ <d:apply-templates mode="selection" select="(sxml `(issue-state (@ (name &quot;state&quot;)) ,(sql-ref (sql-query &quot;select state from issue where issue.id = ?1&quot; (data (form-field 'id (current-node))))) ))"/></p>
+   <input type="submit" value="edit issue"/>
+   <p>
+    <span class="legend"><d:copy-of select="(xsl-variable apply: &quot;l10n&quot; param: &quot;n&quot; &quot;blocks&quot;)"/> </span>
+    <d:a d:href="format &quot;?_v=register-edit&amp;id=~D&quot; (sql-ref (sql-query &quot;select project.id from project join issue on project.id = issue.project where issue.id = ?1&quot; (data (form-field 'id (current-node)))))">Milestones</d:a>
+    <span class="legend">+</span>
+    <select name="adddep">
+     <option value="" selected="selected"/>
+      <xsql:query rowset-element="" row-element="option" id-attribute-column="id" id-attribute="value">
+select milestone.id as id, milestone.name as span
+from issue
+join project on issue.project = project.id
+join milestone on project.id = milestone.project
+     and not milestone.deleted
+left join dependency on dependency.need = issue.id and dependency.goal = milestone.id
+where issue.id = '<d:copy-of select="sql-quote (data (form-field 'id (current-node)))"/>'
+and dependency.goal is null
+order by milestone.name
+     </xsql:query>
+    </select>
+   </p>
+   <xsl:call-template name="add-table-deco">
+    <xsl:with-param name="heading">
+     <tr>
+      <th>#</th>
+      <th><d:copy-of select="(xsl-variable apply: &quot;l10n&quot; param: &quot;n&quot; &quot;title&quot;)"/></th>
+      <th>X</th>
+     </tr>
+    </xsl:with-param>
+    <xsl:with-param name="table">
+     <d:copy-of select="xsl-variable &quot;goals&quot;"/>
+    </xsl:with-param>
+   </xsl:call-template>
+  <h4><d:a d:href="read-locator (sxml `(form ,@(form-field 'id (current-node)) (_v &quot;event&quot;)))">comments</d:a></h4>
+  </d:form>
+  <xsl:call-template name="list-comments">
+   <xsl:with-param name="issue">
+    <d:copy-of select="form-field 'id (current-node)"/>
+   </xsl:with-param>
+  </xsl:call-template>
+ </xsl:variable>
+ <xsl:template name="report-edit">
+  <xsl:variable name="issue-id">
+   <d:copy-of select="(data (form-field 'id (current-node)))"/>
+  </xsl:variable>
+  <ac:update parameterized="yes">
+   <template>update issue set subject=?2, weight=?3, dim=?4, state=?5 where id=?1</template>
+   <bail:copy-of>
+(define (exwrap x)
+  (sxml `(with-param ,(data (form-field x)))))
+map exwrap '(id subject weight dim state)
+   </bail:copy-of>
+  </ac:update>
+  <ac:update parameterized="yes">
+   <bail:copy-of>
+(define (exwrap x)
+  (sxml `(with-param ,(data (form-field x)))))
+map exwrap '(id subject weight dim state)
+   </bail:copy-of>
+  </ac:update>
+  <xsl:for-each select="form/deldep">
+   <ac:update parameterized="yes">
+    <template>delete from dependency where goal = ?1 and need = ?2</template>
+    <with-param><xsl:value-of select="."/></with-param>
+    <with-param><xsl:value-of select="$form/id"/></with-param>
+   </ac:update>
+  </xsl:for-each>
+  <xsl:for-each select="form/adddep">
+   <xsl:if test=" text() != '' ">
+   <ac:update parameterized="yes">
+    <template>insert or ignore into dependency(goal,need) values(?1,?2)</template>
+    <with-param><xsl:value-of select="."/></with-param>
+    <with-param><xsl:value-of select="$form/id"/></with-param>
+   </ac:update>
+   </xsl:if>
+  </xsl:for-each>
+ </xsl:template>
+ <xsl:template name="report-move">
+  <xsl:choose>
+   <xsl:when test="form/to/text() != ''">
+    <ac:update parameterized="yes">
+     <template>update issue set project = ?2 where id = ?1</template>
+     <with-param><xsl:value-of select="form/id"/></with-param>
+     <with-param><xsl:value-of select="form/to"/></with-param>
+    </ac:update>
+   </xsl:when>
+   <xsl:when test="form/into/text() != ''">
+    <ac:update parameterized="yes">
+     <template>update event set issue = ?2 where issue = ?1</template>
+     <with-param><xsl:value-of select="form/id"/></with-param>
+     <with-param><xsl:value-of select="form/into"/></with-param>
+    </ac:update>
+    <d:output media-type="text/plain" method="xml" d:location="(read-locator (sxml `(form ,(node-list-first (form-field '_v (current-node))) (id ,(data (form-field 'into (current-node)))))))">Merged</d:output>
+   </xsl:when>
+   <xsl:otherwise>
+    <d:copy-of select="(raise &quot;report-move: illegal parameters&quot;)"/>
+   </xsl:otherwise>
+  </xsl:choose>
+ </xsl:template>
+ <xsl:variable name="attach-object">
+  <!-- Listing "anyway" might pose an - even hard coded - security issue. -->
+  <xsl:variable name="anyway">
+   <d:copy-of select="#CONTENT">
+(let ((cfg (sql-query
+	    "select pl : pr : moment
+	     from project join issue on project.id = issue.project
+	     join event on event.issue = issue.id
+	     where event.id = ?1" (data (form-field 'id (current-node))))))
+  (if (or (> (sql-ref cfg 0 "pl") 0)
+	  (and (> (sql-ref cfg 0 "pr") 0)
+	       (time>?
+		(make-time 'time-duration 0 1800)
+		(time-difference
+		 (date->time-utc (message-date msg))
+		 (date->time-utc
+		  (string->date (sql-ref cfg 0 "moment")
+                                (data (xsl-variable "date-format"))))))))
+      (empty-node-list)
+      (literal "denied")))
+   </d:copy-of>
+  </xsl:variable>
+  <fieldset>
+  <d:form method="post">
+   <input name="_v" type="hidden" value="attach"/>
+   <d:input name="id" type="hidden" d:value="(data (form-field 'id (current-node)))"/>
+   <input name="_a" type="hidden" value="attach"/>
+   <d:if test="(or (service-level) (node-list-empty? (xsl-variable &quot;anyway&quot;)))">
+    <pre><d:copy-of select="sql-ref (sql-query &quot;select comment from event where id = ?1&quot; (data (form-field 'id (current-node))))"/></pre>
+   </d:if>
+   <p><d:copy-of select="(xsl-variable apply: &quot;l10n&quot; param: &quot;n&quot; &quot;link target&quot;)"/>:
+ <input name="oid" type="text" size="35"/></p>
+   <p><d:copy-of select="(xsl-variable apply: &quot;l10n&quot; param: &quot;n&quot; &quot;title&quot;)"/>:
+ <input name="title" type="text" size="60"/></p>
+   <input type="submit" value="attach"/>
+   <xsl:call-template name="add-listing-deco">
+    <xsl:with-param name="row-element">tr</xsl:with-param>
+    <xsl:with-param name="heading">
+     <tr>
+      <th><d:copy-of select="(xsl-variable apply: &quot;l10n&quot; param: &quot;n&quot; &quot;link target&quot;)"/></th>
+      <th><d:copy-of select="(xsl-variable apply: &quot;l10n&quot; param: &quot;n&quot; &quot;title&quot;)"/></th>
+     </tr>
+    </xsl:with-param>
+    <xsl:with-param name="select">
+oid as
+'<d:copy-of select="if (service-level) &quot;link&quot; &quot;public-link&quot;"/>'
+, title as td, oid as 'delatt'
+    </xsl:with-param>
+    <xsl:with-param name="query">
+attachment
+where event =
+'<d:copy-of select="sql-quote (data (form-field 'id (current-node)))"/>'
+    </xsl:with-param>
+  </xsl:call-template>
+ </d:form>
+ </fieldset>
+</xsl:variable>
+ <xsl:variable name="attach">
+  <d:copy-of select="xsl-variable &quot;attach-object&quot;"/>
+ </xsl:variable>
+ <xsl:template name="attach">
+  <!--
+   Precondition: The request is sane.  Request which would violate
+   access control restrictions have been denied.
+  -->
+  <xsl:for-each select="form/delete">
+   <ac:update parameterized="yes">
+    <template>delete from attachment where oid = ?1 and event = ?2</template>
+    <with-param><xsl:value-of select="."/></with-param>
+    <with-param><xsl:value-of select="$form/id"/></with-param>
+   </ac:update>
+  </xsl:for-each>
+  <xsl:if test="form/oid/text() != ''">
+   <ac:update parameterized="yes">
+    <template>insert into attachment(event,oid,title) values(?1,?2,?3)</template>
+    <with-param><xsl:value-of select="form/id"/></with-param>
+    <with-param><xsl:value-of select="form/oid"/></with-param>
+    <with-param><xsl:value-of select="form/title"/></with-param>
+   </ac:update>
+  </xsl:if>
+  <ac:link name="attachment">
+   <bail:copy-of>
+define extract-oid(from)
+  define m "(?:http(?:s)?://[[:alnum:].:-]*(?::[0-9]+)?)?/?(.+)"
+  cadr
+    pcre(m) string-trim-both(data(from))
+
+(let ((action (action-document (current-contract))) ;; FIXME: depreciated interface
+      (protection (append (message-protection me) (list (my-oid))))
+      (path (let ((event-number (string-&gt;number (data (form-field 'id (current-node))))))
+	      (if (sql-ref (sql-query "select id from event where id = ?1" event-number))
+		  (list (format "~4,48D" (quotient event-number 1000))
+			(format "~4,48D" (modulo event-number 1000)))
+		  (raise (format "event ~a not known" event-number)))))
+      (new-translated (map extract-oid (form-field 'oid (current-node))))
+      (strong-link? (lambda (o) (string-&gt;oid (data o))))
+      (root-link "attachment"))
+  (if (or (any strong-link? (form-field 'delete (current-node)))
+	  (any strong-link? new-translated))
+      (fold
+       (lambda (oid objects)
+	 (if (not (string-&gt;oid (data oid)))
+	     objects
+	     (collection-update-tree
+	      objects path (data oid) (sxml `(id ,(data oid)))
+	      context: me action: action protection: protection)))
+       (fold
+	(lambda (delete objects)
+	  (collection-update-tree
+	   objects path (data delete) #f
+	   context: me action: action protection: protection))
+	root-link
+	(form-field 'delete (current-node)))
+       new-translated)
+      (sxml `(id ,(literal (me root-link))))))
+   </bail:copy-of>
+  </ac:link>
+ </xsl:template>
+ <xsl:template name="attach-object">
+  <d:copy-of select="(or (service-level) (node-list-empty? (form-field 'delete (current-node))) (raise 'denied))"/>
+  <xsl:call-template name="attach"/>
+ </xsl:template>
+</xsl:stylesheet>

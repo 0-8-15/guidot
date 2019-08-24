@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<xsl:stylesheet xmlns:core="http://www.askemos.org/2000/CoreAPI#" xmlns:d="http://www.askemos.org/2013/bail/" xmlns:xsl="http://www.w3.org/1999/XSL/Transform" version="1.0">
+<xsl:stylesheet
+    xmlns:core="http://www.askemos.org/2000/CoreAPI#"
+    xmlns:d="http://www.askemos.org/2013/bail/"
+    xmlns:meta="http://askemos.org/BALL/Meta/2012#"
+    xmlns:xsl="http://www.w3.org/1999/XSL/Transform" version="1.0">
  <editor:state xmlns:editor="urn:editor">
   <body></body>
   <content-type>text/xml</content-type>
@@ -36,7 +40,7 @@
   </xsl:variable>
   <xsl:choose>
    <d:when test="(is-meta-form? msg)">
-    <d:copy-of select="(message-body (metaview me msg))"></d:copy-of>
+    <meta:view/>
    </d:when>
    <d:when test="pair?( message-destination( current-message() ) ) ">
 <!--
@@ -760,7 +764,7 @@ that's a test case for more XSLT completion.
   <xsl:choose>
    <d:when test="(not (or (service-level) (error &quot;local operator only&quot;)))"></d:when>
    <d:when test="(and (is-meta-form? msg) (service-level))">
-    <d:copy-of select="(message-body (metactrl me msg))"></d:copy-of>
+    <meta:control/>
    </d:when>
    <xsl:otherwise>
     <core:reply>

@@ -1,0 +1,2823 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<xsl:stylesheet xmlns:bail="http://www.askemos.org/2013/bail/" xmlns:core="http://www.askemos.org/2000/CoreAPI#" xmlns:meta="http://askemos.org/BALL/Meta/2012#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:wallet="urn:wallet" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xmlns:xsql="http://www.askemos.org/2006/XSQL/" version="1.0">
+<!--
+
+# Wallet-basic
+
+## Purpose
+
+This code is intented to document the basic API at a single page in
+simple examples.  It's only practical purpose is to serve as a save
+fallback to upload a new 'skin' (and allow save removal of any active
+skin).
+
+Beware: Simplicity rules here.  No link carries login information.
+This is not usable in practice with anon access codes.
+
+Normally hidden form input elements are given as read only text elements.
+
+## Status
+
+This is in the process to be stripped down from the first skinable version,
+which grew beyond bounds when adding features to the user interface.
+
+We expect the API for mutating applications to stabilize soon.
+
+## Code
+
+Over all structure of the code (to be changed):
+
+Some variables to be (re)used and named templates to be called.
+
+A xsl:template named "html" comprising the "normal" user interface.
+
+A xsl:template matching type "read" where the processing starts for read operations.
+
+A xsl:template matching type "write" invoked for mutation requests (submitted forms).
+
+A core:body holding tree more one-expression scripts to invoke the
+bail interpreter on the subject with the template from the "parent contract".
+
+-->
+ <wallet:acceptable>
+<!--
+ This is the list of acceptable contracts beyond this one. Should be older versions or mints.
+  -->
+ </wallet:acceptable>
+<!--
+
+This variable is for anonymous access only.  Anon access codes are a
+way to enable a restricted form of usage for wallets hosted by someone
+else.  This is NOT the recommended usage; intented to enable
+evaluation without investing much resources.
+
+-->
+ <xsl:variable name="login">
+  <xsl:if test="form/login != &apos;&apos;">
+   <form>
+    <xsl:copy-of select="form/login"></xsl:copy-of>
+   </form>
+  </xsl:if>
+ </xsl:variable>
+ <xsl:variable name="keeplogin">
+  <xsl:if test="form/login/text() != &apos;&apos;">
+   <bail:input name="login" type="hidden" xsl:value="form/login/text()"></bail:input>
+<!-- to invalidate caches we insert the version number here -->
+   <bail:input name="version" type="hidden" bail:value="literal version-identifier(current-place())"></bail:input>
+  </xsl:if>
+ </xsl:variable>
+ <xsl:variable name="metatalk">
+  <h3>Notational conventions</h3>
+  <p>The following CSS classes call out specific text elements.
+Often there is additional information in the title of text elements (mouse over).</p>
+  <p>At the moment these styles interfere heavily with useability.
+I welcome especially: suggestions on best common law phrase to use for the styles,
+preferrable colors and concise wording for the description.</p>
+  <dl compact="compact" title="CSS classes">
+   <dt class="amount" style="text-align:left;">amount</dt>
+   <dd>units transferred</dd>
+   <dt class="asset">asset</dt>
+   <dd>assets, payment instruments</dd>
+   <dt class="sender">sender</dt>
+   <dd>outgoing account and signatory</dd>
+   <dt class="receiver">receiver</dt>
+   <dd>account receiving</dd>
+   <dt class="subject">subject</dt>
+   <dd>title or subject</dd>
+   <dt class="terms">terms</dt>
+   <dd>terms&amp;conditions or optional message text; free form</dd>
+   <dt class="extern">extern</dt>
+   <dd>link to be transferred to the receiver</dd>
+   <dt class="intern">intern</dt>
+   <dd>link possibly containing login information
+(if anon access code is used) <strong>not safe to transfer</strong></dd>
+   <dt class="order">order</dt>
+   <dd>link to an order</dd>
+   <dt class="receipt">receipt</dt>
+   <dd>link to a receipt</dd>
+   <dt class="notary">notary</dt>
+   <dd>link to notary commissioned to audit this document</dd>
+   <dt class="attachment">attachment</dt>
+   <dd>link to attachment</dd>
+   <dt class="fineprint">fineprint</dt>
+   <dd>generic fine-print</dd>
+   <dt class="executable">executable</dt>
+   <dd>machine executable source code</dd>
+   <dt class="help">help</dt>
+   <dd>meta talk – explanatory text</dd>
+  </dl>
+  <p>See also the <a href="/A0cd6168e9408c9c095f700d7c6ec3224?_v=wiki&amp;_id=1728">online documentation</a>.</p>
+  <div class="help">
+   <p>All objects are identified by their <a href="http://askemos.org/index.html?_v=footnote&amp;_id=866">OID</a>,
+   which is a cryptographic hash of a) the OID of the creator of the
+   object b) date of creation c) the OID of the contract defining the
+   type and d) the hash of the (initial) content of the object.</p>
+   <p>Experts see <a href="?xmlns=a" title="low level access">meta data</a> for detailed audit.
+(Note that this exposes control forms.  Those are void, the corresponding control API is disabled.)</p>
+   <p>Wallet (basic documentary edition) version: 0.5</p>
+  </div>
+ </xsl:variable>
+ <xsl:variable name="help-access">
+  <div class="help">
+   <p>There are <em>two</em> access codes. When
+   authenticated anonymously, only the unused code is changed. The
+   old code is still active. You need to log in with the new code and
+   repeat submitting this form to disable the old code.</p>
+   <p>Note that the secret code will appear in
+   <strong>plain text</strong> in the URL and elsewhere.  This
+   provides no protection against rough peers and is
+   <strong>not</strong> secure, just secure enough for easy anonymous
+   access control. Don't re-use any passwords here. You've been
+   warned.</p>
+   <p>Public access codes are optional for non-anonymous users.</p>
+  </div>
+ </xsl:variable>
+ <xsl:variable name="help-wallet">
+  <fieldset class="help">
+   <legend>Usage</legend>
+   <h3>Purpose</h3>
+   <p>This code is intented to document the basic API at a single page in
+simple examples.  It's only practical purpose is to serve as a save
+fallback to <a href="#changeskin">upload a new 'skin'</a> (and allow save removal of any active
+skin).</p>
+   <p>The top section is about this wallet. It lists the title, the OID and version.</p>
+   <p>Experts see <a href="?xmlns=a">meta data</a> for detailed audit.
+(Note that this exposes control forms.  Those are void, the corresponding control code is disabled.)</p>
+   <xsl:copy-of select="$metatalk"></xsl:copy-of>
+  </fieldset>
+ </xsl:variable>
+ <xsl:variable name="holderstatement">
+  <div class="terms">
+   <p>I the signatory accept <bail:a bail:href="read-locator self-reference()">the account</bail:a> for use under the initial title (above) as long as this notice is linked there under as "holder statement".</p>
+  </div>
+ </xsl:variable>
+ <xsl:variable name="immutable">
+<!--
+
+   This is the contract we shall use for documents which just don't change.
+
+   We defer the discussion where exactly we get the value from here.
+
+ -->
+  <bail:copy-of>
+or
+ link-ref "holder statement"
+ literal action-document(current-contract())
+ literal action-document(action-document(message-creator(current-message())))
+  </bail:copy-of>
+ </xsl:variable>
+ <xsl:variable name="here">
+  <bail:copy-of>message-body current-place()</bail:copy-of>
+ </xsl:variable>
+ <xsl:variable name="witness-record2">
+  <hr title="generic fine-print below"></hr>
+  <blockquote class="fineprint" title="generic fine-print">
+   <h2>Audit Record</h2>
+   <p class="terms">This is an immutable document maintained according these <bail:a title="service contract, a.k.a master contract or meta contract" bail:href="read-locator $ list oid-&gt;string(xsl-variable(&quot;immutable&quot;))">terms and conditions</bail:a>.</p>
+   <p>At <bail:copy-of>literal message-date(current-message())</bail:copy-of><!--
+
+This is not agreeable when used with anonnymous access.
+<bail:a bail:href="read-locator message-creator(current-message())">signature</bail:a>
+-->
+the notaries below confirmed
+<bail:copy-of>
+let* {*
+sl service-level()
+auth $ if sl
+  message-creator(current-message())
+  self-reference()
+text $ if sl "my signature" "the use of a valid anonymous access code"
+*}
+  SXML $ a @( href( ,read-locator(auth) ) class("sender") ) ,text
+</bail:copy-of>.</p>
+   <ol>
+    <bail:for-each select="sxpath(&apos;(Bag li)) message-replicates(current-place())">
+     <bail:copy-of>
+define id
+ attribute-string 'resource current-node()
+
+define href
+ read-locator list(id)
+
+define title
+ guard
+  ex $ else id
+  sql-ref sql-query("select title from notaries where contract = ?1" id)
+
+SXML $ li
+ a @( href( ,href ) class("notary") title(,id) ) ,title
+    </bail:copy-of>
+    </bail:for-each>
+   </ol>
+   <p class="help">To aquire a proof from these notaries make sure to
+  use different representative (peer devices), or locate the IP address
+  of those and connect them directly.</p>
+   <xsl:copy-of select="$metatalk"></xsl:copy-of>
+  </blockquote>
+ </xsl:variable>
+ <xsl:variable name="witness-record">
+<!--
+
+ While it is the point of the Wallet to demonstrate the details in the
+ witness record, it is confusing for applications.
+
+ -->
+  <xsl:choose>
+   <xsl:when test="$here/body/div[@id='postamble']/node()">
+    <div class="fineprint"><xsl:copy-of select="$here/body/div[@id='postamble']/node()"/></div>
+   </xsl:when>
+   <xsl:otherwise><xsl:copy-of select="$witness-record2"/></xsl:otherwise>
+  </xsl:choose>
+  <div class="footer">
+   <xsl:copy-of select="$here/footer/*"></xsl:copy-of>
+  </div>
+ </xsl:variable>
+ <xsl:variable name="wallet-witness2">
+  <p class="fineprint">This account participates in correct bookkeeping
+as detailed in sections "Auditing" and "Rules" below.
+This account's adds the follow code:</p>
+  <div class="terms" title="Current Terms">
+   <xsl:copy-of select="$here/body/div[@id='terms']/node()"></xsl:copy-of>
+  </div>
+  <hr title="generic fine-print below"></hr>
+  <blockquote class="fineprint" title="generic fine-print">
+   <h2>Auditing</h2>
+   <p>At <bail:copy-of>literal message-date(current-message())</bail:copy-of> the following notaries are commissioned
+to audit the books (<a href="http://askemos.org/Abb8999dd38524dcc113f977d378a9ee0?_v=footnote&amp;_id=618">processing in agreement</a>) of this account and shall confirm my signature.</p>
+   <ol>
+    <bail:for-each select="sxpath(&apos;(Bag li)) message-replicates(current-place())">
+     <bail:copy-of>
+define id
+ attribute-string 'resource current-node()
+
+define href
+ read-locator list(id)
+
+define title
+ guard
+  ex $ else id
+  sql-ref sql-query("select title from notaries where contract = ?1" id)
+
+SXML $ li
+ a @( href( ,href ) class("notary") title(,id) ) ,title
+    </bail:copy-of>
+    </bail:for-each>
+   </ol>
+   <p class="help">To aquire a proof from these notaries make sure to
+  use different representative (peer device) or locate the IP address
+  of those and connect them directly.</p>
+   <h2>Type Contract</h2>
+   <p>The account itself is governed by master contract <code><bail:copy-of>
+define id current-contract()
+define href
+ read-locator list(id)
+SXML $ a @( href( ,href ) title("source code OID") ) ,literal(id)
+</bail:copy-of></code>.<span class="help"> Beware: Browsers likely display this contract in unintelligible form.
+Know so for firefox and chrome. Use <em>source code view preserving white space formatting and XML comments</em> to display properly.
+   That "parent contract" is a static XML document containing code written in <a href="http://askemos.org/A0cd6168e9408c9c095f700d7c6ec3224?_v=search&amp;_id=756">bail</a> and the <a href="http://askemos.org/A0cd6168e9408c9c095f700d7c6ec3224?_v=search&amp;_id=1478">BALL core API</a>.
+There is no expectation that the reader is famillar with that language.
+Basic knowledge in web standards and SQL should be enough to convince
+the reader that this code maintains a correct balance and will never issue
+payments exceeding funds.</span></p>
+   <xsl:copy-of select="$metatalk"></xsl:copy-of>
+  </blockquote>
+ </xsl:variable>
+ <xsl:variable name="wallet-witness">
+<!--
+
+ While it is the point of the Wallet to demonstrate the details in the
+ witness record, it is confusing for applications.
+
+ -->
+  <xsl:choose>
+   <xsl:when test="$here/body/div[@id='postamble']/node()">
+    <div class="fineprint"><xsl:copy-of select="$here/body/div[@id='postamble']/node()"/></div>
+   </xsl:when>
+   <xsl:otherwise><xsl:copy-of select="$wallet-witness2"/></xsl:otherwise>
+  </xsl:choose>
+  <div class="footer">
+   <xsl:copy-of select="$here/footer/*"></xsl:copy-of>
+  </div>
+ </xsl:variable>
+ <xsl:variable name="css">
+  <xsl:choose>
+   <xsl:when test="$here/head/style">
+    <xsl:copy-of select="$here/head/style"></xsl:copy-of>
+   </xsl:when>
+   <xsl:otherwise>
+    <style type="text/css">.amount { background: aquamarine; padding: 0.2ex; text-align: right; }
+.asset { background: goldenrod; padding: 0.2ex; }
+.liability { color: red; }
+.sender { background: lightcoral; }
+.receiver { background: darkseagreen; }
+.subject { background: cornsilk; }
+.terms { color: cornflowerblue;}
+.intern { color: red; }
+.extern { color: green; }
+.order { background: orange; }
+.receipt { background: antiquewhite; }
+.notary { background: lightcyan; }
+.attachment { background: beige; }
+.help { background: lavender; }
+.fineprint { background: beige; font-size: smaller; }
+.executable { background: gainsboro; font-family: monospace; white-space:pre; }
+method { background: gainsboro; border: 1px dashed; margin: 1em; padding: 1em; }
+td.amount, td.empty { width: 5ex;}
+.menu { text-decoration: none; }</style>
+   </xsl:otherwise>
+  </xsl:choose>
+ </xsl:variable>
+ <xsl:variable name="htmlheaders">
+  <meta content="application/xhtml+xml; charset=UTF-8" http-equiv="Content-Type"></meta>
+  <bail:link rel="icon" type="image/x-icon" bail:href="read-locator list(link-ref(&quot;icon&quot;))"></bail:link>
+  <xsl:copy-of select="$css"></xsl:copy-of>
+ </xsl:variable>
+ <xsl:variable name="auth">
+  <bail:copy-of>
+define login
+ or
+  and-let* {* s data(form-field('login)) \\ (not(string-null?(s))) *} s
+  anon-secret()
+
+define codes
+ and login
+  guard
+   ex $ else #f
+   sql-query "select id, secret from login"
+
+cond
+ and( not(codes) service-level() )         "3"
+ not(codes)                                ""
+ secret-verify(sql-ref(codes 0 1) login)   "1"
+ secret-verify(sql-ref(codes 1 1) login)   "2"
+ else                                      ""
+   </bail:copy-of>
+ </xsl:variable>
+ <xsl:variable name="precontent">
+  <div class="header">
+   <xsl:copy-of select="$here/body/div[@id='header']/*"></xsl:copy-of>
+  </div>
+  <div class="preamble">
+   <xsl:copy-of select="$here/body/div[@id='preamble']/*"></xsl:copy-of>
+  </div>
+ </xsl:variable>
+ <xsl:variable name="authwrite">
+  <bail:copy-of>
+define login
+ or
+  and-let* {* s data(form-field('login)) \\ (not(string-null?(s))) *} s
+  anon-secret()
+
+define codes
+ and login
+  guard
+   ex $ else #f
+   sql-query "select id, secret, readonly from login"
+
+cond
+ and( not(codes) service-level() )        "3"
+ not(codes)                               ""
+ and( not(equal?( sql-ref(codes 0 2) 1)) secret-verify(sql-ref(codes 0 1) login) )  "1"
+ and( not(equal?( sql-ref(codes 1 2) 1)) secret-verify(sql-ref(codes 1 1) login) )  "2"
+ else                                     ""
+   </bail:copy-of>
+ </xsl:variable>
+ <xsl:template match="*" mode="as-markdown">
+  <bail:copy-of>mime-cast("text/x-markdown" "text/xml") current-node()</bail:copy-of>
+ </xsl:template>
+ <xsl:template match="*" mode="markdown2xml">
+  <bail:copy-of>mime-cast("text/xml" "text/x-markdown; option=passive") $ data current-node()</bail:copy-of>
+ </xsl:template>
+ <xsl:template name="instrument">
+<!-- Format a payment instrument for internal use.  Display "nick name". -->
+  <xsl:param name="contract"></xsl:param>
+  <bail:copy-of>
+define id
+ string-&gt;oid
+  data xsl-variable("contract")
+
+define comment
+ and id
+  or
+   guard
+    ex $ else
+     sxpath('(head title *text*)) fetch(id body: #f)
+    sql-ref sql-query("select comment from instruments where contract = ?1" literal(id))
+   "n/a"
+
+if id
+ SXML $ strong @( class("asset") )
+  a @( href( ,read-locator(list(id)) ) title(,literal(id)) ) $$(,comment)
+ "n/a"
+  </bail:copy-of>
+ </xsl:template>
+ <xsl:template name="instrument-official">
+<!-- Format a payment instrument for external use. Display original title. -->
+  <xsl:param name="contract"></xsl:param>
+  <bail:copy-of>
+define id
+ data xsl-variable("contract")
+
+define comment0
+ sxpath('(head title *text*)) fetch(string-&gt;oid(id) body: #f)
+
+define comment
+ let {* t data(comment0) *}
+  if string-null?(t) "untitled" t
+
+define href
+ ;; read-locator list(id)
+ id
+
+SXML
+ strong @( class("asset") )
+  a @( href( ,href ) title(,id) ) ,comment
+  " OID: "
+  code $$(,id)
+  </bail:copy-of>
+ </xsl:template>
+ <xsl:variable name="subjecthead">
+  <table class="subject" title="about this wallet">
+   <tr>
+    <td title="Title">
+     <h1>
+      <xsl:value-of select="$here/head/title"/>
+     </h1>
+    </td>
+    <td title="OID">
+     <code>
+      <bail:copy-of>literal self-reference()</bail:copy-of>
+     </code>
+    </td>
+    <td title="Version Number">
+     <bail:copy-of>version-identifier current-place()</bail:copy-of>
+    </td>
+   </tr>
+  </table>
+ </xsl:variable>
+ <xsl:template name="order.display">
+<!-- Display an incoming order and controls to accept or reject it. -->
+  <xsl:param name="id" required="yes"></xsl:param>
+  <xsl:param name="notice" required="yes"></xsl:param>
+  <bail:form method="post">
+   <bail:copy-of>
+define income string-&gt;oid(xsl-variable("id"))
+define notice xsl-variable("notice")
+
+define get(key)
+ and notice
+  attribute-string 'content
+   sxpath(`( head (meta (@ (equal? (name ,key)))) )) notice
+
+define receiver
+ string-&gt;oid get("To")
+
+define amount
+ and-let* {* notice \\ a get("Amount") *}
+  string-&gt;number a
+
+define instrument
+  string-&gt;oid get("Instrument")
+
+define instrument-here
+ guard ex(else(#f))
+  sql-ref sql-query("select comment from instruments where contract = ?1" literal(instrument))
+
+define instrument-name
+ or instrument-here
+  guard
+   exception $ else("Warning: Ricardian Contract not readable!")
+   data      $ sxpath('(head title *text*)) fetch(instrument body: #f)
+
+define instrument-a()
+ SXML $ a {* @
+href ,read-locator(list(instrument))
+target "_blank"
+title ,literal(instrument)
+class "asset"
+*} $$( ,instrument-name )
+
+define ifield()
+ SXML $ fieldset
+  legend("Alien Payment Instrument")
+  $$ ,instrument-a()
+  input {* @ \\ name "title" \\ type "text"
+title "Title Required For Payment Instrument"
+value $ ,instrument-name
+*}
+
+define sender get("From")
+
+define sender-edit
+ read-locator body: $ SXML
+  form satisfaction(,sender)
+
+define label
+ sql-ref
+  sql-query
+    "select case when exists (select no from processed where matches = ?1)
+    then 'Old notice (not to be signed)' else 'Notice' end"
+    literal(income)
+
+define form()
+ SXML
+  label ,label
+  input {* @ \\ type "text" \\ readonly "readonly" \\ title "satisfaction" \\ name "satisfaction" \\ value ,literal(income) *}
+  label "from"
+  a {* @
+class "sender intern"
+target "_blank"
+href ,sender-edit
+*} ,sql-ref(sql-query("select coalesce( (select title from accounts where contract = ?1), \"unkown\")" sender))
+  label "amount"
+  strong @(class("amount")) ,literal(amount)
+  label "of"
+  $$ ,if(instrument-here instrument-a() ifield())
+  $$ ,and( sybil?( instrument income )  SXML(p("Not acceptable because 'sybil'.")) )
+  label "for"
+  input {* @
+name "comment"
+title "Payment Reference Text (free form)"
+class "subject"
+value $$( ,sxpath('(head title *text*)) ,notice )
+*}
+
+cond
+ not(receiver) $  SXML $ p "No receiver found in document " (code ,(literal income)) "."
+ eq?( receiver self-reference() )  $  form()
+ else          $  SXML $ p "This payment goes to: " code(,literal(receiver))
+   </bail:copy-of>
+   <br></br>
+   <span class="order" title="receive">
+    <input name="receive" type="radio" value="no"></input>
+    <label>Retour</label>
+   </span>
+   <span class="receipt" title="receive">
+    <input checked="checked" name="receive" type="radio" value="yes"></input>
+    <label>Receipt</label>
+   </span>
+   <input name="action" readonly="readonly" type="text" value="accept"></input>
+   <xsl:copy-of select="$keeplogin"></xsl:copy-of>
+   <input type="submit" value="Sign"></input>
+   <br></br>
+   <textarea class="terms" cols="40" name="text" rows="4" title="text"></textarea>
+  </bail:form>
+  <fieldset class="terms" title="Message">
+   <legend>Text</legend>
+   <xsl:copy-of select="$notice/body/div/div"></xsl:copy-of>
+  </fieldset>
+ </xsl:template>
+ <xsl:template name="receipt.display">
+<!-- Display a (simple, i.e., not return) receipt. -->
+  <xsl:param name="id" required="yes"></xsl:param>
+  <xsl:param name="notice" required="yes"></xsl:param>
+  <xsl:variable name="order" select="$notice/head/link[@title='Order']/@href"/>
+  <xsl:variable name="fullorder">
+   <bail:copy-of>
+guard
+  ex $ else
+   SXML $ html $ head $ title $ "Order not readable."
+  fetch string-&gt;oid(data(xsl-variable("order")))
+   </bail:copy-of>
+  </xsl:variable>
+  <xsl:variable name="completes">
+   <xsql:query rowset-element="" parameterized="yes">
+    <template>select *, 0 as old from transactions where contract = ?1</template>
+    <with-param><xsl:value-of select="$order"/></with-param>
+   </xsql:query>
+  </xsl:variable>
+  <p class="receipt">This receipt completes the following transaction:</p>
+  <xsl:for-each select="$completes">
+   <xsl:call-template name="transaction.display"></xsl:call-template>
+  </xsl:for-each>
+  <bail:form method="post">
+   <xsl:copy-of select="$keeplogin"></xsl:copy-of>
+   <input name="action" readonly="readonly" title="action" type="text" value="close"></input>
+   <bail:input name="receipt" readonly="readonly" title="receipt" type="text" xsl:value="$id"></bail:input>
+   <input type="submit" value="Case Closed"></input>
+  </bail:form>
+  <fieldset title="Message">
+   <legend>
+    <span class="subject">
+     <xsl:copy-of select="$notice/head/title/text()"></xsl:copy-of>
+    </span>
+   </legend>
+   <xsl:copy-of select="$notice/body/div/div"></xsl:copy-of>
+  </fieldset>
+  <fieldset title="Orignal Outgoing Message">
+   <legend>In Reply To: <span class="subject"><xsl:value-of select="$fullorder/head/title"></xsl:value-of></span></legend>
+   <xsl:copy-of select="$fullorder/body/div/div"></xsl:copy-of>
+  </fieldset>
+ </xsl:template>
+ <xsl:template name="asset.display">
+<!-- Display Asses and control local name -->
+  <xsl:param name="id" required="yes"></xsl:param>
+  <xsl:param name="notice" required="yes"></xsl:param>
+  <xsl:param name="action">
+   <input name="action" readonly="readonly" title="action" type="text" value="changeasset"></input>
+   <input type="submit" value="Change"></input>
+  </xsl:param>
+  <fieldset>
+   <xsl:variable name="info">
+    <xsql:query rowset-element="" parameterized="yes">
+     <template>select * from instruments where contract = ?1</template>
+     <with-param><xsl:value-of select="$id"/></with-param>
+    </xsql:query>
+   </xsl:variable>
+   <xsl:variable name="wallet">
+    <bail:copy-of>
+define meta metainfo(string-&gt;oid(xsl-variable("id")))
+attribute-string
+ 'href
+ sxpath('(* links * (li (@ (equal? (resource "wallet")))) ))(meta)
+    </bail:copy-of>
+   </xsl:variable>
+   <legend>Evaluate Asset</legend>
+   <bail:form method="post">
+    <table>
+     <tr class="amount">
+      <th>Amount</th>
+      <td style="text-align:left;">
+       <xsl:value-of select="$notice/head/meta[@name='Value']/@content"/>
+      </td>
+     </tr>
+     <tr class="subject">
+      <th>Title</th>
+      <td title="official title">
+       <xsl:value-of select="$notice/head/title"></xsl:value-of>
+      </td>
+     </tr>
+     <tr class="asset">
+      <th>Contract</th>
+      <td title="OID, Ricardian Contract">
+       <bail:input name="instrument" readonly="readonly" size="30" type="text" xsl:value="$id"></bail:input>
+      </td>
+      <td>
+       <bail:copy-of>
+define href
+ read-locator list(string-&gt;oid(xsl-variable("id")))
+SXML $ a {* @
+class "asset extern"
+title "View Complete Ricardian Contract"
+href ,href
+target "_blank"
+*} "view"
+</bail:copy-of>
+      </td>
+     </tr>
+     <tr class="asset">
+      <th>Display As</th>
+      <td>
+       <xsl:variable name="dflt">
+        <xsl:choose>
+         <xsl:when test="$info/comment/text()=&apos;&apos;">
+          <xsl:copy-of select="$notice/head/title/text()"></xsl:copy-of>
+         </xsl:when>
+         <xsl:otherwise>
+          <xsl:copy-of select="$info/comment/text()"></xsl:copy-of>
+         </xsl:otherwise>
+        </xsl:choose>
+       </xsl:variable>
+       <bail:input name="comment" size="30" title="comment" type="text" xsl:value="$dflt"></bail:input>
+      </td>
+     </tr>
+     <tr class="terms">
+      <th>Active</th>
+      <td title="Asset (active) or Liability (passive)">
+       <bail:copy-of>
+define active
+ equal? "1" data( sxpath('(active))(xsl-variable("info")) )
+
+SXML $ input {* @
+name "active"
+title "active"
+value "1"
+type "checkbox"
+,@(if active '(checked("checked")) '())
+*}
+</bail:copy-of>
+      </td>
+     </tr>
+     <xsl:if test="$wallet!=&apos;&apos;">
+      <xsl:variable name="name">
+       <xsql:value-of parameterized="yes">
+        <template>select title from accounts where contract = ?1</template>
+	<with-param select="$wallet" />
+       </xsql:value-of>
+      </xsl:variable>
+      <tr class="subject">
+       <th>Wallet</th>
+       <td title="wallet attached">
+        <xsl:copy-of select="$wallet"></xsl:copy-of>
+        <bail:input name="wallet" readonly="readonly" title="wallet" type="text" xsl:value="$wallet"></bail:input>
+       </td>
+      </tr>
+      <tr class="subject">
+       <th>Wallet Title</th>
+       <xsl:choose>
+        <xsl:when test="$name=&apos;&apos;">
+         <td title="wallettitle">
+          <input name="wallettitle" size="30" type="text"></input>
+         </td>
+        </xsl:when>
+        <xsl:otherwise>
+         <td title="Local Wallet Alias">
+          <xsl:copy-of select="$name"></xsl:copy-of>
+         </td>
+         <td>
+          <bail:copy-of>
+define href
+ read-locator body: $ SXML
+  form satisfaction($$(,xsl-variable "wallet"))
+SXML $ a {* @
+href ,href
+class "intern"
+*} "change"
+  </bail:copy-of>
+         </td>
+        </xsl:otherwise>
+       </xsl:choose>
+      </tr>
+     </xsl:if>
+    </table>
+    <xsl:copy-of select="$keeplogin"></xsl:copy-of>
+    <xsl:copy-of select="$action"></xsl:copy-of>
+   </bail:form>
+   <fieldset class="terms" title="Terms &amp; Conditions">
+    <legend>Terms &amp; Conditions</legend>
+    <xsl:copy-of select="$notice/body/div/div"></xsl:copy-of>
+   </fieldset>
+  </fieldset>
+ </xsl:template>
+ <xsl:template name="account.display">
+<!-- Display a wallet and controls to add it to local counterparties. -->
+  <xsl:param name="id" required="yes"></xsl:param>
+  <xsl:param name="notice" required="yes"></xsl:param>
+  <xsl:variable name="local">
+   <xsql:value-of parameterized="yes">
+    <template>select title from accounts where contract = ?1</template>
+    <with-param select="$id"/>
+   </xsql:value-of>
+  </xsl:variable>
+  <xsl:variable name="title">
+   <xsl:choose>
+    <xsl:when test="$local=&apos;&apos;">
+     <xsl:value-of select="$notice/head/title"></xsl:value-of>
+    </xsl:when>
+    <xsl:otherwise>
+     <xsl:copy-of select="$local"></xsl:copy-of>
+    </xsl:otherwise>
+   </xsl:choose>
+  </xsl:variable>
+  <bail:form method="post">
+   <input name="action" readonly="readonly" title="action" type="text" value="account"></input>
+   <xsl:copy-of select="$keeplogin"></xsl:copy-of>
+   <div>
+    <label>Accept account</label>
+    <bail:input name="contract" size="40" title="contract" type="text" xsl:value="$id"></bail:input>
+   </div>
+   <div>
+    <label>titled</label>
+    <span class="subject">
+     <xsl:value-of select="$notice/head/title"></xsl:value-of>
+    </span>
+    <label>by the name of</label>
+    <bail:input name="title" title="title" type="text" xsl:value="$title"></bail:input>
+   </div>
+   <input type="submit" value="Change Account"></input>
+  </bail:form>
+  <fieldset class="terms" title="Current terms and conditions relating to the wallet.">
+   <legend>Current terms from <xsl:copy-of select="$title"></xsl:copy-of></legend>
+   <xsl:copy-of select="$notice/body/div[@class='terms']/node()"></xsl:copy-of>
+  </fieldset>
+ </xsl:template>
+ <xsl:template name="transaction.display">
+  <xsl:variable name="color">
+   <xsl:choose>
+    <xsl:when test="color/text()=&apos;1&apos;">amount liability</xsl:when>
+    <xsl:otherwise>amount</xsl:otherwise>
+   </xsl:choose>
+  </xsl:variable>
+  <tr>
+   <td>
+    <xsl:value-of select="no"></xsl:value-of>
+   </td>
+   <bail:copy-of>
+define get(key)
+  sxpath((list key '*text*)) current-node()
+
+define no string-&gt;number( data(get('no)) )
+
+define status data(get('status))
+
+define fmt
+ cond
+  or( equal?(status  "outgoing") equal?(status  "sent") )        "Payment-~a"
+  or( equal?(status  "confirmed") equal?(status  "completed") )  "Receipt-~a"
+  else "Asset-~a" ;; this is actually nonsense
+
+define dir
+ cond
+  or( equal?(status  "outgoing") equal?(status  "sent") )        "order ~a"
+  or( equal?(status  "confirmed") equal?(status  "completed") )  "receipt ~a"
+  else "Asset-~a" ;; this is actually nonsense
+
+define document
+ link-ref format(fmt no)
+
+define href
+ read-locator body: $ SXML
+  form satisfaction(,literal(document))
+
+define extern format(dir "extern")
+define intern format(dir "intern")
+
+define old
+ if equal?(data(get('old)) "0")
+  '()
+  SXML $ input {* @
+type "checkbox"
+name "close"
+title "record will be removed when checked"
+value ,literal(no)
+;; ,@(if equal?(status  "completed") '((checked "checked")) '() )
+*}
+
+SXML
+ td {* @
+class ,extern
+*}
+  code
+   a {* @
+href $$( ,read-locator (,document) )
+target "_blank"
+class ,extern
+title "External. This link/OID is to be transferred to the receiver."
+*} ,literal(document)
+ td {* @
+class ,intern
+*}
+  a {* @
+href ,href
+class ,intern
+title "Internal. Click to read."
+*} ,status
+ td @(class(,extern)) $$(,old)
+
+   </bail:copy-of>
+   <xsl:choose>
+    <xsl:when test="direction/text()=&apos;0&apos;">
+     <td class="empty"></td>
+     <bail:td title="outgoing amount" xsl:class="$color">
+      <xsl:value-of select="value"></xsl:value-of>
+     </bail:td>
+    </xsl:when>
+    <xsl:otherwise>
+     <bail:td title="incoming amount" xsl:class="$color">
+      <xsl:value-of select="value"></xsl:value-of>
+     </bail:td>
+     <td class="empty"></td>
+    </xsl:otherwise>
+   </xsl:choose>
+   <td class="asset">
+    <bail:copy-of>
+define get(key)
+  sxpath((list key '*text*)) current-node()
+
+define href
+ read-locator body: $ SXML
+  form satisfaction( $$( ,get instrument ) )
+
+SXML $ a {* @
+href ,href
+class "intern"
+*} $$( ,get name )
+    </bail:copy-of>
+   </td>
+   <bail:copy-of>
+define get(key)
+  sxpath((list key '*text*)) current-node()
+
+define href
+ read-locator body: $ SXML
+  form satisfaction( $$( ,get mandant ) )
+
+define class
+ if equal?( data(get('direction)) "0")
+  "receiver"
+  "sender"
+
+SXML $ td {* @
+class ,class
+*} $ a {* @
+href ,href
+class "intern"
+*} $$( ,get counterparty )
+   </bail:copy-of>
+<!--
+   <xsl:choose>
+    <xsl:when test="direction = 0">
+     <td class="receiver">
+      <xsl:value-of select="mandant"/>
+     </td>
+    </xsl:when>
+    <xsl:otherwise>
+     <td class="sender">
+      <xsl:value-of select="mandant"/>
+     </td>
+    </xsl:otherwise>
+   </xsl:choose>
+-->
+   <td class="subject">
+    <xsl:value-of select="comment" />
+   </td>
+   <td class="terms">
+    <xsl:value-of select="booked" />
+   </td>
+  </tr>
+ </xsl:template>
+ <xsl:variable name="notice-view">
+<!-- Dispatch on type of incoming notice. -->
+  <bail:copy-of>
+define raw data(form-field('satisfaction))
+define income
+ cond
+  pcre("(A[[:xdigit:]]{32})")( raw ) =&gt;
+   lambda (m) string-&gt;oid(cadr(m))
+  else #f
+
+define notice
+ guard
+  ex else(#f)
+  and income
+   fetch income body: #f
+
+define complying
+ and notice
+  let {* from source-contract(income) \\ con action-document(income) *}
+   or
+    eq? current-contract() from
+    eq? current-contract() con
+    ;; We also allow literally equal contracts.
+    equal?
+      fetch message-body/plain current-contract() body: #f
+      fetch message-body/plain from body: #f
+    ;; allowing the last versions here to migrate funds.
+    let {* other sxpath('(acceptable id *text*))(fetch(current-contract() body: #f)) *}
+     or member(literal(from) other) member(literal(con) other)
+
+define type
+ and notice
+  data $ txpath("head/meta[@name='ContractType']/@content") notice
+
+define err(msg)
+ SXML $ p ,msg " " (code ,(literal income)) "."
+
+define result
+ cond
+  not(notice)    $  err "Could not read document"
+  equal?(type "") $  err "No type declaration found in document"
+  ;; Note: The next two cases should be swaped in skin.
+  ;; We display incoming orders here to ease testing the proper rejection during "accept".
+  equal?(type "Order")
+   xsl-variable apply: "order.display" param: "id" literal(income) param: "notice" notice
+  not(complying) $  err "Sender's contract not in acceptable set."
+  equal?(type "Receipt")
+   xsl-variable apply: "receipt.display" param: "id" literal(income) param: "notice" notice
+  equal?(type "Wallet")
+   xsl-variable apply: "account.display" param: "id" literal(income) param: "notice" notice
+  equal?(type "Assertion")
+   xsl-variable apply: "asset.display" param: "id" literal(income) param: "notice" notice
+  equal?(type "HolderStatement") $ err "Holder Statement. Display not yet implemented."
+  else          $  err "Something is strange.  This should never happen."
+
+SXML
+ legend
+   "Incoming "
+   code $ a {* @ \\ title ,literal(income) \\ target "_blank" \\ class "intern"
+ ;; Make sure the "read" goes via this account, otherwise is might be unreadable. 
+href ,read-locator( (cons income message-location(current-message())) )
+*} ,literal(income)
+ $$ ,result
+  </bail:copy-of>
+ </xsl:variable>
+ <xsl:template name="html">
+<!-- The user interface -->
+  <html xmlns="http://www.w3.org/1999/xhtml">
+   <head>
+    <title>
+     <xsl:value-of select="$here/head/title" />
+    </title>
+    <meta content="Wallet" name="ContractType"></meta>
+    <xsl:copy-of select="$htmlheaders"></xsl:copy-of>
+    <meta content="0" http-equiv="expires"></meta>
+   </head>
+   <body>
+    <xsl:if test="$authwrite=&apos;&apos;">
+     <p class="terms"><strong>Note:</strong> you are only authorized to explore the account. No changes are permitted.</p>
+    </xsl:if>
+    <xsl:copy-of select="$subjecthead"></xsl:copy-of>
+    <xsl:copy-of select="$help-wallet"></xsl:copy-of>
+    <div class="help">
+     <p>The section labled <em>Incoming</em> is to receive incoming messages.  Enter the OID (or drag&amp;drop a link containing an OID) into the field and push <code>Go</code> to examine it.</p>
+    </div>
+    <xsl:choose>
+     <xsl:when test="form/satisfaction/text()!=&apos;&apos;">
+      <fieldset id="incoming" title="incoming notice">
+       <xsl:copy-of select="$notice-view"></xsl:copy-of>
+      </fieldset>
+     </xsl:when>
+     <xsl:otherwise>
+      <fieldset id="incoming" title="incoming notice">
+       <legend>Incoming</legend>
+       <p class="help">Drag URL or paste document identifier (OID) of incoming notice.</p>
+       <bail:form method="get">
+        <label for="satisfaction">Get</label>
+        <input name="satisfaction" size="60" title="satisfaction" type="text"></input>
+        <xsl:copy-of select="$keeplogin"></xsl:copy-of>
+        <input title="Check Message" type="submit" value="Go"></input>
+        <input title="Clear Form" type="reset" value="C"></input>
+       </bail:form>
+      </fieldset>
+     </xsl:otherwise>
+    </xsl:choose>
+    <fieldset id="order" title="File Registered Notice">
+     <legend>Order</legend>
+     <div class="help">
+      <p>The <em>Order</em> form is for filing payments to other parties.
+Select receiver amount and asset, enter a subject and optional message and push <code>Sign Order</code>
+to file it.</p>
+      <p>This wallet does <em>not</em> notify the receiver of outgoing payments made.  We rely on a
+second channel (e.g., mail or chat) to convey the <span class="external">hash-links in the <code>##</code>
+column</span> from the <em>Ledger</em> table of <code>outgoing</code> (or <code>sent</code>)
+transactions to the receiver.
+The receiver in turn needs to enter them in the <var>Incoming</var> form
+to check and accept or reject the order.</p>
+     </div>
+     <bail:form method="post">
+      <input name="action" readonly="readonly" title="action" type="text" value="pay"></input>
+      <xsl:copy-of select="$keeplogin"></xsl:copy-of>
+      <div class="line">
+       <label>To</label>
+       <select class="receiver" name="receiver" title="receiver">
+        <xsql:query id-attribute="value" id-attribute-column="contract" max-rows="300" row-element="option" rowset-element="">select contract, title as span from accounts</xsql:query>
+       </select>
+       <label>send</label>
+       <input class="amount" name="amount" size="5" title="amount" type="text" value="1"></input>
+       <label>from</label>
+       <select class="asset" name="instrument" title="instrument">
+        <xsql:query id-attribute="value" id-attribute-column="id" max-rows="300" row-element="option" rowset-element="">
+	select distinct i.contract as id, coalesce(i.comment,i.contract) as span
+	from balance0 as b join instruments as i on b.instrument=i.id
+	where b.value != 0
+	</xsql:query>
+       </select>
+      </div>
+      <div class="line">
+       <label>Subject</label>
+       <input class="subject" name="title" size="35" title="title" type="text"></input>
+       <br></br>
+       <input type="submit" value="Sign Order"></input>
+      </div>
+      <textarea class="terms" cols="50" name="text" rows="10" title="text"></textarea>
+     </bail:form>
+    </fieldset>
+    <fieldset id="claim" title="Assert a public claim. a.k.a. Issue a payment instrument, e.g. a bond.">
+     <legend>Claim</legend>
+     <p class="help">In the <em>Claim</em> section one can issue new assets. Assets have to have a title (chosen freely; however some titles may convey legal implications)
+and terms&amp;conditions.  Choose the latter with care to make your asset valueable for potential
+holders.
+When <em>Accounting</em> is checked, a fresh wallet will be attached to the new asset.</p>
+     <bail:form method="post">
+      <input name="action" readonly="readonly" title="action" type="text" value="issue"></input>
+      <xsl:copy-of select="$keeplogin"></xsl:copy-of>
+      <p>Accept <input class="amount" name="amount" size="5" title="amount" type="text"></input> units under title <input class="subject" name="title" title="title" type="text"></input></p>
+      <h4>Terms &amp; Conditions</h4>
+      <textarea class="terms" cols="40" name="text" rows="6" title="text"></textarea>
+      <br></br>
+      <label title="Check to attach a new wallet to the Ricardian Contract.">Accounting</label>
+      <input name="wallet" title="wallet" type="checkbox" value="yes"></input>
+      <input type="submit" value="Sign Contract"></input>
+     </bail:form>
+    </fieldset>
+    <fieldset id="ledger" title="Transaction Records">
+     <legend>Ledger</legend>
+     <p class="help">The <em>Ledger</em> shows all transactions in the wallet.</p>
+     <bail:form method="post">
+      <table>
+       <thead>
+        <tr>
+         <th>#</th>
+         <th>##</th>
+         <th colspan="2">Status</th>
+         <th colspan="2">Amount</th>
+         <th>Asset</th>
+         <th>Mandant</th>
+         <th>Text</th>
+         <th>Booked</th>
+        </tr>
+       </thead>
+       <tbody>
+        <xsql:for-each select="select *, 1 as old from transactions
+where status!=&apos;closed&apos; and status!=&apos;finalized&apos; order by no">
+         <xsl:call-template name="transaction.display"></xsl:call-template>
+        </xsql:for-each>
+       </tbody>
+      </table>
+      <input name="action" readonly="readonly" title="action" type="text" value="expunge"></input>
+      <xsl:copy-of select="$keeplogin"></xsl:copy-of>
+      <input type="submit" value="expunge checked records"></input>
+     </bail:form>
+    </fieldset>
+    <fieldset title="Assets in this account.">
+     <legend>Inventory</legend>
+     <p class="help">The <em>Inventory</em>, which lists the current balance for all assets.</p>
+     <table>
+      <tr>
+       <th colspan="2">Balance</th>
+       <th title="Total count of this asset.">Total</th>
+       <th align="left" title="Payment Instrument">Asset</th>
+      </tr>
+      <xsql:for-each select="select value, active, coalesce(total,&apos;n/a&apos;) as total, instrument, comment from balance where value != 0">
+       <tr>
+        <xsl:choose>
+         <xsl:when test="active/text()!=1">
+          <td class="empty"></td>
+          <td class="amount liability">
+           <xsl:value-of select="value" />
+          </td>
+         </xsl:when>
+         <xsl:otherwise>
+          <td class="amount">
+           <xsl:copy-of select="value/text()"></xsl:copy-of>
+          </td>
+          <td class="empty"></td>
+         </xsl:otherwise>
+        </xsl:choose>
+        <td align="right" class="fineprint empty">
+         <xsl:copy-of select="total/text()"></xsl:copy-of>
+        </td>
+        <td class="asset">
+         <bail:copy-of>
+define get(key)
+  sxpath((list key '*text*)) current-node()
+
+define instrument string-&gt;oid( data(get('instrument)) )
+
+define comment
+ let ((x get('comment)))
+  if or( not(x) equal?(data(x) "#f") )
+   literal instrument
+   x
+
+define request
+ SXML $ form (satisfaction ,literal(instrument))
+
+SXML
+ a {* @
+href $$( ,read-locator (,instrument) )
+class "extern"
+target "_blank"
+*} $$(,comment)
+ " "
+ a {* @
+href $$( ,read-locator body: ,request )
+class "intern"
+*} "edit"
+         </bail:copy-of>
+        </td>
+       </tr>
+      </xsql:for-each>
+     </table>
+    </fieldset>
+    <fieldset id="counterparties" title="List of accounts as know by this account.">
+     <legend>Counterparties</legend>
+     <p class="help">A "buddy list" attaching nick names to OIDs of counterpartie's wallets.</p>
+     <xsql:query row-element="tr" rowset-element="table">
+      select title as td, contract as td from accounts
+     </xsql:query>
+    </fieldset>
+    <h2>Wallet Management</h2>
+    <fieldset id="changeskin" title="Upload a file to change the visual appearance.">
+     <legend>Change Skin</legend>
+     <div class="help">
+      <p>A skin is a program replacing the default user interface, i.e. this one.</p>
+      <p>To ensure a broken <em>skin</em> can not deny the user control over the wallet,
+the  <a href="?reset"><code>?reset</code></a>-interface can not be captured by skins.</p>
+     </div>
+     <bail:form enctype="multipart/form-data" method="post">
+      <input name="body" title="body" type="file"></input>
+      <label for="remove">remove</label>
+      <input name="remove" title="remove" type="checkbox" value="yes"></input>
+      <input name="action" readonly="readonly" title="action" type="text" value="changeskin"></input>
+      <input type="submit" value="Change"></input>
+     </bail:form>
+    </fieldset>
+    <fieldset id="changeicon" title="Upload a file to change the icon.">
+     <legend>Change Icon</legend>
+     <bail:form enctype="multipart/form-data" method="post">
+      <input name="icon" title="icon" type="file"></input>
+      <input name="action" readonly="readonly" title="action" type="text" value="changeskin"></input>
+      <input type="submit" value="Change"></input>
+     </bail:form>
+    </fieldset>
+    <fieldset id="changeapp" title="Upload a file to change the application.">
+     <legend>Change Application</legend>
+     <div class="help">
+      <p>An application is a program partialy replacing the user
+      interface for unauthenticated access to the wallet.</p>
+     </div>
+     <bail:form enctype="multipart/form-data" method="post">
+      <input name="app" title="app" type="file"></input>
+      <label for="remove">remove</label>
+      <input name="remove" title="remove" type="checkbox" value="yes"></input>
+      <input name="action" readonly="readonly" title="action" type="text" value="changeskin"></input>
+      <input type="submit" value="Change"></input>
+     </bail:form>
+    </fieldset>
+    <fieldset>
+     <legend>Authenticate using anonymous Code</legend>
+     <bail:form method="get">
+      <input name="login" title="login" type="password"></input>
+     </bail:form>
+     <a href="/LOGOUT">Log out</a>
+    </fieldset>
+    <fieldset>
+     <legend>Set Access Code</legend>
+     <xsl:copy-of select="$help-access"></xsl:copy-of>
+     <bail:form method="post">
+      <xsl:copy-of select="$keeplogin"></xsl:copy-of>
+      <label>Secret</label>
+      <input name="secret" size="38" title="secret" type="password"></input>
+      <bail:if test="service-level()">
+       <p>Suppling an empty code will remove anonymous access.</p>
+      </bail:if>
+      <label for="readonly">Read Only</label>
+      <input checked="checked" name="readonly" title="readonly" type="checkbox" value="1"></input>
+      <input name="action" readonly="readonly" title="action" type="text" value="secret"></input>
+      <input type="submit" value="Set Code"></input>
+     </bail:form>
+    </fieldset>
+    <fieldset title="Preferred Title and Terms&amp;Conditions.">
+     <legend>Title</legend>
+     <bail:form method="post">
+      <xsl:copy-of select="$keeplogin"></xsl:copy-of>
+      <label>Title</label>
+      <bail:input name="title" type="text" xsl:value="$here/head/title/text()"></bail:input>
+      <p class="help">Terms for display on this account.
+Markdown formatting may be used as with <em>terms and conditions</em> elsewhere.
+The resulting html will be stripped from active content for safe inclusion.</p>
+      <label>Text</label>
+      <br></br>
+      <textarea cols="40" name="text" rows="5" title="text">
+       <xsl:apply-templates mode="as-markdown" select="$here/body/div[@id='terms']"/>
+      </textarea>
+      <br></br>
+      <label>Header</label>
+      <br></br>
+      <textarea cols="40" name="header" rows="5" title="header">
+       <xsl:apply-templates mode="as-markdown" select="$here/body/div[@id='header']"/>
+      </textarea>
+      <br></br>
+      <label>Preamble</label>
+      <br></br>
+      <textarea cols="40" name="preamble" rows="5" title="preamble">
+       <xsl:apply-templates mode="as-markdown" select="$here/body/div[@id='preamble']"/>
+      </textarea>
+      <br></br>
+      <label>Postamble</label>
+      <p>If the postamble is not empty, it will be used instead of the default fineprint.</p>
+      <textarea cols="40" name="postamble" rows="5" title="postamble">
+       <xsl:apply-templates mode="as-markdown" select="$here/body/div[@id='postamble']"/>
+      </textarea>
+      <br></br>
+      <label>Footer</label>
+      <br></br>
+      <textarea cols="40" name="footer" rows="5" title="footer">
+       <xsl:apply-templates mode="as-markdown" select="$here/body/div[@id='footer']"/>
+      </textarea>
+      <br></br>
+      <input name="action" readonly="readonly" title="action" type="text" value="change"></input>
+      <input type="submit" value="Set Title"></input>
+     </bail:form>
+    </fieldset>
+    <fieldset>
+     <legend>Change CSS</legend>
+     <p class="help">Change CSS.</p>
+     <bail:form method="post">
+      <textarea class="executable" cols="80" name="css" rows="30" title="css">
+       <xsl:copy-of select="$css/text()"></xsl:copy-of>
+      </textarea>
+      <br></br>
+      <input name="action" readonly="readonly" title="action" type="text" value="change"></input>
+      <input type="submit" value="Change CSS"></input>
+     </bail:form>
+    </fieldset>
+    <fieldset>
+     <legend>Commissioned Notaries</legend>
+     <bail:form method="post">
+      <input name="action" readonly="readonly" title="action" type="text" value="commission"></input>
+      <input name="name" size="35" title="name" type="text"></input>
+      <input type="submit" value="submit"></input>
+     </bail:form>
+     <table>
+      <bail:for-each select="sxpath(&apos;(Bag li))(message-replicates(current-place()))">
+       <tr>
+        <bail:copy-of>
+define host-id attribute-string('resource current-node())
+
+SXML
+ td $ a {* @ \\ href ,read-locator(list(host-id)) *} ,literal(host-id)
+ td $ form {* @
+method "post"
+action ,write-locator(message-location(current-message()))
+*}
+  input {* @ \\ type "hidden" \\ name "name" \\ value ,host-id *}
+  input {* @ \\ type "hidden" \\ name "action" \\ value "commission" *}
+  input {* @ \\ type "submit" \\ value "off" *}
+	</bail:copy-of>
+       </tr>
+      </bail:for-each>
+     </table>
+    </fieldset>
+    <fieldset>
+     <legend>Protection</legend>
+     <bail:form method="post">
+      <input name="action" readonly="readonly" title="action" type="text" value="protect"></input>
+      <bail:input name="protect" size="60" title="protect" type="text" bail:value="right-&gt;string $ message-protection current-place()"></bail:input>
+      <input type="submit" value="submit"></input>
+     </bail:form>
+    </fieldset>
+   </body>
+  </html>
+ </xsl:template>
+<!--
+
+This template dispatchs requests to *read* this Wallet.  Mutation is
+handled by the "request[@type='write']" template below.
+
+-->
+ <xsl:template match="request[@type=&apos;read&apos;]">
+  <xsl:choose>
+<!--
+
+Pre Initialization.
+
+-->
+   <bail:when test="not link-ref(&quot;holder statement&quot;)">
+    <html xmlns="http://www.w3.org/1999/xhtml">
+     <head>
+      <title>Fresh Wallet</title>
+      <xsl:copy-of select="$htmlheaders"></xsl:copy-of>
+      <meta content="0" http-equiv="expires"></meta>
+      <meta content="Wallet" name="ContractType"></meta>
+     </head>
+     <body>
+      <fieldset>
+       <legend>Fresh Wallet</legend>
+       <bail:form method="post">
+        <h3 class="subject">Fresh Wallet</h3>
+        <p>Derived from <strong class="sender"><xsl:copy-of select="$here/head/title/text()"></xsl:copy-of></strong>.</p>
+        <p>This could be your wallet. Push the <code>take</code> button to set accept the wallet.</p>
+        <label>Title</label>
+        <input class="subject" name="title" size="38" title="title" type="text"></input>
+        <h4>Terms &amp; Conditions</h4>
+        <xsl:copy-of select="$holderstatement"></xsl:copy-of>
+        <h4>Access Code</h4>
+        <xsl:copy-of select="$help-access"></xsl:copy-of>
+        <label>Secret</label>
+        <input name="secret" size="38" type="password"></input>
+        <input type="submit" value="take"></input>
+        <p class="help">Note: when doing so anonymous, you are going to be fooled by the cache.
+Reload the result after no less than 10 seconds.</p>
+       </bail:form>
+      </fieldset>
+      <xsl:copy-of select="$wallet-witness"></xsl:copy-of>
+     </body>
+    </html>
+   </bail:when>
+<!--
+
+Access control.
+
+-->
+   <xsl:when test="$auth=&apos;&apos;">
+    <xsl:choose>
+     <bail:when test="and link-ref(&quot;app&quot;) pair?(message-destination(current-message()))">
+      <bail:copy-of>xdslt fetch("app" body: #f) current-node()</bail:copy-of>
+     </bail:when>
+     <xsl:otherwise>
+      <html xmlns="http://www.w3.org/1999/xhtml">
+       <head>
+        <title>
+         <xsl:copy-of select="$here/head/title/text()"></xsl:copy-of>
+        </title>
+        <meta content="Wallet" name="ContractType"></meta>
+        <xsl:copy-of select="$htmlheaders"></xsl:copy-of>
+       </head>
+       <body>
+        <xsl:variable name="default">
+         <table class="subject">
+          <tr>
+           <td title="Title">
+            <h1>
+             <xsl:copy-of select="$here/head/title/text()"></xsl:copy-of>
+            </h1>
+           </td>
+           <td title="OID">
+            <code>
+             <bail:copy-of>literal self-reference()</bail:copy-of>
+            </code>
+           </td>
+          </tr>
+         </table>
+         <fieldset>
+          <legend>Login if you can.</legend>
+          <bail:form method="get">
+           <input name="login" type="password"></input>
+           <input name="try" type="submit"></input>
+          </bail:form>
+         </fieldset>
+         <xsl:copy-of select="$wallet-witness"></xsl:copy-of>
+        </xsl:variable>
+        <xsl:choose>
+         <bail:when test="link-ref(&quot;skin&quot;)">
+          <bail:copy-of>
+guard
+ exception $ else
+  node-list literal(exception) xsl-variable("default")
+ xdslt fetch("skin" body: #f) current-node()
+        </bail:copy-of>
+         </bail:when>
+         <xsl:otherwise>
+          <xsl:copy-of select="$default"></xsl:copy-of>
+         </xsl:otherwise>
+        </xsl:choose>
+       </body>
+      </html>
+     </xsl:otherwise>
+    </xsl:choose>
+   </xsl:when>
+   <bail:when test="pair?( message-destination(current-message()) )">
+    <bail:copy-of>fetch message-destination(current-message())
+ ;; Tidious: Need to strip the login info here.
+ body:
+ if node-list-empty?(xsl-variable("login"))
+    message-body(current-message())
+    let {*
+msg document-element(message-body(current-message())) ;; Skip PI
+*} $ make element gi: gi(msg) ns: ns(msg) attributes: copy-attributes(msg)
+      filter
+       lambda (x) not( eq?(gi(x) 'login) )
+       children msg
+    </bail:copy-of>
+   </bail:when>
+   <bail:when test="is-meta-form?(current-message())">
+<!--
+
+  The form "meta:view" provides generic low level access.
+
+  -->
+    <meta:view></meta:view>
+   </bail:when>
+   <xsl:when test="form/reset">
+    <html xmlns="http://www.w3.org/1999/xhtml">
+     <head>
+      <title>Manage Wallet</title>
+      <xsl:copy-of select="$htmlheaders"></xsl:copy-of>
+      <meta content="0" http-equiv="expires"></meta>
+     </head>
+     <body>
+      <xsl:copy-of select="$subjecthead"></xsl:copy-of>
+      <xsl:choose>
+       <xsl:when test="$authwrite=&apos;&apos;">
+        <p>You don't have permissions to change!</p>
+       </xsl:when>
+       <xsl:otherwise>
+        <fieldset title="Upload a file to change the visual appearance.">
+         <legend>Change Skin</legend>
+         <bail:form enctype="multipart/form-data" method="post">
+          <input name="body" type="file"></input>
+          <input name="action" type="hidden" value="changeskin"></input>
+          <label for="remove">remove</label>
+          <input name="remove" title="check to remove skin" type="checkbox" value="yes"></input>
+          <input type="submit" value="Change"></input>
+         </bail:form>
+        </fieldset>
+       </xsl:otherwise>
+      </xsl:choose>
+     </body>
+    </html>
+   </xsl:when>
+<!--
+
+This test must be changed to turn a skin into base source and vise versa.
+
+#f: for skins.  (Test fails avoiding endless recursion)
+#t: for base source.  (Will switch to skin.)
+
+ -->
+   <bail:when test="and #t link-ref(&quot;skin&quot;)">
+    <bail:copy-of>
+guard
+ exception $ else
+  node-list $ SXML $ pre ,literal(exception) ;;xsl-variable(apply: "html")
+ xdslt fetch("skin" body: #f) current-node()
+    </bail:copy-of>
+   </bail:when>
+<!--
+
+Issuing payment instruments is currently a two step process for no
+better reason than simplicity of implementation.
+
+-->
+   <bail:when test="positive?  sql-ref( &quot;select exists (select id from status where value = \&quot;unconfirmed\&quot;)&quot;) ">
+    <html xmlns="http://www.w3.org/1999/xhtml">
+     <head>
+      <title>New Asset</title>
+      <meta content="0" http-equiv="expires"></meta>
+      <xsl:copy-of select="$htmlheaders"></xsl:copy-of>
+     </head>
+     <body>
+      <xsl:variable name="link">
+       <xsql:value-of>select concat('Asset-', no) from next_instrument</xsql:value-of>
+      </xsl:variable>
+      <xsl:variable name="instrument">
+       <bail:copy-of>fetch xsl-variable("link")</bail:copy-of>
+      </xsl:variable>
+      <xsl:copy-of select="$subjecthead"></xsl:copy-of>
+      <xsl:call-template name="asset.display">
+       <xsl:with-param name="id">
+        <bail:copy-of>literal link-ref(xsl-variable("link")) </bail:copy-of>
+       </xsl:with-param>
+       <xsl:with-param name="notice">
+        <xsl:copy-of select="$instrument"></xsl:copy-of>
+       </xsl:with-param>
+       <xsl:with-param name="action">
+        <input name="action" readonly="readonly" title="action" type="text" value="confirm"></input>
+        <input type="submit" value="Confirm"></input>
+       </xsl:with-param>
+      </xsl:call-template>
+     </body>
+    </html>
+   </bail:when>
+   <bail:when test="= 1 $ sql-ref &apos;(select exists (select no from transactions
+where (status = &quot;outgoing&quot; or status = &quot;confirmed&quot;)))">
+    <html xmlns="http://www.w3.org/1999/xhtml">
+     <head>
+      <title>Pending Activity</title>
+      <meta content="Wallet" name="ContractType"></meta>
+      <meta content="0" http-equiv="expires"></meta>
+      <xsl:copy-of select="$htmlheaders"></xsl:copy-of>
+     </head>
+     <body>
+      <xsl:copy-of select="$subjecthead"></xsl:copy-of>
+      <fieldset>
+       <legend>Pending Activity</legend>
+       <p class="help">You have notices to send.
+Please transfer the <code class="extern">code</code> to the receiver.</p>
+       <table>
+        <xsql:for-each select="select *, 0 as old from transactions where (status = &apos;outgoing&apos; or status = &apos;confirmed&apos;)">
+         <xsl:call-template name="transaction.display"></xsl:call-template>
+        </xsql:for-each>
+       </table>
+       <bail:form method="post">
+        <input name="action" readonly="readonly" title="action" type="text" value="expunge"></input>
+        <xsl:copy-of select="$keeplogin"></xsl:copy-of>
+        <input type="submit" value="Done"></input>
+       </bail:form>
+      </fieldset>
+      <xsl:if test="form/satisfaction!=&apos;&apos;">
+       <fieldset>
+        <xsl:copy-of select="$notice-view"></xsl:copy-of>
+       </fieldset>
+      </xsl:if>
+      <xsl:copy-of select="$help-wallet"></xsl:copy-of>
+     </body>
+    </html>
+   </bail:when>
+   <xsl:otherwise>
+    <xsl:call-template name="html"></xsl:call-template>
+   </xsl:otherwise>
+  </xsl:choose>
+ </xsl:template>
+<!--
+
+Compute the protection to be used for documents passed to 'account'.
+
+This has little to do the wallet logic. It effects the access control
+when used from authenticated accounts and my result orders readable
+only via the receiving accounts.
+
+-->
+ <xsl:template name="protection">
+  <xsl:param name="to"></xsl:param>
+  <bail:copy-of>
+if equal?( member( public-oid() message-protection(current-place()) )  list(public-oid()) )
+ "public"
+ right-&gt;string $ list
+   self-reference()
+   my-oid()
+   string-&gt;oid(data(xsl-variable("to")))
+   my-oid()
+  </bail:copy-of>
+ </xsl:template>
+<!--
+
+This template handles updates.
+
+-->
+ <xsl:template match="request[@type=&apos;write&apos;]">
+  <xsl:choose>
+   <bail:when test="not link-ref(&quot;holder statement&quot;)">
+<!--
+
+Initialization.  Issue and link the "holder statement" and set up the accounting database.
+
+-->
+    <core:reply>
+     <core:link name="holder statement">
+      <bail:new protection="public" xsl:action="$immutable">
+       <html xmlns="http://www.w3.org/1999/xhtml" xmlns:core="http://www.askemos.org/2000/CoreAPI#">
+        <head>
+         <title>Statement Of Acceptence</title>
+         <meta content="HolderStatement" name="ContractType"></meta>
+         <xsl:copy-of select="$htmlheaders"></xsl:copy-of>
+        </head>
+        <body>
+         <div class="content">
+          <h1 class="receipt">Receipt</h1>
+          <h2 class="subject" title="title initially given to the account">
+           <xsl:copy-of select="form/title/text()"></xsl:copy-of>
+          </h2>
+          <xsl:copy-of select="$holderstatement"></xsl:copy-of>
+         </div>
+         <xsl:copy-of select="$witness-record"></xsl:copy-of>
+         <blockquote class="fineprint">This receipt may itself be used as meta contract.  Derived objects are immutable.  This is asserted by the inclusion of the code below.</blockquote>
+         <core:method type="propose">
+          <core:programlisting class="executable">public-place()</core:programlisting>
+         </core:method>
+        </body>
+       </html>
+      </bail:new>
+     </core:link>
+     <update>
+create table instruments(
+id integer primary key autoincrement,
+contract text not null,
+total integer,
+active boolean,
+consumed boolean default 0,
+comment text unique,
+unique(contract));
+create index instruments_by_contract on instruments(contract);
+
+create view next_instrument as select 1+coalesce(max (id),0) as no from instruments;
+     </update>
+     <update>
+create table status(id integer unique, value text unique, arg1 text, arg2 text, unique(id,value));
+     </update>
+     <update>
+create table tstate (id integer primary key, name text);
+insert into tstate values(1, 'outgoing');
+insert into tstate values(2, 'confirmed');
+insert into tstate values(3, 'sent');
+insert into tstate values(4, 'completed');
+insert into tstate values(5, 'closed');
+insert into tstate values(6, 'finalized');
+
+create table transactions0(
+no integer primary key autoincrement,
+value integer,
+instrument integer references instrument(id),
+booked datetime,
+status integer references tstate(id),
+direction integer default 0,
+mandant text,
+contract text not null,
+matches text,
+comment text
+);
+create unique index transactions_by_contract on transactions0(contract);
+-- Index transactions_by_matches must be unique to avoid double spend.
+create unique index transactions_by_matches on transactions0(matches);
+create index transactions_by_mandant on transactions0(mandant);
+create index transactions_sort on transactions0(status,no);
+     </update>
+     <update>
+create table accounts(contract text primary key, title text unique);
+create trigger accounts_insert before insert on accounts for each row
+ when exists (select title from accounts where title = new.title)
+ begin select raise(abort, 'Aborted because an account under that title exists.'); end;
+     </update>
+     <update>
+create table notaries(contract text primary key, title text unique);
+create trigger notaries_insert before insert on notaries for each row
+ when exists (select title from notaries where title = new.title)
+ begin select raise(abort, 'Aborted because a notary under that title exists.'); end;
+     </update>
+     <update>
+-- insert into notaries values('A676f87bc71d5ba036887a23c8d3e039e','Peanut');
+     </update>
+     <update>
+create view transactions as
+ select t.no as no, coalesce(t.value,'n/a') as value, coalesce(i.contract,'n/a') as instrument, coalesce(i.comment, 'n/a') as name, t.booked as booked, t.contract as contract, t.matches as matches,
+  s.id as sn, s.name as status, t.direction as direction, t.comment as comment,
+  t.mandant as mandant,
+  coalesce(a.title, substr(t.mandant,1,7) || '..' || substr(t.mandant,-2,2)) as counterparty,
+  cast(i.active as boolean) != cast(t.direction as boolean) as color
+ from transactions0 as t left join instruments as i on i.id=t.instrument
+ join tstate as s on s.id = t.status
+ left join accounts as a on a.contract=t.mandant;
+
+create trigger delete_transactions instead of delete on transactions for each row
+begin
+ update transactions0 set status=6, value=null, instrument=null, booked=null,
+  mandant=null, comment=null where status=5;
+end;
+
+create view processed as select no, contract, matches from transactions0;
+
+create view next_transaction as select coalesce(1+max(no),1) as no from transactions;
+
+create table balance0(value number, instrument integer references intrument(id), unique(instrument));
+
+create view balance as
+ select b.value as value, i.contract as instrument, i.total as total, i.active, i.comment as comment
+ from balance0 as b join instruments as i on i.id = b.instrument;
+     </update>
+     <update>
+create view instruments_insert as select * from instruments;
+create trigger ensure_instrument instead of insert on instruments_insert for each row
+when not exists (select id from instruments where contract = new.contract)
+begin
+  insert into instruments(contract,total,active,comment)
+   values(new.contract,new.total,new.active,new.comment);
+end;
+
+create trigger insert_balance instead of insert on balance for each row
+ begin
+  insert into instruments_insert(contract,total,active,comment)
+    values(new.instrument,new.value,new.active,new.comment);
+  insert into balance0(value, instrument)
+   select new.value, id from instruments where contract = new.instrument;
+ end;
+     </update>
+<!--
+     <update>
+insert into balance(value,instrument,comment)
+ values(1, <xsql:literal bail:select="literal self-reference()"/>, 'All I can give.');
+     </update>
+-->
+     <update>
+create trigger update_balance instead of update on balance for each row
+ begin
+  update balance0 set value = value - new.value
+   where instrument = (select id from instruments where contract = new.instrument);
+  select case when exists (select value from balance0 where 0 &gt; value) then
+   raise(abort, 'transaction results in negative balance') end;
+ end;
+
+create trigger new_transaction instead of insert on transactions for each row
+ -- this is really strange: negative values are accepted here.  Dunno why.
+ -- To be really sure, we take the ABSsolute value now.
+ when new.value &gt; 0
+ begin
+  insert into transactions0(value,instrument,mandant,booked,status,contract,comment)
+   select abs(new.value), id, new.mandant, new.booked, 1, new.contract, new.comment
+   from instruments where contract = new.instrument;
+  update balance set value = abs(new.value) where instrument = new.instrument;
+ end;
+     </update>
+     <update>
+create view income as
+ select t.no as no, t.value as value, i.contract as instrument, i.total as total,
+  i.contract as title, t.mandant as mandant, t.contract as voucher, t.booked as booked,
+  s.name as status, t.matches as matches, t.comment as comment
+ from transactions0 as t join instruments as i on i.id=t.instrument
+ join tstate as s on s.id = t.status;
+
+create trigger new_income instead of insert on income for each row
+ begin
+  insert into instruments_insert(contract,total,comment) values(new.instrument,new.total,new.title);
+  update instruments set consumed=1 where contract=new.instrument;
+  insert or ignore into balance0(value,instrument)
+   select 0, id from instruments where contract = new.instrument;
+  insert into transactions0(value,instrument,mandant,contract,booked,status,matches,direction,comment)
+   select abs(new.value), id, new.mandant, new.voucher, new.booked, 2, new.matches, 1, new.comment
+   from instruments where contract = new.instrument;
+  update balance set value = -abs(new.value) where instrument = new.instrument;
+ end;
+
+create view resolved as
+ select s.no as source, t.no as target
+ from transactions0 as s join transactions0 as t on t.matches=s.contract;
+     </update>
+     <update>
+-- Two anonymous entry codes.
+create table login(id integer primary key, secret text, readonly integer);
+insert into login(id,readonly) values(1,1);
+insert into login(id,readonly,secret) values(2,0,
+<bail:copy-of>
+define secret data(form-field('secret))
+if string-null?(secret) "null"
+ literal "'" secret-encode(secret) "'"
+</bail:copy-of>);
+     </update>
+     <become>
+<!--
+
+Set the title of this wallet.  Inherit all other state.
+
+-->
+      <html>
+       <head>
+        <title>
+         <xsl:value-of select="form/title"></xsl:value-of>
+        </title>
+        <xsl:copy-of select="$here/head/style"></xsl:copy-of>
+       </head>
+       <xsl:copy-of select="$here/body"></xsl:copy-of>
+      </html>
+     </become>
+    </core:reply>
+   </bail:when>
+   <xsl:when test="$authwrite!=&apos;&apos;">
+<!--
+
+Payment logic in handled this case.
+
+-->
+    <core:reply>
+     <xsl:choose>
+<!--
+
+We dispatch on the "action" field of the form.
+
+-->
+      <xsl:when test="form/action=&apos;pay&apos;">
+       <xsl:variable name="terms">
+        <xsl:apply-templates mode="markdown2xml" select="form/text"/>
+       </xsl:variable>
+       <core:letseq>
+        <bindings>
+         <bind name="order">
+         <bail:new proof="origin" bail:protection="xsl-variable apply: &quot;protection&quot; param: &quot;to&quot; data(form-field(&apos;receiver))" xsl:action="$immutable">
+          <link name="asset">
+          <id>
+           <xsl:value-of select="form/instrument"/>
+          </id>
+          </link>
+          <xsl:call-template name="attach-links">
+           <xsl:with-param name="from">
+            <xsl:apply-templates mode="find-links" select="$terms"/>
+           </xsl:with-param>
+          </xsl:call-template>
+          <bail:copy-of>
+define to
+ string-&gt;oid data(form-field('receiver))
+
+if sybil?(string-&gt;oid(data(form-field('instrument))) to)
+ raise "Receiver rejected for being possibly sybil to choosen instrument."
+
+replicates-join current-place() to
+	  </bail:copy-of>
+          <html xmlns="http://www.w3.org/1999/xhtml">
+           <head>
+            <title>
+             <xsl:value-of select="form/title"></xsl:value-of>
+            </title>
+            <meta content="Order" name="ContractType"></meta>
+            <bail:meta name="From" bail:content="oid-&gt;string self-reference()"></bail:meta>
+            <bail:meta name="To" xsl:content="form/receiver"></bail:meta>
+            <bail:meta name="Amount" xsl:content="form/amount"></bail:meta>
+            <bail:meta name="Instrument" xsl:content="form/instrument"></bail:meta>
+            <xsl:copy-of select="$htmlheaders"></xsl:copy-of>
+           </head>
+           <body>
+            <xsl:copy-of select="$precontent"></xsl:copy-of>
+            <div class="content">
+            <h1 class="order formal">Order</h1>
+            <p class="formal"><label>I, </label><em class="sender" title="account title at time of signature"><xsl:value-of select="$here/head/title"></xsl:value-of></em><label>, the signatory, send </label><strong class="amount" title="amount"><xsl:value-of select="form/amount"></xsl:value-of></strong>
+in <xsl:call-template name="instrument-official"><xsl:with-param name="contract"><xsl:value-of select="form/instrument"></xsl:value-of></xsl:with-param></xsl:call-template><label> at </label><span class="date"><bail:copy-of>date-&gt;string message-date(current-message()) "~Y-~m-~d ~H:~M:~S"</bail:copy-of></span><label> for</label></p>
+            <blockquote class="subject">
+             <p title="Title">
+              <xsl:copy-of select="form/title/text()"></xsl:copy-of>
+             </p>
+            </blockquote>
+            <p class="formal">
+             <label>from account </label>
+             <code>
+              <bail:copy-of>
+define href read-locator(self-reference())
+SXML $ a @( href(,href) title("outgoing account") class("sender") ) ,literal(self-reference())</bail:copy-of>
+             </code>
+             <label> to account </label>
+             <bail:copy-of>
+define to string-&gt;oid( data(form-field('receiver)) )
+define href read-locator(to)
+define title sxpath('(head title))(fetch(to body: #f))
+SXML $ a @( href(,href) title("receiving account") class("receiver") ) ,data(title) " OID: " code(,literal(to))</bail:copy-of>
+             <label> .</label>
+            </p>
+            <div id="terms" class="terms">
+	     <xsl:copy-of select="$terms"/>
+            </div>
+            </div>
+            <xsl:copy-of select="$witness-record"></xsl:copy-of>
+           </body>
+          </html>
+         </bail:new>
+         </bind>
+        </bindings>
+        <bail:link bail:name="sql-ref &apos;(select concat ( &quot;Payment-&quot; : no ) from next_transaction)">
+         <bail:ref>order</bail:ref>
+        </bail:link>
+        <update parameterized="yes">
+	 <template>
+	  insert into transactions(value, instrument, mandant, comment, booked, contract)
+	  values(?1, ?2, ?3, ?4, ?5, ?6)
+	 </template>
+         <bail:copy-of>
+define amount
+ floor
+  string-&gt;number
+   data form-field('amount)
+
+define number
+ sql-ref "select no from next_transaction"
+
+define instrument
+ string-&gt;oid
+  data form-field('instrument)
+
+define comment
+ data form-field('title)
+
+define receiver
+ string-&gt;oid
+  data form-field('receiver)
+
+or receiver raise("No valid address to pay to.")
+or positive?(amount) raise("Negative Payment Not Acceptable!")
+
+SXML
+ with-param ,amount
+ with-param ,literal(instrument)
+ with-param ,literal(receiver)
+ with-param ,comment
+ with-param ,date->string(message-date(current-message()) "~Y-~m-~d ~H:~M:~S")
+         </bail:copy-of>
+         <with-param><core:ref>order</core:ref></with-param>
+        </update>
+      </core:letseq>
+      </xsl:when>
+      <xsl:when test="form/action='confirm'">
+<!-- confirmation step after 'issue' -->
+       <update parameterized="yes">
+        <bail:copy-of>
+define balance
+ sql-ref "select arg1 from status where id = 1" 0 0
+
+define contract
+ link-ref
+   sql-ref  '(select concat ("Asset-" : arg2) from status) 0 0
+
+define active
+ if equal?( data(form-field('active)) "1") 1 0
+
+define comment
+ data form-field('comment)
+
+SXML
+ template "insert into balance(value, instrument, active, comment) values(?1, ?2, ?3, ?4)"
+ with-param ,balance
+ with-param ,literal(contract)
+ with-param ,active
+ with-param ,comment
+	 </bail:copy-of>
+       </update>
+       <update>update status set value = null where id = 1</update>
+       <xsl:if test="form/wallet/text()!=&apos;&apos;">
+	<xsl:if test="form/wallettitle = ''">
+	 <bail:copy-of>error "A title is required for new wallet."</bail:copy-of>
+	</xsl:if>
+        <update parameterized="yes">
+         <template>insert or replace into accounts(contract, title) values(?1, ?2)</template>
+	 <with-param><xsl:value-of select="form/wallet"/></with-param>
+	 <with-param><xsl:value-of select="form/wallettitle"/></with-param>
+        </update>
+       </xsl:if>
+      </xsl:when>
+      <xsl:when test="form/action='accept'">
+<!-- Incoming Payment -->
+       <xsl:variable name="received">
+<!-- Extract payment info and do some sanity checks. -->
+        <bail:copy-of>
+define raw data(form-field('satisfaction))
+define income
+ cond
+  pcre("(A[[:xdigit:]]{32})")( raw ) =&gt;
+   lambda (m) string-&gt;oid(cadr(m))
+  else raise("Payment Not Found.")
+
+define complying
+ let {* from source-contract(income) *}
+  or
+   eq? current-contract() from
+   ;; We also allow literally equal contracts.
+   equal?
+      fetch message-body/plain current-contract() body: #f
+      fetch message-body/plain from body: #f
+   ;; allowing the last version here to migrate funds.
+   let {* other sxpath('(acceptable id *text*))(fetch(current-contract() body: #f)) *}
+     or member(literal(from) other)
+
+define notice
+ and complying
+  fetch income body: #f
+
+define get(key notice)
+ and notice
+  attribute-string 'content
+   sxpath(`( head (meta (@ (equal? (name ,key)))) )) notice
+
+define amount
+  string-&gt;number get("Amount" notice)
+
+define instrument
+  string-&gt;oid get("Instrument" notice)
+
+define from
+  string-&gt;oid get("From" notice)
+
+define total
+ get "Value" fetch(instrument body: #f)
+
+define to
+  string-&gt;oid get("To" notice)
+
+define order
+ and notice
+  attribute-string 'href
+   sxpath('( head (link (@ (equal? (title "Order")))) ))
+    notice
+
+if sybil?( instrument income )
+ raise "Possibly sybil rejected."
+
+or
+ and from positive?(amount) instrument eq?(to self-reference())
+ raise "Payment Not Acceptable!"
+ 
+SXML
+ receipt
+  from ,literal(from)
+  amount ,literal(amount)
+  instrument ,literal(instrument)
+  total ,total
+  title $$( ,data(form-field('title)) )
+  payment ,literal(income)
+  order ,literal(order)
+        </bail:copy-of>
+       </xsl:variable>
+       <xsl:choose>
+        <xsl:when test="form/receive=&apos;yes&apos;">
+	 <xsl:variable name="terms">
+           <xsl:apply-templates mode="markdown2xml" select="form/text"/>
+	 </xsl:variable>
+         <core:let>
+          <bindings>
+           <bind name="receipt">
+<!-- Issue Receipt.  Readable to the account the payment came from. -->
+          <bail:new proof="origin" bail:protection="xsl-variable apply: &quot;protection&quot; param: &quot;to&quot; sxpath(&apos;(from))(xsl-variable(&quot;received&quot;))" xsl:action="$immutable">
+           <link name="Order">
+            <id>
+             <xsl:value-of select="$received/payment"/>
+            </id>
+           </link>
+           <xsl:call-template name="attach-links">
+            <xsl:with-param name="from">
+             <xsl:apply-templates mode="find-links" select="$terms"/>
+            </xsl:with-param>
+           </xsl:call-template>
+           <bail:copy-of>replicates-join current-place() sxpath('(from))(xsl-variable("received"))</bail:copy-of>
+           <html xmlns="http://www.w3.org/1999/xhtml">
+            <head>
+             <title>Receipt: <xsl:vallue-of select="form/comment"/></title>
+             <meta content="Receipt" name="ContractType"></meta>
+             <bail:link rel="prev" title="Order" xsl:href="$received/payment"></bail:link>
+             <xsl:copy-of select="$htmlheaders"></xsl:copy-of>
+            </head>
+            <body>
+             <xsl:copy-of select="$precontent"></xsl:copy-of>
+             <div class="content">
+              <h1 class="receipt formal">Receipt</h1>
+              <p class="formal">
+               <label>I, </label>
+               <em class="sender">
+                <xsl:value-of select="$here/head/title"/>
+               </em>
+               <label>, the signatory,
+received </label>
+               <strong class="amount" title="amount">
+                <xsl:value-of select="$received/amount"/>
+               </strong>
+               <label> of </label>
+               <xsl:call-template name="instrument-official">
+                <xsl:with-param name="contract" select="$received/instrument"/>
+               </xsl:call-template>
+               <label> in </label>
+               <bail:a class="order" title="payment order" xsl:href="$received/payment">
+                <xsl:value-of select="$received/payment"/>
+               </bail:a>
+               <label> at </label>
+               <span class="date">
+                <bail:copy-of>date-&gt;string message-date(current-message()) "~Y-~m-~d ~H:~M:~S"</bail:copy-of>
+               </span>
+               <label> for </label>
+              </p>
+              <blockquote class="subject" title="Subject">
+               <xsl:value-of select="form/comment"/>
+              </blockquote>
+              <div class="terms">
+               <xsl:copy-of select="$terms"/>
+              </div>
+             </div>
+             <xsl:copy-of select="$witness-record"></xsl:copy-of>
+            </body>
+           </html>
+          </bail:new>
+           </bind>
+          </bindings>
+         <bail:link bail:name="sql-ref &apos;(select concat ( &quot;Receipt-&quot; : no) from next_transaction)"><core:ref>receipt</core:ref>
+         </bail:link>
+<!-- Update local accounting -->
+         <update parameterized="yes">
+	  <template>insert into income(value, booked, instrument, mandant, total, title, matches, comment, voucher) values(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)</template>
+	  <with-param><xsl:value-of select="$received/amount"/></with-param>
+	  <with-param><bail:copy-of select="date-&gt;string message-date(current-message()) &quot;~Y-~m-~d ~H:~M:~S&quot;"/></with-param>
+	  <with-param><xsl:value-of select="$received/instrument"/></with-param>
+	  <with-param><xsl:value-of select="$received/from"/></with-param>
+	  <with-param><xsl:value-of select="$received/total"/></with-param>
+	  <with-param><xsl:value-of select="$received/title"/></with-param>
+	  <with-param><xsl:value-of select="$received/payment"/></with-param>
+	  <with-param><xsl:value-of select="form/comment"/></with-param>
+	  <with-param><core:ref>receipt</core:ref></with-param>
+         </update>
+         </core:let>
+        </xsl:when>
+        <xsl:otherwise>
+         <core:let>
+          <bindings>
+           <bind name="retour">
+<!-- Issue Retour Order.  Readable to the account the payment came from. -->
+          <bail:new proof="origin" bail:protection="xsl-variable apply: &quot;protection&quot; param: &quot;to&quot; sxpath(&apos;(from))(xsl-variable(&quot;received&quot;))" xsl:action="$immutable">
+           <link name="Order">
+            <id>
+             <xsl:value-of select="$received/payment"/>
+            </id>
+           </link>
+           <bail:copy-of>replicates-join current-place() sxpath('(from))(xsl-variable("received"))</bail:copy-of>
+           <html xmlns="http://www.w3.org/1999/xhtml">
+            <head>
+             <title>Retour: <xsl:value-of select="form/comment"/></title>
+             <meta content="Order" name="ContractType"></meta>
+             <bail:meta name="From" bail:content="oid-&gt;string self-reference()"></bail:meta>
+             <bail:meta name="To" xsl:content="$received/from"></bail:meta>
+             <bail:meta name="Amount" xsl:content="$received/amount"></bail:meta>
+             <bail:meta name="Instrument" xsl:content="$received/instrument"></bail:meta>
+             <bail:link rel="prev" title="Order" xsl:href="$received/payment"></bail:link>
+             <xsl:copy-of select="$htmlheaders"></xsl:copy-of>
+            </head>
+            <body>
+             <xsl:copy-of select="$precontent"></xsl:copy-of>
+             <div class="content">
+              <xsl:choose>
+               <xsl:when test="form/receive='yes'">
+                <h1 class="receipt">Receipt</h1>
+               </xsl:when>
+               <xsl:otherwise>
+                <h1 class="order">Retour</h1>
+               </xsl:otherwise>
+              </xsl:choose>
+              <p class="formal"><label>I, </label><em class="sender"><xsl:value-of select="$here/head/title"/></em><label>, the signatory, rejected </label><strong class="amount" title="amount"><xsl:value-of select="$received/amount"/></strong><label> of </label><xsl:call-template name="instrument-official"><xsl:with-param name="contract"><xsl:value-of select="$received/instrument"/></xsl:with-param></xsl:call-template><label> in </label><bail:a class="order" title="payment order" xsl:href="$received/payment"><xsl:value-of select="$received/payment"/></bail:a><label> at </label><span class="date"><bail:copy-of>date-&gt;string message-date(current-message()) "~Y-~m-~d ~H:~M:~S"</bail:copy-of></span><label> for </label><span class="subject" title="Subject"><xsl:value-of select="form/comment"/></span>.</p>
+              <div class="terms">
+               <xsl:apply-templates mode="markdown2xml" select="form/text"/>
+              </div>
+             </div>
+             <xsl:copy-of select="$witness-record"></xsl:copy-of>
+            </body>
+           </html>
+          </bail:new>
+           </bind>
+          </bindings>
+         <bail:link bail:name="sql-ref &apos;(select concat ( &quot;Payment-&quot; : no) from next_transaction)">
+          <core:ref>retour</core:ref>
+         </bail:link>
+<!-- Update local accounting -->
+         <core:update parameterized="yes">
+	  <template>
+	   insert into transactions0(status,mandant,contract,booked,matches,comment) values(1, ?1, ?2, ?3, ?4, ?5)
+	  </template>
+	  <with-param><xsl:value-of select="$received/from"/></with-param>
+	  <with-param><core:ref>retour</core:ref></with-param>
+	  <with-param>
+	   <bail:copy-of>date->string message-date(current-message()) "~Y-~m-~d ~H:~M:~S"</bail:copy-of>
+	  </with-param>
+	  <with-param><xsl:value-of select="$received/payment"/></with-param>
+	  <with-param><xsl:value-of select="form/comment"/></with-param>
+	 </core:update>
+         </core:let>
+         <xsl:variable name="completing">
+          <xsql:query rowset-element="" parameterized="yes">
+	   <template>
+	    select no from transactions0 where 4 > status and contract = ?1
+	   </template>
+	   <with-param><xsl:value-of select="$received/order"/></with-param>
+	  </xsql:query>
+         </xsl:variable>
+         <xsl:for-each select="$completing">
+          <bail:link bail:name="literal &quot;Payment-&quot; data(sxpath(&apos;(no *text*))(current-node()))"></bail:link>
+          <bail:link bail:name="literal &quot;Receipt-&quot; data(sxpath(&apos;(no *text*))(current-node()))">
+           <id>
+            <xsl:value-of select="$received/payment"/>
+           </id>
+          </bail:link>
+          <update parameterized="yes">
+	   <template>
+	    update transactions0 set status = 4, matches = ?1 where 4 > status and no = ?2
+	   </template>
+	  <with-param><xsl:value-of select="$received/payment"/></with-param>
+	  <with-param><xsl:value-of select="no"/></with-param>
+	  </update>
+         </xsl:for-each>
+        </xsl:otherwise>
+       </xsl:choose>
+      </xsl:when>
+      <xsl:when test="form/action='issue'">
+       <xsl:variable name="terms">
+        <xsl:apply-templates mode="markdown2xml" select="form/text"/>
+       </xsl:variable>
+       <xsl:variable name="links-in-terms">
+        <xsl:for-each select="$terms">
+         <xsl:apply-templates mode="find-links"></xsl:apply-templates>
+        </xsl:for-each>
+       </xsl:variable>
+<!-- Issue Asset -->
+       <bail:link bail:name="sql-ref &apos;(select concat ( &quot;Asset-&quot; : no ) from next_instrument)">
+<!-- The Ricardian Contract is publically readable here to facititate fungibility of units. -->
+        <bail:new proof="origin" protection="public" xsl:action="$immutable">
+<!-- Attach a fresh clone like this wallet if requested. -->
+         <xsl:if test="form/wallet=&apos;yes&apos;">
+          <bail:copy-of>
+define copy(name)
+ let {* link link-ref(name) *}
+  if not(link) '()
+   SXML $ link {* @ \\ name(,name) *} $ id ,literal(link)
+
+SXML $ link @(name("wallet"))
+ new {* @
+;; proof "origin"
+action ,literal( current-contract() )
+protection ,right-&gt;string(message-protection(current-place()))
+*}
+  $$( ,map ,copy ("icon" "skin" "app") )
+  $$( ,message-body(current-place()) )
+          </bail:copy-of>
+         </xsl:if>
+         <link name="icon">
+          <id>
+           <bail:copy-of select="literal link-ref(&quot;icon&quot;)"></bail:copy-of>
+          </id>
+         </link>
+         <xsl:call-template name="attach-links">
+          <xsl:with-param name="from">
+           <xsl:copy-of select="$links-in-terms"></xsl:copy-of>
+          </xsl:with-param>
+         </xsl:call-template>
+         <html xmlns="http://www.w3.org/1999/xhtml" xmlns:core="http://www.askemos.org/2000/CoreAPI#">
+          <head>
+           <title>
+            <xsl:value-of select="form/title"/>
+           </title>
+           <meta content="Assertion" name="ContractType"></meta>
+           <bail:meta name="Value" xsl:content="form/amount"></bail:meta>
+           <xsl:copy-of select="$htmlheaders"></xsl:copy-of>
+          </head>
+          <body>
+           <xsl:copy-of select="$precontent"></xsl:copy-of>
+           <div class="content">
+            <h1 class="subject" title="Title">
+             <xsl:value-of select="form/title"/>
+            </h1>
+            <p class="formal">
+             <label>I </label>
+             <em class="sender" title="signatory">
+              <xsl:value-of select="$here/head/title"/>
+             </em>
+             <label>, the signatory, accept </label>
+             <strong class="amount" title="amount">
+              <xsl:value-of select="form/amount"/>
+             </strong>
+             <label> units of </label>
+             <strong class="asset" title="asset title">
+              <xsl:copy-of select="form/title/text()"></xsl:copy-of>
+             </strong>
+             <label> under the conditions set forth here
+for my account </label>
+             <code class="receiver" title="issuing account">
+              <bail:copy-of>
+SXML $ a {* @
+href ,read-locator(list(self-reference()))
+*} ,literal(self-reference())</bail:copy-of>
+             </code>
+             <label>. Date: </label>
+             <span class="date">
+              <bail:copy-of>date-&gt;string message-date(current-message()) "~Y-~m-~d ~H:~M:~S"</bail:copy-of>
+             </span>
+            </p>
+            <div class="terms">
+             <xsl:copy-of select="$terms"></xsl:copy-of>
+            </div>
+           </div>
+           <xsl:if test="form/wallet=&apos;yes&apos;">
+            <blockquote class="fineprint attachments" title="attachments">
+             <h2>Attached Wallet</h2>
+             <p>A <a href="?xmlns=a&amp;mode=links">fresh wallet</a> is attached to this contract.</p>
+             <p class="help">The link to the attached wallet is to be resolved <var>local</var> to this contract. We can not embed the OID here because both are created in a single transaction. Try appending <code>/wallet</code> to the URL path of this document. Or find the OID the list of attachments as suggested above.</p>
+            </blockquote>
+           </xsl:if>
+           <xsl:if test="$links-in-terms">
+            <blockquote class="fineprint" title="attachments">
+             <hr title="generic fine-print below"></hr>
+             <h2>Attachments</h2>
+             <ol>
+              <xsl:call-template name="list-attachments">
+               <xsl:with-param name="from">
+                <xsl:copy-of select="$links-in-terms"></xsl:copy-of>
+               </xsl:with-param>
+              </xsl:call-template>
+             </ol>
+            </blockquote>
+           </xsl:if>
+           <xsl:choose>
+            <xsl:when test="$here/body/div[@id='postamble']/node()">
+             <div class="fineprint">
+              <xsl:copy-of select="$here/body/div[@id='postamble']/node()"></xsl:copy-of>
+             </div>
+            </xsl:when>
+            <xsl:otherwise>
+             <xsl:copy-of select="$witness-record"></xsl:copy-of>
+             <blockquote class="fineprint formal">
+              <h3>Veto Rights Reserved</h3>
+              <p>The notaries must constitute at least half of the notaries auditing any transfer of this asset.</p>
+             </blockquote>
+             <blockquote class="fineprint formal">This contract may be used as <var>governing contract</var> to license use of publications.  The code of the <code>method</code> asserts that such publications will be immutable.</blockquote>
+             <core:method type="propose">
+              <core:programlisting class="executable">public-place()</core:programlisting>
+             </core:method>
+            </xsl:otherwise>
+           </xsl:choose>
+           <div class="footer">
+            <xsl:copy-of select="$here/footer/*"></xsl:copy-of>
+           </div>
+          </body>
+         </html>
+        </bail:new>
+       </bail:link>
+<!-- Sanity checks, enforce policy and prepare 'confirm' step. -->
+       <update parameterized="yes">
+	<template>
+	 insert or replace into status(id, value, arg1, arg2) values(1, "unconfirmed", ?1, ?2)
+	</template>
+        <bail:copy-of>
+define amount
+ floor
+  string-&gt;number
+   data form-field('amount)
+
+define id
+ sql-ref "select no from next_instrument"
+
+or positive?(amount) raise("Negative Amount Invalid. Try inverse conditions.")
+or &gt;(1000000 amount) raise("Amount exceeds limit of 99999. Try splitting the asset.")
+
+SXML
+ with-param ,amount
+ with-param ,id
+        </bail:copy-of>
+       </update>
+      </xsl:when>
+      <xsl:when test="form/action=&apos;close&apos;">
+<!-- Close a transfer registering the corresponding receipt. -->
+       <bail:copy-of>
+define receipt
+ data form-field('receipt)
+
+define notice fetch(string-&gt;oid(receipt))
+
+define order
+  attribute-string 'href
+   sxpath('( head (link (@ (equal? (title "Order")))) ))
+    notice
+
+define no
+ sql-ref
+  sql-query
+    "select coalesce(
+  (select no from transactions where contract = ?1)
+  , (select no from next_transaction) )"
+    order
+
+if
+ = 0 $ sql-ref sql-query("select exists (select no from transactions0 where matches = ?1)" receipt)
+ SXML
+  update (@ (parameterized "yes"))
+    template "update transactions0 set status = 4, matches = ?1 where contract = ?2"
+    with-param ,receipt
+    with-param ,order
+  link {* @ \\ name ,format("Receipt-~a" no) *} id( ,receipt )
+  link {* @ \\ name ,format("Payment-~a" no) *}
+       </bail:copy-of>
+      </xsl:when>
+      <xsl:when test="form/action/text()=&apos;expunge&apos;">
+<!-- Mark expunged transactions.  Maintainance process will clean up. -->
+       <xsl:for-each select="form/close">
+        <update parameterized="yes">
+	 <template>update transactions0 set status=5 where no=?1</template>
+	 <with-param><xsl:value-of select="."></xsl:value-of></with-param>
+	</update>
+       </xsl:for-each>
+       <update>update transactions0 set status = status + 2 where 3 &gt; status</update>
+      </xsl:when>
+      <xsl:when test="form/action/text()=&apos;account&apos;">
+<!-- Register New Account -->
+       <xsl:variable name="contract">
+        <bail:copy-of>
+define raw data(form-field('contract))
+define ref
+ cond
+  pcre("(A[[:xdigit:]]{32})")( raw ) =&gt; cadr
+  else raise(format("Account '~a' Not Found." raw))
+
+;; Sanity check: the account should claim to be a wallet.
+
+define type
+ attribute-string 'content
+  sxpath('( head (meta (@ (equal? (name "ContractType")))) ))
+   fetch(ref body: #f)
+
+or equal?(type "Wallet")
+ raise(format("Account '~a' is not a wallet but '~a'." raw type))
+
+;; This above test is a tentative example.  It *trusts* the output read from the other party.
+;; A production version will apply a tough check based on the contract governing the other
+;; party to decide whether or not to trust them enough for the business.
+;; This one is however too tough:
+
+or eq?( action-document(string-&gt;oid(ref)) current-contract() )
+ service-level() ;; so we weaken it for non-anon users
+ raise(format("Account '~a' is not under the same contract." raw))
+
+ref
+	</bail:copy-of>
+       </xsl:variable>
+       <xsl:choose>
+        <xsl:when test="form/title!=''">
+         <update parameterized="yes">
+	  <template>insert or replace into accounts(contract, title) values(?1, ?2)</template>
+	  <with-param><xsl:value-of select="$contract"/></with-param>
+	  <with-param><xsl:value-of select="form/title"/></with-param>
+        </update>
+        </xsl:when>
+        <xsl:otherwise>
+         <update parameterized="yes">
+	  <template>delete from accounts where contract = ?1</template>
+	  <with-param><xsl:value-of select="$contract"/></with-param>
+	 </update>
+        </xsl:otherwise>
+       </xsl:choose>
+      </xsl:when>
+      <xsl:when test="form/action=&apos;notary&apos;">
+<!-- Register Notary -->
+       <xsl:variable name="contract">
+        <bail:copy-of>
+define raw data(form-field('contract))
+define ref
+ cond
+  pcre("(A[[:xdigit:]]{32})")( raw ) =&gt; cadr
+  else raise(format("Notary '~a' Not Found." raw))
+
+literal ref
+	</bail:copy-of>
+       </xsl:variable>
+       <update parameterized="yes">
+	<template>insert or replace into notaries(contract, title) values(?1, ?2)</template>
+	<with-param><xsl:value-of select="$contract"/></with-param>
+	<with-param><xsl:value-of select="form/title"/></with-param>
+       </update>
+      </xsl:when>
+      <xsl:when test="form/action='changeasset'">
+<!-- Change Asset Annotation-->
+       <update parameterized="yes">
+	<template>update instruments set comment = ?1, active = ?2 where contract = ?3</template>
+	<with-param><xsl:value-of select="form/comment"/></with-param>
+	<with-param><xsl:value-of select="form/active"/></with-param>
+	<with-param><xsl:value-of select="form/instrument"/></with-param>
+       </update>
+       <xsl:if test="form/wallet!='' and form/wallettitle!=''">
+        <update parameterized="yes">
+	 <template>insert or replace into accounts(contract, title) values(?1, ?2)</template>
+	  <with-param><xsl:value-of select="form/wallet"/></with-param>
+	  <with-param><xsl:value-of select="form/wallettitle"/></with-param>
+	</update>
+       </xsl:if>
+      </xsl:when>
+      <xsl:when test="form/action='secret'">
+<!-- Change Secret-->
+       <update>
+update login set secret =
+<bail:copy-of>
+define code data(form-field('secret))
+if and( string-null?(code) service-level() )
+ "null"
+ literal "'" sql-quote(secret-encode(code)) "'"
+</bail:copy-of>,
+readonly = <xsql:literal xsl:select="form/readonly"></xsql:literal>
+where id != <xsql:literal xsl:select="$auth"></xsql:literal></update>
+      </xsl:when>
+<!--
+
+Change the title
+
+-->
+      <xsl:when test="form/action='change'">
+       <bail:copy-of>
+define css form-field('css)
+define here xsl-variable("here")
+define parse mime-cast("text/xml" "text/x-markdown; option=passive")
+
+define change-css()
+ SXML $ html
+   head
+    $$ ,sxpath('(head title))(here)
+    ,@ if( string-null?(data(css)) '() `((style @(type("text/css")) ,normalise(data(css)))) )
+   $$ ,sxpath('(div))(here)
+
+define get(section field)
+ let {* found form-field(field) *}
+  if or( not(found) node-list-empty?(found) )
+   sxpath( `((div (@ (equal? (id ,section))))) ) here
+   SXML $ div @( id(,section) ) $$( ,children(parse(data(found))) )
+
+define change-title()
+ SXML $ html
+   head
+    title ,data(form-field('title))
+    $$ ,sxpath('(head style))(here)
+   body
+    $$ ,get "header" header
+    $$ ,get "preamble" preamble
+    $$ ,get "terms" text
+    $$ ,get "postamble" postamble
+    $$ ,get "footer" footer
+
+if node-list-empty?(css)
+ SXML $ become $$(,change-title())
+ SXML $ become $$(,change-css())
+         </bail:copy-of>
+      </xsl:when>
+      <xsl:when test="form/action='changeskin'">
+       <xsl:choose>
+        <xsl:when test="form/icon">
+         <link name="icon">
+          <bail:new protection="public" xsl:action="$immutable">
+           <output media-type="image/x-icon" method="text">
+            <xsl:value-of select="form/icon"></xsl:value-of>
+           </output>
+          </bail:new>
+         </link>
+        </xsl:when>
+        <xsl:when test="form/app">
+         <link name="app">
+          <xsl:choose>
+           <xsl:when test="form/remove='yes'"></xsl:when>
+           <xsl:otherwise>
+            <bail:new protection="public" xsl:action="$immutable">
+             <bail:copy-of>xml-parse data(form-field('body))</bail:copy-of>
+            </bail:new>
+           </xsl:otherwise>
+          </xsl:choose>
+         </link>
+        </xsl:when>
+        <xsl:otherwise>
+         <link name="skin">
+          <xsl:choose>
+           <xsl:when test="form/remove='yes'"></xsl:when>
+           <xsl:otherwise>
+            <bail:new protection="public" xsl:action="$immutable">
+             <bail:copy-of>xml-parse data(form-field('body))</bail:copy-of>
+            </bail:new>
+           </xsl:otherwise>
+          </xsl:choose>
+         </link>
+        </xsl:otherwise>
+       </xsl:choose>
+      </xsl:when>
+      <xsl:when test="form/action='commission'">
+       <bail:copy-of>
+define key
+  cadr
+    pcre("(?:http(?:s)?://[[:alnum:].:-]*(?::[0-9]+)?)?/?(.*)")
+      data( form-field('name) )
+
+define old
+ message-replicates current-place()
+
+;; Reject expansion if there is a positive balance.
+if
+ and
+  node-list-empty?
+   sxpath(`( Bag (li (@ (equal? ( resource ,data(key) )))) )) old
+  positive? $ sql-ref '(select count (*) from balance where value &gt; 0)
+ raise "Notaries may change only for empty wallets. Get rid of any balance and retry."
+
+message-replicates current-place() toggle: key
+       </bail:copy-of>
+      </xsl:when>
+      <xsl:when test="form/action='protect'">
+       <protection>
+        <xsl:value-of select="form/protect"></xsl:value-of>
+       </protection>
+      </xsl:when>
+      <xsl:otherwise></xsl:otherwise>
+     </xsl:choose>
+<!-- Maintainance.  We want to locate contracts from SQL.
+           However when new contracts are issued the SQL update is already complete.  To get around this limitation we copy them in during the next transaction. -->
+     <xsql:for-each select="select no, status from transactions where contract is null and (status=&apos;outgoing&apos; or status=&apos;confirmed&apos;)">
+      <bail:copy-of>
+define get(key)
+  sxpath((list key '*text*)) current-node()
+
+define no string-&gt;number( data(get('no)) )
+
+define status data(get('status))
+
+define fmt
+ cond
+  or( equal?(status  "outgoing") equal?(status  "sent") )        "Payment-~a"
+  or( equal?(status  "confirmed") equal?(status  "completed") )  "Receipt-~a"
+  else "Asset-~a" ;; this is actually nonsense
+
+define document
+ link-ref format(fmt no)
+
+if document
+ SXML
+  update (@ (parameterized "yes"))
+    template "update transactions0 set contract = ?1 where no = ?2"
+    with-param ,literal(document)
+    with-param ,literal(no)
+ (empty-node-list)
+      </bail:copy-of>
+     </xsql:for-each>
+<!-- Remove links to gone assets. -->
+     <xsql:for-each select="select id from instruments join balance on balance.instrument=instruments.contract where balance.value=0 and not instruments.consumed">
+      <bail:link bail:name="format &quot;Asset-~a&quot; data(sxpath(&apos;(id *text*))(current-node()))"></bail:link>
+      <update parameterized="yes">
+       <template>update instruments set consumed=1 where id=?1</template>
+       <with-param><xsl:value-of select="id"/></with-param>
+      </update>
+     </xsql:for-each>
+<!-- Add links to assets. -->
+     <xsql:for-each select="select id, contract from instruments join balance on balance.instrument=instruments.contract where balance.value!=0 and instruments.consumed">
+      <bail:link bail:name="format &quot;Asset-~a&quot; data(sxpath(&apos;(id *text*))(current-node()))">
+       <id>
+        <xsl:value-of select="contract"/>
+       </id>
+      </bail:link>
+      <update parameterized="yes">
+       <template>update instruments set consumed=0 where id=?1</template>
+       <with-param><xsl:value-of select="id"/></with-param>
+      </update>
+     </xsql:for-each>
+<!-- Finalize closed transactions. MUST keep the orders to avoid double-spending. -->
+     <xsql:for-each select="select no from transactions where status=&apos;closed&apos;">
+      <bail:link bail:name="literal &quot;Payment-&quot; data(sxpath(&apos;(no *text*))(current-node()))"></bail:link>
+      <bail:link bail:name="literal &quot;Receipt-&quot; data(sxpath(&apos;(no *text*))(current-node()))"></bail:link>
+      <update>delete from transactions</update>
+     </xsql:for-each>
+<!-- This will (only) help to circumvent caching effects when using anonymous accounts. -->
+     <bail:copy-of>
+define login xsl-variable("login")
+define next()
+ read-locator body: $ SXML $ form . {*
+version
+ , literal +(1 string-&gt;number(version-identifier(current-place())))
+$$ ,children(login)
+*}
+
+SXML
+ output
+  ,@(if node-list-empty?(login) '() `((@ (location ,next()))) )
+  body "OK"
+     </bail:copy-of>
+    </core:reply>
+   </xsl:when>
+   <xsl:otherwise>
+<!--
+
+The service-level() function is a simplified version of the general
+subset property.  (Reduced to support frequently useful cases good
+enough while being computational simple and cheap.
+
+-->
+    <bail:copy-of>error "Not permitted."</bail:copy-of>
+   </xsl:otherwise>
+  </xsl:choose>
+ </xsl:template>
+<!--
+
+ Attachments mode: extract links from "from".
+
+ -->
+ <xsl:template name="attach-links">
+  <xsl:param name="from"></xsl:param>
+  <bail:copy-of>
+node-list-map
+ lambda (id) $ SXML $ link {* @ \\ name ,data(id) *} ,id
+ xsl-variable "from"
+  </bail:copy-of>
+ </xsl:template>
+ <xsl:template name="list-attachments">
+  <xsl:param name="from"></xsl:param>
+  <bail:copy-of>
+node-list-map
+ lambda (id) $ SXML $ li $ a {* @ \\ class "attachment" \\ href ,read-locator(string-&gt;oid(data(id))) *} ,data(id)
+ xsl-variable "from"
+  </bail:copy-of>
+ </xsl:template>
+ <xsl:template name="include-link">
+  <xsl:param name="to"></xsl:param>
+  <bail:copy-of>
+and-let* {*
+raw data(xsl-variable("to"))
+to
+ cond
+  pcre("^(?:/)?(A[[:xdigit:]]{32})")( raw ) =&gt;
+   lambda (m) string-&gt;oid(cadr(m))
+  else #f
+*}
+ SXML $ id ,literal(to)
+  </bail:copy-of>
+ </xsl:template>
+ <xsl:template match="text()" mode="find-links"></xsl:template>
+ <xsl:template match="*" mode="find-links">
+  <xsl:apply-templates mode="find-links"></xsl:apply-templates>
+ </xsl:template>
+ <xsl:template match="a" mode="find-links">
+  <bail:copy-of select="xsl-variable apply: &quot;include-link&quot; param: &quot;to&quot; $ attribute-string &quot;href&quot; current-node()"></bail:copy-of>
+ </xsl:template>
+ <xsl:template match="img" mode="find-links">
+  <bail:copy-of select="xsl-variable apply: &quot;include-link&quot; param: &quot;to&quot; $ attribute-string &quot;src&quot; current-node()"></bail:copy-of>
+ </xsl:template>
+ <xsl:template match="iframe" mode="find-links">
+  <bail:copy-of select="xsl-variable apply: &quot;include-link&quot; param: &quot;to&quot; $ attribute-string &quot;src&quot; current-node()"></bail:copy-of>
+ </xsl:template>
+<!--
+
+The core:body/methods allow this source code to be used as passive
+type contract.  In constrast to the reflexive alternative this one
+evaluates the underlying contract not the current state.  Therefore it
+is unable to ever change the contract.
+
+TBD: discuss in more detail.
+
+-->
+ <core:body>
+  <h1>BAIL</h1>
+  <p>The <u>B</u>ALL <u>A</u>pplication <u>I</u>nterface <u>L</u>anguage
+  embedded in XSLT.</p>
+  <h2>Read Method</h2>
+  <p>This is envoked when the subject answer an idempotent message to
+  display the current state.</p>
+  <core:method request="message" this="current-place" type="read">
+   <programlisting class="executable">bail/confirm current-place message</programlisting>
+  </core:method>
+  <h2>The Proposal</h2>
+  <p>This script produces a proposed update according to the attached
+  contract.  It runs in the first phase of a transaction.  The result
+  of this script is available as the third parameter in the
+  <code>accept</code> procedure (see below).</p>
+  <core:method request="message" this="current-place" type="propose">
+   <programlisting class="executable">bail/submit current-place message</programlisting>
+  </core:method>
+  <h2>Taking Effect</h2>
+  <p>Once the agreement process has commenced, the <code>accept</code>
+  script is invoked to update the local current state.</p>
+  <core:method plan="update" request="message" this="current-place" type="accept">
+   <programlisting class="executable">bail/accept current-place message update</programlisting>
+  </core:method>
+ </core:body>
+</xsl:stylesheet>

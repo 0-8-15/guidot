@@ -49,12 +49,6 @@ bail interpreter on the subject with the template from the "parent contract".
 <!--
  This is the list of acceptable contracts beyond this one. Should be older versions or mints.
   -->
-       <id>A75d4f8efb2879ac2d5b84ace25c82705</id>
-       <id>A60aa8b838c61b0de7e9f3cfd5d3ea0c1</id>
-       <id>A3ce62204f6426e5aa150034be0ac7d4b</id>
-       <id>Aa176138e655369f8c01c3044ced70cfc</id>
-       <id>Aad061328832148c46b2fd04ade259b91</id>
-       <id>Ab50073be24428f4c966c1051887d09c0</id>
       </wallet:acceptable>
 <!--
 
@@ -2712,7 +2706,10 @@ if node-list-empty?(css)
            </xsl:when>
            <xsl:when test="form/action=&apos;commission&apos;">
             <bail:copy-of>
-define key $ form-field('name)
+define key
+  cadr
+    pcre("(?:http(?:s)?://[[:alnum:].:-]*(?::[0-9]+)?)?/?(.*)")
+     data( form-field('name) )
 
 define old
  message-replicates current-place()
@@ -4071,7 +4068,6 @@ class "subject intern"
              <p class="help">This form is dangerous.  Make sure to never commission less than five notaries.
 Otherwise you risk your wallet.</p>
              <bail:form method="post">
-              <p class="help">Be sure to provide <strong>exactly an OID</strong> here.</p>
               <xsl:copy-of select="$keeplogin"></xsl:copy-of>
               <input name="action" type="hidden" value="commission"></input>
               <input name="name" size="35" title="name" type="text"></input>

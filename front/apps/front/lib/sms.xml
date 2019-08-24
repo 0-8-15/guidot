@@ -1,0 +1,247 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<xsl:stylesheet xmlns:d="http://www.askemos.org/2005/NameSpaceDSSSL/" xmlns:editor="urn:editor"
+ xmlns:ac="http://www.askemos.org/2000/CoreAPI#"
+ xmlns:meta="http://askemos.org/BALL/Meta/2012#" 
+ xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
+ version="1.0">
+<!--
+
+Usage Step 1
+============
+To create a place using this code write the following at your
+new place and create it using the "xslt-method":
+
+<?xml version="1.0" encoding="UTF-8" ?>
+<xsl:stylesheet xmlns:d="http://www.askemos.org/2000/NameSpaceDSSSL" xmlns:editor="urn:editor" xmlns:mind="http://www.askemos.org/2000/CoreAPI" xmlns:xsl="http://www.w3.org/1999/XSL/Transform" version="1.0">
+ <editor:state></editor:state>
+ <editor:headline></editor:headline>
+ <xsl:include href="A072b8a014ed816d2261f3765afa53e49"></xsl:include>
+</xsl:stylesheet>
+
+Optional Step 2
+===============
+It's a good idea to include it at your personal home page like this
+(assuming that "SMS" is linked to your personal receiver as created
+in step 1):
+
+  <d:copy-of select="((sxpath &apos;(body div)) (fetch &quot;SMS&quot;))"></d:copy-of>
+
+-->
+ <editor:state></editor:state>
+ <editor:headline></editor:headline>
+ <xsl:variable name="state">
+  <d:copy-of select="((sxpath &apos;(state *)) (grove-root (current-node)))"></d:copy-of>
+ </xsl:variable>
+ <xsl:variable name="sendform">
+  <fieldset>
+   <d:form method="post" d:action="(write-locator (list (self-reference)))">
+    <legend>Kurznachricht senden</legend>
+    <input name="action" type="hidden" value="sms"></input>
+    <input maxlength="160" name="sms" size="65" type="text"></input>
+    <input type="submit" value="send"></input>
+   </d:form>
+  </fieldset>
+ </xsl:variable>
+ <xsl:template match="request[@type=&quot;read&quot;]">
+  <xsl:choose>
+   <d:when test="(is-metainfo-request? msg)">
+    <rdf:RDF xmlns:a="http://www.askemos.org/2000/CoreAPI#" xmlns:dc="http://dublincore.org/documents/2004/12/20/dces/" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:s="http://www.askemos.org/2004/Synchrony/" xml:space="default">
+     <d:copy-of select="
+(make element gi: &apos;Description
+ ns: (string-&gt;symbol &quot;http://www.w3.org/1999/02/22-rdf-syntax-ns#&quot;)
+ attributes: `((about ,(oid-&gt;string (self-reference))))
+ (node-list-filter
+   (lambda (p)
+     (not (memq (gi p) &apos;(links body))))
+  (children (children (metainfo #t))))
+)
+"></d:copy-of>
+    </rdf:RDF>
+   </d:when>
+   <d:when test="(not (service-level (self-reference)))">
+    <html>
+     <head>
+      <title>SMS senden</title>
+     </head>
+     <body>
+      <h1>SMS an <d:copy-of select="
+(let ((whom (car (message-protection me))))
+ (make element gi: &apos;a
+   attributes: `((href ,(read-locator (list whom))))
+ (literal (entry-name whom))))
+"></d:copy-of> senden</h1>
+      <div>
+<!--
+      <xsl:choose>
+       <d:when test="(and (eq? (message-creator msg) (public-oid))
+ (not (equal? (msg 'host) &quot;login.softeyes.net&quot;)))
+">
+        <p>Post via
+<d:a d:href="(string-append &quot;http://login.softeyes.net/&quot;
+  (literal (self-reference)))">login host</d:a>!</p>
+       </d:when>
+       <xsl:otherwise>
+        <d:copy-of select="(xsl-variable &quot;sendform&quot;)"></d:copy-of>
+       </xsl:otherwise>
+      </xsl:choose>
+-->
+       <xsl:copy-of select="$sendform"/>
+      </div>
+     </body>
+    </html>
+   </d:when>
+   <d:when test="(is-meta-form? msg)">
+    <meta:view/>
+   </d:when>
+   <xsl:otherwise>
+    <d:output media-type="text/html; charset=UTF-8" method="xml" d:location="(literal #\/ (car (message-protection (current-place))) )">
+     <html>
+      <head>
+       <title>KND</title>
+       <meta content="text/html; charset=UTF-8" http-equiv="Content-Type"></meta>
+       <style lang="text/css">
+.sms { font-size:smaller; margin:0px; border-bottom:solid thin; }
+</style>
+      </head>
+      <body bgcolor="white">
+       <d:copy-of select="((sxpath &apos;(headline)) (grove-root (current-node)))"></d:copy-of>
+       <div>
+        <d:form method="post">
+         <fieldset>
+          <legend>selbst Kurznachricht senden</legend>
+          <input name="action" type="hidden" value="sms"></input>
+          <input maxlength="160" name="sms" size="75" type="text"></input>
+         </fieldset>
+        </d:form>
+        <p align="right"><d:a d:href='read-locator body: "xmlns=a"'>meta</d:a></p>
+       </div>
+       <d:if test='(not (node-list-empty? (xsl-variable "state"))) '>
+        <div style="border:solid 1px;">
+         <d:form method="post" name="form">
+          <input name="action" type="hidden" value="sms-drop"></input>
+          <input type="submit" value="sms weg"></input>
+          <d:input type="checkbox" name="delall" value="yes"/>
+         <d:apply-templates select='(xsl-variable "state")'/>
+         </d:form>
+        </div>
+       </d:if>
+      </body>
+     </html>
+    </d:output>
+   </xsl:otherwise>
+  </xsl:choose>
+ </xsl:template>
+ <xsl:template match="sms">
+  <p class="sms">
+  <d:input type="checkbox" name="del" d:value="attribute-string 'id (current-node)"/>
+   <xsl:apply-templates/>
+  </p>
+ </xsl:template>
+ <xsl:template match="from">
+  <d:copy-of select="entry-name (string->oid (data (current-node)))"></d:copy-of>: 
+ </xsl:template>
+ <xsl:template match="text">
+  <d:copy-of select="(children (current-node))"></d:copy-of>
+ </xsl:template>
+ <xsl:template match="a"><d:copy-of select="(current-node)"></d:copy-of>: </xsl:template>
+ <xsl:template match="date"> : <xsl:apply-templates></xsl:apply-templates></xsl:template>
+ <xsl:template match="sms" mode="atom">
+  <d:copy-of select="(current-node)"/>
+  <entry>
+   <xsl:apply-templates mode="atom"></xsl:apply-templates>
+  </entry>
+ </xsl:template>
+ <xsl:template match="text" mode="atom">
+  <title>
+   <d:copy-of select="(data (children (current-node)))"></d:copy-of>
+  </title>
+ </xsl:template>
+ <xsl:template match="link" mode="atom">
+  <d:copy-of select="(current-node)"></d:copy-of>
+ </xsl:template>
+ <xsl:template match="date" mode="atom">
+  <published>
+   <d:copy-of select="(date-&gt;string (message-last-modified me) &quot;~Y-~m-~dT~H:~M:~f~z&quot;)"></d:copy-of>
+  </published>
+ </xsl:template>
+ <xsl:template match="request[@type=&quot;write&quot;]">
+  <xsl:choose>
+   <d:when test="(and (is-meta-form? msg)
+                      (service-level (self-reference)))">
+    <meta:control/>
+   </d:when>
+   <d:when test="(not (or (eq? (gi (children (current-node))) &apos;form) (error &quot;request not understood&quot;)))"></d:when>
+   <xsl:otherwise>
+    <ac:reply>
+<!--
+TODO see that dsssl define's work to make that a bit more reader friendly.
+-->
+     <ac:become>
+      <d:copy-of select="#CONTENT">
+(root
+    (let ((this-root (document-element (grove-root (current-node)))))
+    
+      (make element
+        gi: (gi this-root) ns: (ns this-root)
+        attributes: (copy-attributes this-root)
+        (node-list-map
+         (lambda (node)
+           (cond
+            ((match-element? 'state node)
+             (make element
+               gi: 'state ns: 'urn:editor
+               (if (and (equal? "sms-drop"
+                                (data (form-field 'action (current-node))))
+                        (service-level))
+
+                   (if (equal? (data (form-field 'delall (current-node))) "yes")
+		       (empty-node-list)
+		       (let ((del (node-list-reduce
+				   (form-field 'del (current-node))
+				   (lambda (r d) (cons (data d) r))
+				   '())))
+			 (node-list-filter
+			  (lambda (s) (not (member (attribute-string 'id s) del)))
+			  ((sxpath '(sms)) node))))
+
+                   (node-list
+		    ((sxpath '(sms)) node)
+		    (make element gi: 'sms
+		       attributes: `((id ,(version-identifier me)))
+                       (make element gi: 'from
+		        (literal (message-creator msg)))
+                       (make element gi: 'text
+                        (ennunu
+                          (lambda (type target text) text)
+                          (data (form-field 'sms (current-node)))))
+                       (make element gi: 'date
+                        (literal (date-&gt;string (message-date msg)
+                                  "~H:~M Uhr ~e. ~B ~Y" "de")))
+                      )))))
+            ((match-element? 'include node)
+             (make element gi: 'include ns: (ns this-root)
+               attributes: `((href "A367597ff503cbd42948f9fe705ff3197/SMSEmpfaenger.xml"))))
+            (else node)))
+         ;; The children of the root of the style sheet.
+         (children this-root)))))
+   </d:copy-of>
+     </ac:become>
+<!--
+     <d:output media-type="text/html; charset=UTF-8" method="xml" d:location="(literal #\/ (car (message-protection me)))">
+-->
+      <html>
+       <head>
+        <title>SMS empfangen</title>
+       </head>
+       <body>
+        <p>Danke</p>
+       </body>
+      </html>
+<!--
+     </d:output>
+-->
+    </ac:reply>
+   </xsl:otherwise>
+  </xsl:choose>
+ </xsl:template>
+</xsl:stylesheet>

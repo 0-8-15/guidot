@@ -1,0 +1,639 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<xsl:stylesheet
+ xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
+ xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+ xmlns:ac="http://www.askemos.org/2000/CoreAPI#"
+ xmlns:d="http://www.askemos.org/2013/bail/"
+ xmlns:meta="http://askemos.org/BALL/Meta/2012#" 
+ version="1.0">
+ <state xmlns="urn:private">
+  <open></open>
+  <title>No Title Set So Far</title>
+ </state>
+ <xsl:variable name="here">
+  <d:copy-of>message-body current-place()</d:copy-of>
+ </xsl:variable>
+ <xsl:variable name="state1">
+  <xsl:copy-of select="$here/state"/>
+ </xsl:variable>
+ <!-- Acient, a.k.a. "avanced" form state.  Maybe obsolete. -->
+ <xsl:variable name="state">
+  <srcplace label="from">system/Edit15.xml</srcplace>
+  <method label="Methode">system/bail-reflexive</method>
+  <protection label="Protection">me</protection>
+  <message label="Nachricht">&lt;form&gt;&lt;template&gt;code&lt;/template&gt;&lt;/form&gt;</message>
+  <initialize label="Initstring"></initialize>
+ </xsl:variable>
+ <xsl:variable name="tutorial">
+  <d:if test="&gt; 4 $ node-list-length $ sxpath('(*  li)) $ message-replicates current-place()">
+   <p class="warning">Warning: Less than four notaties in support.  Do
+   NOT complete any steps of the tutorial, except if you know what you
+   do.  First commission additional support.</p>
+  </d:if>
+  <fieldset>
+   <legend>Tutorial</legend>
+   <d:form method="post">
+    <input name="action" type="hidden" value="tut create"></input>
+    <d:if test='not link-ref("SMS")'>
+     <input name="action" type="submit" value="sms"></input>
+     <d:input name="sms.code" type="hidden" d:value='data $ xsl-variable apply: "find-in-syslinks" param: "name" "sms.code"'/>
+    </d:if>
+    <xsl:choose>
+     <d:when test='not link-ref("wallet")'>
+      <input name="action" type="submit" value="wallet"/>
+      <d:input name="wallet.core" type="hidden" d:value='data $ xsl-variable apply: "find-in-syslinks" param: "name" "wallet.code"'/>
+      <d:input name="wallet.skin" type="hidden" d:value='data $ xsl-variable apply: "find-in-syslinks" param: "name" "wallet-skin-simple"'/>
+      <d:input name="wallet.icon" type="hidden" d:value='data $ xsl-variable apply: "find-in-syslinks" param: "name" "wallet.icon"'/>
+     </d:when>
+     <xsl:otherwise>
+      <!--<d:iframe d:name="literal 'via self-reference()" d:src="oid->string link-ref(&quot;wallet&quot;) $ message-replicates current-place()" width="480">-->
+       <div><d:a d:href='link-ref "wallet"' target="_blank">Wallet</d:a></div>
+      <!--</d:iframe>-->
+     </xsl:otherwise>
+    </xsl:choose>
+    <xsl:choose>
+     <d:when test='not link-ref("clipboard")'>
+      <input name="action" type="submit" value="clipboard"></input>
+      <d:input name="clipboard.code" type="hidden" d:value='data $ xsl-variable apply: "find-in-syslinks" param: "name" "davtree.code"'/>
+     </d:when>
+     <xsl:otherwise>
+      <!--<d:iframe d:name='literal "via " self-reference()' d:src="read-locator $ list $ oid->string link-ref(&quot;clipboard&quot;) $ message-replicates current-place()" width="480">-->
+       <div><d:a d:href='link-ref "clipboard"' target="_blank">Clipboard</d:a></div>
+      <!--</d:iframe>-->
+     </xsl:otherwise>
+    </xsl:choose>
+    <xsl:choose>
+     <d:when test='not link-ref("publications")'>
+      <input name="action" type="submit" value="publications"></input>
+      <d:input name="publications.code" type="hidden" d:value='data $ xsl-variable apply: "find-in-syslinks" param: "name" "davtree.code"'/>
+     </d:when>
+     <xsl:otherwise>
+      <div><d:a d:href='link-ref "publications"' target="_blank">publications</d:a></div>
+     </xsl:otherwise>
+    </xsl:choose>
+   </d:form>
+  </fieldset>
+ </xsl:variable>
+ <xsl:variable name="advanced-create">
+        <d:form method="post">
+         <table bgcolor="silver" border="0" cellpadding="5" cellspacing="1">
+          <thead>Create New Place</thead>
+          <tbody>
+           <tr>
+            <td>Action</td>
+            <td>
+             <input name="newaction" type="text">
+              <xsl:attribute name="value">
+               <d:copy-of select="
+              (data (select-elements (xsl-variable &quot;state&quot;)
+&apos;method))"></d:copy-of>
+              </xsl:attribute>
+             </input>
+            </td>
+            <td>Data read from</td>
+            <td>
+             <input name="read" type="text">
+              <xsl:attribute name="value">
+               <d:copy-of select="
+              (data (select-elements (xsl-variable &quot;state&quot;)
+&apos;srcplace))"></d:copy-of>
+              </xsl:attribute>
+             </input>
+            </td>
+           </tr>
+           <tr>
+            <td colspan="4" valing="top">using
+     <textarea cols="50" name="body" rows="3" xml:space="preserve"><d:copy-of select="
+             (data (select-elements (xsl-variable &quot;state&quot;)
+&apos;message))"></d:copy-of></textarea></td>
+           </tr>
+           <tr>
+            <td>Protection</td>
+            <td>
+             <input name="protection" type="text">
+              <xsl:attribute name="value">
+               <d:copy-of select="
+
+               (data (select-elements (xsl-variable &quot;state&quot;)
+
+&apos;protection))"></d:copy-of>
+              </xsl:attribute>
+             </input>
+            </td>
+            <td>initialize (optional)</td>
+            <td>
+             <input name="initialize" type="text">
+              <xsl:attribute name="value">
+               <d:copy-of select="
+               (data (select-elements (xsl-variable &quot;state&quot;)
+&apos;initialize))"></d:copy-of>
+              </xsl:attribute>
+             </input>
+            </td>
+           </tr>
+           <tr>
+            <td colspan="2"><input name="action" type="submit" value="new"></input>
+             and find that document
+            <a href="last">later here</a></td>
+            <td colspan="2">
+             <input name="varnam" type="hidden" value="state"></input>
+             <input name="action" type="submit" value="change-variable"></input>
+            </td>
+           </tr>
+           <tr>
+            <td colspan="2">
+             <p>last:
+            <d:copy-of select="
+             (if (link-ref &quot;last&quot;)
+               (oid-&gt;string (link-ref &quot;last&quot;))
+               &quot;fail&quot;)"></d:copy-of></p>
+            </td>
+            <td colspan="2">
+             <p>me:
+            <d:copy-of select="(oid-&gt;string (self-reference))"></d:copy-of></p>
+            </td>
+           </tr>
+          </tbody>
+         </table>
+        </d:form>
+        <d:form method="post">
+         <input name="action" type="hidden" value="link"></input>
+         <table bgcolor="silver" border="0" cellpadding="5" cellspacing="1">
+          <tr>
+           <td>
+            <input type="submit" value="Link"></input>
+           </td>
+           <td align="right">
+            <p>Linkname</p>
+           </td>
+           <td>
+            <input name="name" size="20" type="text"></input>
+            <xsl:attribute name="value">
+             <d:copy-of select="
+              (data (select-elements (xsl-variable &quot;state&quot;)
+&apos;lname))"></d:copy-of>
+            </xsl:attribute>
+           </td>
+           <td>
+            <p>===&gt;</p>
+           </td>
+           <td>
+            <input name="value" size="30" type="text" value="last"></input>
+           </td>
+          </tr>
+         </table>
+        </d:form>
+ </xsl:variable>
+ <xsl:template match="request[@type=&quot;read&quot;]">
+  <xsl:choose>
+   <d:when test="and pair?( message-destination( current-message() ) ) $ not $ string-null? $ car message-destination( current-message() )">
+<!--
+
+  The form "ac:forward" is syntactic sugar.  See CoreAPI.
+
+  -->
+    <ac:forward></ac:forward>
+   </d:when>
+   <d:when test="(is-metainfo-request? msg)">
+    <d:copy-of select="(metainfo #t)"></d:copy-of>
+   </d:when>
+   <d:when test="(and (is-meta-form? msg)
+                          (or (service-level)
+                              (eq? (self-reference) (message-creator msg))))">
+    <meta:view/><!-- replaces: <d:copy-of select="(message-body (metaview me msg))"></d:copy-of> -->
+   </d:when>
+   <d:when test="(service-level (public-oid) (my-oid))">
+    <html xmlns="http://www.w3.org/1999/xhtml">
+     <head>
+      <title><xsl:copy-of select="$state1/title/text()"/></title>
+      <meta content="application/xhtml+xml" http-equiv="Content-Type"></meta>
+      <style lang="text/css">
+.sms { font-size:smaller; margin:0px; border-bottom:solid thin; }
+</style>
+     </head>
+     <body bgcolor="white">
+      <d:copy-of select="
+ (guard (ex (else (empty-node-list)))
+      (document-element (fetch &apos;(&quot;privhead&quot;)))) "></d:copy-of>
+      <h2>About</h2>
+      <p>Lorem Ipsum</p>
+      <d:if test='link-ref("SMS")'>
+       <d:copy-of>sxpath('(body div)) fetch("SMS" body: #f)</d:copy-of>
+      </d:if>
+      <d:if test="(or (service-level)  (eq? (message-creator msg) (self-reference)))">
+       <hr></hr>
+       <h2>Askemos Version 0.9 - "".</h2>
+       <xsl:if test="$state1/open = 'tutorial'">
+	<xsl:copy-of select="$tutorial"/>
+       </xsl:if>
+       <hr></hr>
+       <d:form method="post">
+        <b>View </b>
+	<xsl:choose>
+	 <xsl:when test="$state1/open = 'tutorial'"></xsl:when>
+	 <xsl:otherwise>
+          <input name="action" type="submit" value="tutorial"></input>
+	 </xsl:otherwise>
+	</xsl:choose>
+	<xsl:choose>
+	 <xsl:when test="$state1/open = 'advanced' and $state1/open = 'tutorial'">
+          <input name="action" type="submit" value="create"></input>
+          <input name="action" type="submit" value="links"></input>
+          <input name="action" type="submit" value="rights"></input>
+	 </xsl:when>
+	 <xsl:otherwise>
+	  <xsl:if test="$state1/open = 'tutorial'">
+           <input name="action" type="submit" value="advanced"></input>
+	  </xsl:if>
+	 </xsl:otherwise>
+	</xsl:choose>
+        <xsl:if test="$state1/open != ''">
+         <input name="action" type="submit" value="close"></input>
+        </xsl:if>
+        <span xml:space="preserve"> </span>
+        <a href="?xmlns=a">Internals</a>
+	<d:if test='link-ref "system"'>
+         <d:a d:href='read-locator link-ref("system")'>System</d:a>
+	</d:if>
+<!--
+        <d:a d:href="(read-locator
+ (list
+ (attribute-string &apos;href
+  ((sxpath &apos;(Description links Bag
+             (li (@ (equal? (resource &quot;system&quot;))))))
+  (metainfo (public-oid)))))
+  )
+">System</d:a>
+-->
+       </d:form>
+       <xsl:if test="$state1/open = 'links'">
+        <table>
+         <d:copy-of>
+(let all ((links (fold
+                  (lambda (l init)
+                   (if (&lt; (length (car init)) 4)
+
+                       `((,l . ,(car init)) . ,(cdr init))
+
+                       `((,l) . (,(car init) . ,(cdr init)))))
+                  '(())
+                  (fold-links cons '()))))
+  (if (pair? links)
+      (node-list
+       (make element gi: 'tr
+             (let cells ((links (car links)))
+               (if (pair? links)
+                   (node-list
+                    (make element gi: 'td
+                          (make element
+                            gi: 'a
+                            attributes: `((href ,(read-locator
+                                                  (list (link-ref (car links))))))
+
+                            (literal (car links))))
+
+                    (cells (cdr links)))
+                    (empty-node-list))))
+       (all (cdr links)))
+      (empty-node-list)))
+
+         </d:copy-of>
+        </table>
+       </xsl:if>
+       <xsl:if test="$state1/open = 'create'">
+        <d:form method="post">
+         <input name="action" type="submit" value="clone"></input>
+        </d:form>
+        <xsl:copy-of select="$advanced-create"/>
+       </xsl:if>
+       <xsl:if test="$state1/open = 'rights'">
+        <d:form method="post">
+         <table bgcolor="silver" border="0" cellpadding="5" cellspacing="1">
+          <tr>
+           <td>
+Grant
+<input name="xmlns" type="hidden" value="http://www.askemos.org/2000/CoreAPI#"></input>
+<input name="action" type="hidden" value="grant"></input>
+user
+<input name="to" type="text" value="public"></input>
+the right meant by document
+<input name="right" type="text" value="public"></input>.<br></br><input type="submit" value="Yes"></input> I grant that right.
+  </td>
+          </tr>
+         </table>
+        </d:form>
+        <d:form method="post">
+         <table bgcolor="silver" border="0" cellpadding="5" cellspacing="1">
+          <tr>
+           <td>
+Revoke
+<input name="xmlns" type="hidden" value="http://www.askemos.org/2000/CoreAPI#"></input>
+<input name="action" type="hidden" value="revoke"></input>
+from
+<input name="from" type="text" value=""></input>
+the right meant by document
+<input name="right" type="text" value=""></input>.<br></br>
+I <input type="submit" value="revoke"></input> that right.
+  </td>
+          </tr>
+         </table>
+        </d:form>
+       </xsl:if>
+      </d:if>
+      <xsl:if test="$state1/open = 'editor'">
+       <d:copy-of>
+((sxpath &apos;(body *))
+ (guard
+  (ex (else (empty-node-list)))
+      (fetch '("msged"))))
+       </d:copy-of>
+      </xsl:if>
+     </body>
+    </html>
+   </d:when>
+   <xsl:otherwise>
+    <html>Somehow I can't see anything.  Dunno why.</html>
+   </xsl:otherwise>
+  </xsl:choose>
+ </xsl:template>
+ <xsl:template match="sms">
+  <p class="sms">
+   <d:copy-of>(children (current-node))</d:copy-of>
+  </p>
+ </xsl:template>
+<!--
+
+The lower half applies, when the object is written to.
+
+It will create an element ac:reply, which should as first element
+contain the next state of the object.
+
+-->
+ <xsl:template match="request[@type=&quot;write&quot;]">
+  <xsl:choose>
+   <d:when test="(pair? (message-destination msg))">
+    <ac:forward></ac:forward>
+   </d:when>
+<!--
+
+This control answers reacts upon the SOAP message sent from a
+GCAICtrl to the user place.
+
+
+The XPath implementation still lacks namespace matches, hence
+
+we can't yet implement this as just a template match as is
+
+should be.  Hence the trick with the xsl:when.
+
+Requests are only honored, if they originate from the place linked as
+"rights".  CAUTION make sure that the user can't accidentally link
+dangerous thigs there.
+
+-->
+   <d:when test="
+ (and (eq? (message-caller msg) (link-ref &quot;rights&quot;))
+  (let ((r (document-element
+            (select-elements (children (current-node)) &apos;Modification))))
+    (and r (eq? (ns r) &apos;urn:RightsAdministration))))
+ ">
+    <ac:reply>
+     <d:copy-of select="
+   (children (select-elements (children (current-node)) &apos;Modification))
+  "></d:copy-of>
+    </ac:reply>
+   </d:when>
+<!--
+
+
+ ;;; Local Variables: ***
+
+
+ ;;; mode: dsssl ***
+ ;;; End: ***
+
+-->
+   <xsl:when test="form/action = 'new'">
+    <ac:reply>
+     <ac:link name="last">
+      <ac:new>
+       <xsl:attribute name="action">
+        <d:copy-of select="(data (form-field &quot;newaction&quot; (current-node)))"></d:copy-of>
+       </xsl:attribute>
+       <xsl:attribute name="protection">
+        <d:copy-of select="(data (form-field &quot;protection&quot; (current-node)))"></d:copy-of>
+       </xsl:attribute>
+       <xsl:attribute name="initialize">
+        <d:copy-of select="(data (form-field &quot;initialize&quot; (current-node)))"></d:copy-of>
+       </xsl:attribute>
+       <d:copy-of select="
+ (fetch (parsed-locator (data (form-field &quot;read&quot; (current-node))))
+        body: (xml-parse (data (children (document-element (form-field &quot;body&quot; (current-node)))))))
+"></d:copy-of>
+      </ac:new>
+     </ac:link>
+     <ac:output method="xml"></ac:output>
+    </ac:reply>
+   </xsl:when>
+   <xsl:when test="form/action = 'clone'">
+    <ac:reply>
+     <d:copy-of>
+(let ((api "http://www.askemos.org/2000/CoreAPI#"))
+    (make element gi: 'link ns: api attributes: '((name "last"))
+
+
+       (make element gi: 'new ns: api
+         attributes: `((action ,(oid-&gt;string (current-contract)))
+                       (protection ,(right-&gt;string (message-protection me))))
+         ;; Copy the original data value.
+         (grove-root (current-node))
+         ;; Additionally copy the SQL table space.
+         (make element gi: 'sql ns: api (make element gi: 'id ns: api (literal (self-reference)))))))
+      </d:copy-of>
+     <ac:output method="xml">
+      <p>You've got a clone of mine at last.</p>
+     </ac:output>
+    </ac:reply>
+   </xsl:when>
+   <xsl:when test="form/action = 'tut create' and form/action = 'wallet'">
+    <ac:reply>
+     <ac:link name="wallet">
+      <d:new xsl:action="form/wallet.core/text()"
+             d:protection="right->string(message-protection(current-place()))">
+       <ac:link name="skin">
+	<ac:id><xsl:copy-of select="form/wallet.skin/text()"/></ac:id>
+	<!--<id><d:copy-of>literal $ link-ref "wallet-skin-simple"</d:copy-of></id>-->
+       </ac:link>
+       <ac:link name="icon">
+	<ac:id><xsl:copy-of select="form/wallet.icon/text()"/></ac:id>
+       </ac:link>
+      </d:new>
+     </ac:link>
+     <ac:output method="xml">
+      <p>Fresh "wallet" created.</p>
+     </ac:output>
+    </ac:reply>
+   </xsl:when>
+   <xsl:when test="form/action = 'tut create' and form/action = 'sms'">
+    <ac:reply>
+     <ac:link name="SMS">
+      <d:new d:action='current-contract()'
+             d:protection="right->string(message-protection(current-place()))">
+<!--
+       <d:copy-of>fetch "sms.code" body: #f</d:copy-of>
+-->
+       <d:copy-of>
+define code $ string->oid $ data
+  form-field 'sms.code
+
+fetch code body: #f
+       </d:copy-of>
+      </d:new>
+     </ac:link>
+     <ac:output method="xml">
+      <p>Created fresh messaging inbox.</p>
+     </ac:output>
+    </ac:reply>
+   </xsl:when>
+   <xsl:when test="form/action = 'tut create' and form/action = 'clipboard'">
+    <ac:reply>
+     <ac:link name="clipboard">
+      <d:new d:action="data $ form-field 'clipboard.code"
+             d:protection="right->string(message-protection(current-place()))">
+<body>
+ <title>Askemos/BALL Folder</title>
+ <headline xmlns="urn:editor">
+ <p>Simple directory tree.  Talks WebDAV, takes snapshots.  That's about it.</p>
+<!--
+  <h1>"Classic" Directory Tree</h1>
+  <ul>
+   <li>Talks WebDAV.</li>
+   <li>Does Snapshots.</li>
+   <li>That about it.</li>
+  </ul>
+-->
+ </headline>
+</body>
+<!--       <d:copy-of>
+define code $ string->oid $ data
+  form-field 'clipboard.code
+
+fetch code body: #f
+       </d:copy-of>
+-->
+      </d:new>
+     </ac:link>
+     <ac:output method="xml">
+      <p>Created fresh Clipboard.</p>
+     </ac:output>
+    </ac:reply>
+   </xsl:when>
+   <xsl:when test="form/action = 'tut create' and form/action = 'publications'">
+    <ac:reply>
+     <ac:link name="publications">
+      <!-- FIXME: The protection is not yet correct. -->
+      <d:new d:action='current-contract()'
+             d:protection="right->string(message-protection(current-place()))">
+       <d:copy-of>
+define code $ string->oid $ data
+  form-field 'publications.code
+
+fetch code body: #f
+       </d:copy-of>
+      </d:new>
+     </ac:link>
+     <ac:output method="xml">
+      <p>Created fresh upload area for publications.</p>
+     </ac:output>
+    </ac:reply>
+   </xsl:when>
+   <d:when test=" (eq? &apos;grant (gi (children (current-node)))) ">
+    <ac:reply>
+     <ac:become>
+      <d:copy-of select="(grove-root (current-node))"></d:copy-of>
+     </ac:become>
+     <d:copy-of select="((sxpath &apos;(grant right)) (current-node))"></d:copy-of>
+     <ac:output method="xml"></ac:output>
+    </ac:reply>
+   </d:when>
+   <d:when test="(and (is-meta-form? msg)
+                      (or (service-level)
+                          (eq? (self-reference) (message-caller msg))))">
+    <meta:control/> <!-- replaces: <d:copy-of select="(message-body (metactrl me msg))"></d:copy-of> -->
+   </d:when>
+   <d:when test="
+ (and 
+  (eq? &apos;form (gi (document-element (children (current-node)))))
+  (eq? &apos;http://www.askemos.org/2000/NameSpaceHTMLForm
+       (ns (document-element (children (current-node))))))">
+    <xsl:apply-templates></xsl:apply-templates>
+   </d:when>
+  </xsl:choose>
+ </xsl:template>
+ <xsl:template match="form">
+  <xsl:variable name="new-state">
+   <state xmlns="urn:private">
+    <d:apply-templates select="
+      (make element
+        gi: (data ((sxpath &apos;(action)) (current-node)))
+        ns: &apos;me-by-myself
+        (children (current-node)))"></d:apply-templates>
+   </state>
+  </xsl:variable>
+  <ac:reply>
+   <ac:become>
+    <d:copy-of>
+    (let ((this-root (document-element (grove-root (current-node)))))
+      (make element
+        gi: (gi this-root) ns: (ns this-root)
+        attributes: (copy-attributes this-root)
+        (node-list-map
+         (lambda (node)
+           (cond
+            ((match-element? 'state node) (xsl-variable "new-state"))
+            (else node)))
+
+         (children this-root))))
+
+    </d:copy-of>
+   </ac:become>
+  </ac:reply>
+ </xsl:template>
+ <xsl:template match="tutorial">
+  <open>tutorial</open>
+  <xsl:copy-of select="$state1/open"/>
+ </xsl:template>
+ <xsl:template match="advanced">
+  <open>advanced</open>
+  <xsl:copy-of select="$state1/open"/>
+ </xsl:template>
+ <xsl:template match="create">
+  <open>create</open>
+  <xsl:copy-of select="$state1/open"/>
+ </xsl:template>
+ <xsl:template match="links">
+  <open>links</open>
+  <xsl:copy-of select="$state1/open"/>
+ </xsl:template>
+ <xsl:template match="rights">
+  <open>rights</open>
+  <!-- For the fun of it we leave the bail version we used before: -->
+  <d:copy-of select="((sxpath &apos;(state open)) (grove-root (current-node)))"></d:copy-of>
+ </xsl:template>
+ <xsl:template match="close">
+  <open></open>
+ </xsl:template>
+ <!-- A helper to make the tutorial stuff independent from the actual location we install it into. -->
+ <xsl:variable name="syslinks">
+   <d:copy-of>
+sxpath( '(Description links Bag li) )
+   metainfo("system")
+   </d:copy-of>
+ </xsl:variable>
+ <xsl:template name="find-in-syslinks">
+  <xsl:param name="name" required="yes"/>
+   <ac:id>
+    <xsl:value-of select="$syslinks[@resource=$name]/@href"/>
+   </ac:id>
+ </xsl:template>
+</xsl:stylesheet>

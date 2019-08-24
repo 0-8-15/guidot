@@ -1,0 +1,285 @@
+<?xml version="1.0" ?>
+<!--
+
+We have a 'metaview', which gives a "somehow" representation of the
+meta data of a place, naturally those include some web forms.  Here we
+have the corresponding controllers.
+
+The implementation is not very much state of the art, instead you'll
+see a lot of heritage from early days, where features where missing.
+
+Both, 'metaview' and 'metactrl' are - for now - exported as functions
+available at the Scheme level with the intention to improve these
+parts over time and allow at application level to dispatch to a
+"standard debug level interface" as soon as it finds
+"(is-meta-form? msg)" to be true.
+
+BEWARE: don't depend on those requests or dispatch them in any other
+way.  Forms and controllers of the debug level may change at any time
+without prior notice.
+
+-->
+<xsl:stylesheet
+     xmlns:d="http://www.askemos.org/2005/NameSpaceDSSSL/"
+     xmlns:bail="http://www.askemos.org/2013/bail/"
+     xmlns:ac="http://www.askemos.org/2000/CoreAPI"
+     xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
+  version="1.0"
+  xml:space="default">
+
+ <xsl:template name="ignore-garbage">
+  <xsl:param name="from" required="yes" />
+  <bail:copy-of>
+define from
+ string-trim-both
+  data xsl-variable("from")
+
+define m "(?:http(?:s)?://[[:alnum:].:-]*(?::[0-9]+)?)?/?(.*)"
+
+cadr
+ pcre(m) from
+  </bail:copy-of>
+ </xsl:template>
+
+ <xsl:template match="request">
+  <xsl:choose>
+   <d:when test="(and (is-meta-form? msg)
+                (not (node-list-empty? (form-field &apos;link (current-node)))))
+ ">
+    <ac:reply>
+     <ac:become>
+      <d:copy-of select="(grove-root (current-node))"/><!-- no
+ change -->
+     </ac:become>
+     <d:copy-of select="(form-field &apos;link (current-node))"/>
+     <ac:output>
+      <success>
+       <status>
+        <d:copy-of select="(literal (if (node-list-empty? (children (form-field 'link (current-node)))) 204 201))"/>
+       </status>
+      </success>
+     </ac:output>
+    </ac:reply>
+   </d:when>
+   <xsl:when test="form/action = 'form-link'">
+    <ac:reply>
+     <!--  no change      -->
+     <ac:become>
+      <d:copy-of select="(grove-root (current-node))"/>
+     </ac:become>
+     <ac:link>
+      <xsl:attribute name="name">
+       <d:copy-of select="(data (form-field &quot;name&quot;
+ (current-node)))"/>
+      </xsl:attribute>
+      <d:if test="(not (equal? (data (form-field &quot;value&quot; (current-node)))
+                                  &quot;&quot;))">
+       <ac:id>
+        <bail:copy-of>
+oid->string
+ find
+  xsl-variable apply: "ignore-garbage" param: "from" form-field('value)
+       </bail:copy-of>
+      </ac:id>
+     </d:if>
+     </ac:link>
+     <ac:output/>
+    </ac:reply>
+   </xsl:when>
+   <xsl:when test="form/action = 'new'">
+    <ac:reply>
+     <ac:become>
+      <d:copy-of select="(grove-root (current-node))"/>
+     </ac:become>
+     <ac:link name="last">
+      <bail:new
+ bail:action='xsl-variable apply: "ignore-garbage" param: "from" form-field("newaction")'>
+       <xsl:attribute name="protection">
+        <d:copy-of select="
+            (string-trim-both (data (form-field &quot;protection&quot; (current-node))))"/>
+       </xsl:attribute>
+       <xsl:attribute name="initialize">
+        <d:copy-of select="
+    (data (form-field &quot;initialize&quot; (current-node)))"/>
+       </xsl:attribute>
+       <d:copy-of select="
+  (fetch (parsed-locator (data (form-field &quot;read&quot; (current-node))))
+         body: (xml-parse (data (children (document-element (form-field &quot;body&quot; (current-node)))))))
+ "/>
+      </bail:new>
+     </ac:link>
+     <ac:output/>
+    </ac:reply>
+   </xsl:when><!--
+  Maybe we should remove the grant and revoke controls and always use
+  something else instead.
+  -->
+   <xsl:when test="form/action = 'grant'">
+    <ac:reply>
+     <!-- no change     -->
+     <ac:become>
+      <d:copy-of select="(grove-root (current-node))"/>
+     </ac:become>
+     <ac:grant>
+      <d:copy-of select="(form-field &apos;to (current-node))"/>
+      <d:copy-of select="(form-field &apos;right (current-node))"/>
+     </ac:grant>
+     <ac:output/>
+    </ac:reply>
+   </xsl:when>
+   <xsl:when test="form/action = 'revoke'">
+    <ac:reply>
+     <ac:become>
+      <d:copy-of select="(grove-root (current-node))"/>
+     </ac:become>
+     <ac:revoke>
+      <d:copy-of select="(form-field &apos;from (current-node))"/>
+      <d:copy-of select="(form-field &apos;right (current-node))"/> 
+     </ac:revoke>
+     <ac:output/>
+    </ac:reply>
+   </xsl:when>
+   <xsl:when test="form/action = 'change'">
+    <ac:reply>
+     <!--  new body  -->
+     <ac:become>
+      <!-- This looks pretty outdated.  It asserts a change is alsways a stylesheet element.
+I doubt this has been required for a decade. -->
+      <bail:copy-of>
+ (let ((new (document-element
+        (xml-parse (data (form-field 'text (current-node)))))))
+  (if (eq? (gi new) 'stylesheet) new
+      (error "That can't work!")))
+      </bail:copy-of>
+     </ac:become>
+    </ac:reply>
+   </xsl:when>
+   <xsl:when test="form/action = 'bail'">
+    <bail:copy-of>load form-field('q)</bail:copy-of>
+   </xsl:when>
+   <xsl:when test="form/action = 'protect'">
+    <ac:reply>
+     <ac:become>
+      <d:copy-of select="(grove-root (current-node))"></d:copy-of>
+     </ac:become>
+     <ac:protection>
+      <d:copy-of select="string-trim-both (data (form-field &apos;challenge (current-node)))"></d:copy-of>
+     </ac:protection>
+     <ac:output/>
+    </ac:reply>
+   </xsl:when>
+   <xsl:when test="form/action = 'change-secret'">
+    <ac:reply>
+     <ac:become>
+      <d:copy-of select="(grove-root (current-node))"/>
+     </ac:become>
+     <ac:secret>
+      <d:copy-of select="
+ (let ((new (data (form-field &apos;secret1 (current-node)))))
+    (if (not (self-affirm-secret (data (form-field &apos;secret (current-node)))))
+        (error &quot;wrong secret&quot;))
+    (if (equal? new (data (form-field &apos;secret2 (current-node))))
+        (literal (secret-encode new))
+        (error &quot;secret and verification differ, try again&quot;)))
+ "/>
+     </ac:secret><!--
+
+  There SHOULD be a link to "public".  We check here.  This should not harm
+  since the user can always change it, but help usability since changing the
+  initial password is the first thing a user is expected to do.
+
+-->
+     <d:if test="(not (link-ref &quot;public&quot;))">
+      <ac:link name="public">
+       <ac:id>
+        <d:copy-of select="(literal (message-creator me))"></d:copy-of>
+       </ac:id>
+      </ac:link>
+     </d:if>
+     <ac:output/>
+    </ac:reply>
+   </xsl:when>
+     <!--
+
+   This control is used to change your own active rights.
+   Basically the same thing happens as with grant/revoke,
+   except that there's not second person, but instead the
+   "potentialities" slot is changed.
+
+ -->
+   <xsl:when test="form/action = 'adjust-capabilities'">
+    <ac:reply>
+     <ac:become>
+      <d:copy-of select="(grove-root (current-node))"/>
+     </ac:become>
+     <d:copy-of select="#CONTENT">
+
+ (let ((desired (map (lambda (n) (string->right (data n)))
+                     (form-field 'c (current-node))))
+       (to (make element gi: 'to (literal (oid->string (self-reference)))))
+       (from (make element gi: 'from (literal (oid->string (self-reference))))))
+   (node-list
+    (document-element (grove-root (current-node))) ; body unchanged
+    (map
+     (lambda (right)
+      (make element gi: 'grant ns: 'http://www.askemos.org/2000/CoreAPI
+         to (right->node-list right)))
+     desired)
+    (map
+      (lambda (right)
+       (make element gi: 'revoke ns: 'http://www.askemos.org/2000/CoreAPI
+          from (right->node-list right)))
+      (filter (lambda (c) (not (member c desired))) (message-capabilities me)))))
+
+     </d:copy-of>
+     <ac:output/>
+    </ac:reply>
+  </xsl:when>
+   <xsl:when test="form/action = 'toggle-replication-state'">
+    <ac:reply>
+     <ac:continue><d:copy-of select="(grove-root (current-node))"/></ac:continue>
+     <ac:replicates>
+      <d:copy-of select="#CONTENT">
+(let* ((replicates (message-replicates me))
+       (data-trimed (lambda (x) (xsl-variable apply: "ignore-garbage" param: "from" x)))
+       (li ((sxpath '(Bag li)) replicates))
+       (rdf (string->symbol "http://www.w3.org/1999/02/22-rdf-syntax-ns#")))
+  (receive
+    (deleteable insertable)
+    (partition (lambda (name)
+                 (ormap (lambda (li)
+                          (equal? (attribute-string 'resource li) name))
+                        li))
+               (map data-trimed (form-field 'name (current-node))))
+    (let ((nli (fold
+                 (lambda (name init)
+                   (if (equal? name "") init
+                       (cons (make element gi: 'li ns: rdf
+                                   attributes: `((,rdf resource ,name))) init)))
+                 (empty-node-list)
+                 insertable))
+          (left (node-list-filter
+                  (lambda (li) (not (member (attribute-string 'resource li) deleteable)))
+                li)))
+       (if (and (node-list-empty? nli) (node-list-empty? left))
+           (error "cowardly not removing the last supporter")
+           (make element gi: (gi replicates) ns: (ns replicates) attributes: (copy-attributes replicates)
+              (make element gi: 'Bag ns: rdf nli left))))))
+      </d:copy-of>
+     </ac:replicates>
+     <ac:output/>
+    </ac:reply>
+   </xsl:when>
+
+   <xsl:otherwise>
+    <d:copy-of select="(error (xml-format (current-node)))"/>
+   </xsl:otherwise>
+  </xsl:choose>
+ </xsl:template><!--
+
+  ;;; Local Variables: ***
+  ;;; mode: dsssl ***
+  ;;; End: ***
+
+ -->
+</xsl:stylesheet>

@@ -56,6 +56,20 @@
   (unless (call-kernel "support" from name remote)
 	  (error "failed to support" from name remote)))
 
+(define (get-channels-command #!optional (source #f) (oid? #f))
+  (define from
+    (cond
+     ((not source) '(my-oid))
+     ((string? source)
+      (if oid? `(string->oid ,source) `(entry-name->oid ,source)))
+     (else source)))
+  (define ff
+    (if source
+	'`((,k ,v) . ,i)
+	'(if (equal? k "public") i `((,k ,v) . ,i))))
+  `(let ((links (fget (find-local-frame-by-id ,from 'gui-client) 'mind-links)))
+     (fold-links-sorted (lambda (k v i) ,ff) '() links)))
+
 (define (kernel-initial-configuration logname)
   (call-kernel
    'begin
@@ -71,26 +85,134 @@
      (respond-timeout-interval 20)
      ($broadcast-timeout 8)
      (ball-save-config)
-     #; (logerr "Fixing protection on 'system' to use ~a\n" ,logname)
+     #; (logerr "Fixing protection on \"system\" to be usable by \"~a\"\n" ,logname)
      (let* ((sid (entry-name->oid "system"))
             (sys (document sid)))
        (fset! sys 'protection (list (entry-name->oid ,logname)))
        (frame-commit! sid))
      #t)))
 
-(define (get-channels-command #!optional (source #f) (oid? #f))
-  (define from
-    (cond
-     ((not source) '(my-oid))
-     ((string? source)
-      (if oid? `(string->oid ,source) `(entry-name->oid ,source)))
-     (else source)))
-  (define ff
-    (if source
-	'`((,k ,v) . ,i)
-	'(if (equal? k "public") i `((,k ,v) . ,i))))
-  `(let ((links (fget (find-local-frame-by-id ,from 'gui-client) 'mind-links)))
-     (fold-links-sorted (lambda (k v i) ,ff) '() links)))
+(define (add-guard-fail msg code)
+  `(guard
+    (ex (else (log-condition ,msg ex) #f))
+    ,code))
+
+#;(define (kernel-add-reflexive-entry! entry)
+  ;;(call-kernel "channel" "-link" entry filename)
+  (call-kernel
+   'begin
+   (debug 'Trying `(and ,(add-guard-fail "creating reflexive entry" `(install-new-private-name!
+          ,entry
+          ,(make-new-element
+           `(message-body (query-via-entry! ,(main-entry-name) to: '("system" "user.code")))
+           action: "system/bail-reflexive"
+           protection: (main-entry))))
+         #t))))
+
+#;(define (kernel-add-reflexive-entry! entry)
+  #;(call-kernel "channel" "-link" entry filename)
+  (define sys
+    (let ((e (assoc "system" (entry-points))))
+      (if e (cadr e) (error "system missing"))))
+  (define to (with-output-to-string
+               (lambda ()
+                 (display "/")
+                 (display sys)
+                 (display "/user.code"))))
+  (call-kernel
+   'begin
+   (debug 'Trying `(and ,(add-guard-fail "creating reflexive entry" `(install-new-private-name!
+          ,entry
+          ,(make-new-element
+            `(let ((x (message-body (query-via-entry! ,(main-entry-name) (empty-node-list) to: ,to))))
+               (logerr "Found ~a\n" (xml-format x))
+               x)
+           action: "system/bail-reflexive"
+           protection: (main-entry))))
+         #t))))
+
+(define (kernel-add-reflexive-entry! entry)
+  #;(call-kernel "channel" "-link" entry filename)
+  (define sys
+    (let ((e (assoc "system" (entry-points))))
+      (if e (cadr e) (error "system missing"))))
+  (define to (with-output-to-string
+               (lambda ()
+                 (display "/")
+                 (display sys)
+                 (display "/user.code"))))
+  (call-kernel
+   'begin
+   (debug 'Trying `(and ,(add-guard-fail "creating reflexive entry" `(install-new-private-name!
+          ,entry
+          ,(make-new-element
+            `(xml-parse (filedata ,(embedded-file '("lib") "xslt-user.xml")))
+           action: "system/bail-reflexive"
+           protection: (main-entry))))
+         #t)))
+  (refresh-entry-points-and-dependencies!)
+  #t)
+
+(define (make-new-element nl #!key (action "public") (protection (public-oid)))
+  (let ((protection (if (symbol? protection) (symbol->string protection)  protection)))
+    `(make-new-element ,nl '(action . ,action) '(protection . ,protection))))
+
+(define (make-new-element-from-file fn)
+  ;; FIXME: A horrible hack to simplify coding for right now.
+  (if (string-suffix? ".ico" fn)
+      (make-new-element
+       `(sxml `(output (@ (method "text") (media-type "image/x-icon"))
+                       ($$ ,filedata ,,fn))))
+      (make-new-element `(xml-parse (filedata ,fn)))))
+
+(define (make-link-form-from-file nm fn)
+  (list 'make-link-form nm (make-new-element-from-file fn)))
+
+(define (code-system-link-via-metactrl entry as filename)
+  (let ((in '(entry-name->oid "system")))
+    `(send-via-entry!
+      ,entry
+      ,(make-link-form-from-file as filename)
+      to: ,in)))
+
+(define (kernel-install-in-system0 entry as filename)
+  (let* ((from-path '("lib"))
+         (fn (embedded-file from-path filename)))
+    (and
+     fn
+     (or
+      (call-kernel
+       'begin
+       `(and-let*
+         ((result (guard
+                   (ex (else (log-condition "Linking into system failed" ex) #f))
+                   ,(debug 'calling (code-system-link-via-metactrl entry as fn))))
+          ((frame? result)))
+         ;; FIXME: look at 'status
+         #t))
+      (begin
+        (log-error "failed to install '" as "' from \"" fn "\"")
+        #f)))))
+
+(define (kernel-install-in-system entry as filename)
+  (debug as (kernel-install-in-system0 entry as filename)))
+
+(define (kernel-additional-setup entry)
+  (and
+   (kernel-install-in-system entry "user.code" "xslt-user.xml")
+   (kernel-install-in-system entry "wallet.code" "wallet.xml")
+   (kernel-install-in-system entry "wallet-skin-simple" "wallet-skin-simple.xml")
+   (kernel-install-in-system entry "wallet.icon" "wallet-icon.ico")
+   (kernel-install-in-system entry "sms.code" "sms.xml")
+   (kernel-install-in-system entry "davtree.code" "xslt-davtree.xml")
+   (kernel-install-in-system entry "Kalender.xml" "Kalender.xml")
+   (kernel-install-in-system entry "hoist.xml" "hoist.xml")
+   (kernel-install-in-system entry "Edit15.xml" "Edit15.xml")
+   (kernel-add-reflexive-entry! (string-append (main-entry-name) "-private"))))
+
+(define (kernel-additional-configuration logname large?)
+  (or (not large?)
+      (kernel-additional-setup logname)))
 
 (define (embedded-file path name)
   (let ((fn (make-pathname (cons (system-directory) path) name)))
@@ -100,7 +222,7 @@
 	  (log-error "missing file" fn)
 	  #f))))
 
-(define (*init-rep! CN logname passwd)
+(define (*init-rep! CN logname passwd large?)
   (define data-file-path
     (cond
      ((string=? (system-platform) "android")
@@ -113,7 +235,20 @@
       (sysinf (embedded-file path "sysinf.xml"))
       (syssetup (data-file-path "setup-system.setup"))
       (sysctrl (data-file-path "system.core"))
-      (user-app (embedded-file path "wallet.core")))
+      (user-app (if large?
+                    (let ((fn1 (embedded-file path "xslt-user.xml"))
+                          (fn2 (data-file-path "user.core")))
+                      (and fn1
+                           (let ((data (make-string (file-size fn1))))
+                             (call-with-input-file fn1
+                               (lambda (p) (read-substring data 0 (string-length data) p)))
+                             (with-output-to-file fn2
+                               (lambda ()
+                                 (display "<new action=\"system/bail-reflexive\" secret=\"none\">\n")
+                                 (display data)
+                                 (display "\n</new>\n")))
+                             fn2)))
+                    (embedded-file path "wallet.core"))))
      (and
       (not (rep-exists?))
       rules sysctrl user-app
@@ -135,7 +270,7 @@
 		 (new
 		  (@ (action "reflexive") (secret "none"))
 		  (link (@ (name "xslt-method")) (ref "reflexive"))
-		  (link (@ (name "xslt-bail-reflexive")) (ref "reflexive"))
+		  (link (@ (name "bail-reflexive")) (ref "reflexive"))
 		  (link (@ (name "public")) (ref "public"))
 		  (output
 		   ($$ ,xml-parse ,(filedata ,sysinf))))
@@ -151,7 +286,9 @@
 	 ;; "channel" "secret" "set" logname passwd
 	 "-start" kernel-data-directory)
 	(and (wait-for-kernel-server 10000)
+             (begin (if large? (delete-file user-app)) #t)
              (kernel-initial-configuration logname)
+             (kernel-additional-configuration logname large?)
              (kernel-start-custom-services!)))))))
 
 (define in-initialization #f)
@@ -160,7 +297,7 @@
   (thread-yield!)
   (or in-initialization))
 
-(define (init-rep! CN logname passwd)
+(define (init-rep! CN logname passwd large?)
   (define steps
     `((0.2 ,(lambda ()
 	      (file-exists? kernel-data-directory)))
@@ -171,7 +308,7 @@
   (let ((t1 (make-thread
 	     (lambda ()
 	       (set! in-initialization 0.05)
-	       (if (*init-rep! CN logname passwd)
+	       (if (*init-rep! CN logname passwd large?)
 		   (log-status "Initialization done.")
 		   ;; TBD: handle the error situation.  Just how?
 		   (log-error "Initialization failed.\n"))
@@ -220,17 +357,16 @@
 	    ((pair? message) (set! needs-processing #t) message)
 	    (else "load string error, was soll ich tun?"))))
       (if needs-processing
-	  (lambda ()
-	    `(,(with-output-to-string
-		 (lambda ()
-		   (for-each
-		    (lambda (m)
-		      (cond
-		       ((symbol? m)
-			(display (dbget m '#f)))
-		       (else (display m))))
-		    message)))
-	      ,left ,@right))
+	  `(,(with-output-to-string
+               (lambda ()
+                 (for-each
+                  (lambda (m)
+                    (cond
+                     ((symbol? m)
+                      (display (dbget m '#f)))
+                     (else (display m))))
+                  message)))
+            ,left ,@right)
 	  `(,message ,left ,@right)))))
 
 (define myip #f)  ;; deprecated
@@ -245,7 +381,7 @@
        (let ((,value %local-void-value))
 	 (lambda (#!optional (,refresh #f))
 	   (if ,refresh (set! ,value %local-void-value))
-	   (if (and (%is-local-void? ,value) (not (eq? ,refresh 'void)))
+	   (if (and (or (not ,value) (%is-local-void? ,value)) (not (eq? ,refresh 'void)))
                (set! ,value (begin . ,body)))
            ;; FIXME: That's a bit strange: these values can NOT be #f!!!
 	   (if (or (%is-local-void? ,value) (not ,value)) ,missing ,value))))))
@@ -349,10 +485,23 @@
                  request)))))
         ,name)))))
 
+(define (override-meta-interface-script)
+  `(let ((old ($meta-lookup-method))
+         (ctrl (xml-parse (filedata ,(embedded-file '("lib") "metactrl.xml")))))
+     ($meta-lookup-method
+      (lambda (type)
+        (case type
+          ((read) (old type))
+          ((write) ctrl)
+          (else (error "$meta-lookup-method: pardon?")))))))
+
 (define (start-satelite-script port name ssl)
   `(begin
      (set! ln-sattelite ,(start-satelite-script0 port name ssl))
      (debug 'SatteliteIsNow ln-sattelite)
+     ,(add-guard-fail
+       "overiding meta-interface failed"
+       (override-meta-interface-script))
      #t))
 
 (define (kernel-satellite-variable-exits)
@@ -384,20 +533,27 @@ Is the service not yet running?")))
   (let ((e (assoc (main-entry) (map reverse (entry-points)))))
     (and e (cadr e))))
 
-(define (drop-selected-entry-point! name)
+(define (refresh-entry-points-and-dependencies!)
+  ;; FIXME: This calls for automatic deps mngmt.
+  (entry-points #t)
+  ;;(interesting-pages #t) ist actually dependent.
+  #;(update-pages!)
+  )
+
+(define drop-selected-entry-point!
   (lambda ()
+    (define name (car (dbget 'selected-channel #f)))
     (modal-if
      `("Really drop \"" ,name "\"? There is no way to recover!")
      (lambda ()
-       #;(let ((e (assoc name (entry-points))))
-	 (when (and e (eq? (cadr e) (main-entry)))
-	       (error "refusing to remove owner entry")))
        (when (equal? name (main-entry-name))
 	     (error "refusing to remove owner entry"))
-       (let ((v #;(call-kernel 'begin `(drop-entry-point! ,(car sel)))
-	      (call-kernel "channel" "drop" ,name)))
-	 (entry-points #t)
-	 (dbset 'selected-channel #f))
+       (when (member name '("public" "system"))
+	     (error "refusing to remove essential entry" name))
+       (let ((v (call-kernel 'begin `(drop-entry-point! ,name))
+                #;(call-kernel "channel" "drop" name)))
+         (refresh-entry-points-and-dependencies!))
+       (dbclear 'selected-channel)
        #f))))
 
 (define-cached-kernel-value kernel-connections #f '("n/a")
@@ -603,7 +759,7 @@ Is the service not yet running?")))
      (starting
       "Starting"
       #f
-      #f
+      ("Status" ,(push-page 'status))
       (spacer height 50)
       (label text "Starting... stay tuned!")
       (redirect action
@@ -630,6 +786,8 @@ Is the service not yet running?")))
       (spacer)
       (textentry id CN text "CN:")
       (spacer)
+      (checkbox id setup-large text "Large Setup")
+      (spacer)
       (button h 75 size header indent 0.05 rounded #t text "Initialize" action
 	      ,(lambda ()
 		 (let ((logname (dbget 'username "me"))
@@ -638,7 +796,7 @@ Is the service not yet running?")))
 		   (if passwd
 		       (begin
 			 (set! in-initialization 0.0)
-			 (init-rep! cn logname passwd)
+			 (init-rep! cn logname passwd (dbget 'setup-large #f))
 			 'initializing)
 		       (begin
 			 (error "password must not be empty")
@@ -732,7 +890,7 @@ Is the service not yet running?")))
       ,(lambda ()
 	 (let ((sel (dbget 'selected-channel #f)))
 	   (if sel
-	       `(button h 50 text "Drop" action ,(drop-selected-entry-point! (car sel)))
+	       `(button h 50 text "Drop" action ,drop-selected-entry-point!)
 	       '(label text "No channel selected."))))
       ;; end of "channels" page
       )
@@ -788,7 +946,7 @@ Is the service not yet running?")))
       )
      (status
       "Status"
-      ("Back" main)
+      ("Back" ,pop-page)
       #f
       (redirect action ,(lambda () (if upnrunning #f 'main)))
       (spacer)
@@ -796,10 +954,15 @@ Is the service not yet running?")))
       (spacer)
       (label text ,(string-append "Kernel running as: " (symbol->string (subprocess-style))))
       (spacer)
+      (label text "Network Connections")
+      (spacer)
+      (list id remote-host entries ,(kernel-connections))
+      (spacer)
       (button text "Refresh Listing" action
 	      ,(lambda ()
 		 (local-connect-string #t)
 		 (kernel-connections #t)
+                 (update-pages!)
 		 #f))
       (spacer)
       ,(my-ip-address-display update-pages!)
@@ -851,7 +1014,10 @@ Is the service not yet running?")))
       ("Main" main)
       #f
       ,@(if upnrunning
-	    `((label text "Input")
+	    `(
+              (button text "Create Test Account" action ,(lambda () (kernel-add-reflexive-entry! "test") 'main))
+              (spacer)
+              (label text "Input")
 	      (multilinetextentry id testinput lines 5)
 	      (spacer)
 	      (button

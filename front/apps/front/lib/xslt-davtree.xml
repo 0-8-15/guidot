@@ -1,0 +1,411 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<xsl:stylesheet  xmlns:am="http://askemos.org/BALL/Meta/2012#"  xmlns:d="http://www.askemos.org/2005/NameSpaceDSSSL/" xmlns:b="http://www.askemos.org/2013/bail/" xmlns:dav="urn:DAV" xmlns:ac="http://www.askemos.org/2000/CoreAPI#" xmlns:xsl="http://www.w3.org/1999/XSL/Transform" version="1.0">
+ <title>Askemos/BALL Folder</title>
+ <headline xmlns="urn:editor">
+ <p>Simple directory tree.  Talks WebDAV, takes snapshots.  That's about it.</p>
+<!--
+  <h1>"Classic" Directory Tree</h1>
+  <ul>
+   <li>Talks WebDAV.</li>
+   <li>Does Snapshots.</li>
+   <li>That about it.</li>
+  </ul>
+-->
+ </headline>
+ <xsl:template match="*" mode="tr">
+  <tr>
+   <td>
+    <xsl:choose>
+     <d:when test="(equal? (attribute-string &apos;resource (current-node)) (oid-&gt;string (message-creator msg)))">
+      <input name="rename" size="15" type="text" value=""></input>
+     </d:when>
+     <xsl:otherwise>
+      <d:a d:href="(read-locator
+(append 
+  (cons (attribute-string &apos;resource (current-node))
+        (reverse (message-destination msg)))
+  (message-location msg)))">
+       <b:copy-of>attribute-string 'resource (current-node)</b:copy-of>
+      </d:a>
+     </xsl:otherwise>
+    </xsl:choose>
+   </td>
+   <td>
+    <d:input name="name" type="radio" d:value="(attribute-string &apos;resource (current-node))"></d:input>
+   </td>
+   <td>
+<!--
+              <b:copy-of>
+(let* ((v (attribute-string &apos;resource (current-node)))
+       (x `((value ,v)
+            (type &quot;checkbox&quot;) (name &quot;lock&quot;)))
+       (lock (node-list-filter
+              (lambda (x)
+               (equal? (attribute-string &apos;resource x) v))
+              ((sxpath &apos;(locks *))
+               (xsl-variable &quot;obj&quot;)))))
+ (if (not (node-list-empty? lock))
+     (or
+      (and-let* ((l (node-list-first lock))
+                ((not (node-list-empty? l)))
+                (a (attribute-string &apos;owner l)))
+       (if (eq? (string-&gt;oid a) (message-creator msg))
+           (make element
+             gi: &apos;input
+             attributes: `((checked &quot;checked&quot;) . ,x))
+           (make element gi: &apos;a
+             attributes: `((href ,(read-locator a)))
+             (literal (entry-name (string-&gt;oid a))))))
+       (make element gi: &apos;span attributes: &apos;((style &quot;color:red&quot;))
+             (literal &quot;n/a&quot;)))
+     (make element gi: &apos;input attributes: x)))
+    </d:copy-of>
+-->
+   </td>
+   <td title="OID">
+    <small>
+     <code>
+      <b:copy-of>attribute-string 'href current-node()</b:copy-of>
+     </code>
+    </small>
+   </td>
+   <td>
+    <d:input name="delete" type="checkbox" d:value="(attribute-string &apos;resource (current-node))"></d:input>
+   </td>
+  </tr>
+  <tr class="propln">
+   <b:copy-of>
+define desc
+ sxpath('(RDF))(current-node())
+
+SXML
+ (td (@ (title "Date Created")) . ,((sxpath '(* date *text*)) desc))
+ (td (@ (title "Creator")) ,(entry-name (string->oid (data ((sxpath '(Description creator)) desc)))))
+ (td (@ (title "Version")) . ,((sxpath '(* version serial *text*)) desc))
+ (td (@ (title "Contract"))
+  ,(let ((ad (data ((sxpath '(* action-document)) desc))))
+     `(a (@ (href ,(read-locator (list (oid->string ad message-replicates( current-place() ))))))
+         ,ad)))
+ (td (@ (title "Media Type")) . ,((sxpath '(* content-type *text*)) desc))
+   </b:copy-of>
+  </tr>
+ </xsl:template>
+ <xsl:template match="request[@type=&quot;read&quot;]">
+  <xsl:choose>
+<!--
+
+Standard debug interface for development and maintainence available
+for the creator only.
+
+-->
+   <d:when test="(and (is-meta-form? msg) )">
+    <b:copy-of>
+(cond
+  ((is-propfind-request? msg)
+   (if (or (link-ref "objects") (pair? (message-destination msg)))
+       (fetch (cons "objects" (message-destination msg))
+              'location (message-location msg)
+              body: (children (current-node)))
+       (dav-propfind-reply me msg collection: #t children: '())))
+ ((and (is-metainfo-request? msg) (pair? (message-destination msg)))
+  (metainfo (cons "objects" (message-destination msg))))
+ (else (message-body (metaview me msg))))
+    </b:copy-of>
+   </d:when>
+   <d:when test="(and (not (service-level))
+     (null? (message-destination msg)))">
+    <b:copy-of>
+define index
+   guard (ex (else #f))
+    fetch '("objects" "index.html")
+or
+   index
+   SXML (html (head (title "Access Denied")) (body (h1 "Access Denied -- Zugriff Verweigert")))
+    </b:copy-of>
+   </d:when>
+   <xsl:otherwise>
+    <xsl:variable name="metainfo">
+     <b:copy-of>
+  (metainfo (cons "objects"
+        (let ((d (message-destination msg) ))
+          (if (and (pair? d) (string-null? (car d))) '() d)))
+   )</b:copy-of>
+    </xsl:variable>
+    <xsl:variable name="childs">
+     <d:copy-of select="((sxpath &apos;(* links Bag li))
+  (xsl-variable &quot;metainfo&quot;))"></d:copy-of>
+    </xsl:variable>
+    <xsl:variable name="obj">
+     <d:copy-of select="fetch identity (cons &quot;objects&quot;
+   (let ((d (message-destination msg) ))
+    (if (and (pair? d) (string-null? (car d)))
+        &apos;() d))) &apos;location (message-location msg)"></d:copy-of>
+    </xsl:variable>
+    <xsl:choose>
+     <d:when test="and
+ link-ref &quot;objects&quot;
+ node-list-empty?
+  ((sxpath &apos;(* properties prop resourcetype collection))
+   (xsl-variable &quot;metainfo&quot;))
+">
+      <d:copy-of select="xsl-variable &quot;obj&quot;"></d:copy-of>
+     </d:when>
+     <xsl:otherwise>
+      <html xmlns="http://www.w3.org/1999/xhtml">
+       <head>
+        <title>
+         <d:copy-of select="
+       (data ((sxpath &apos;(title)) (grove-root (current-node)))) "></d:copy-of>
+        </title>
+        <meta content="application/xhtml+xml; charset=UTF-8" http-equiv="Content-Type"></meta>
+<!-- FIXME
+        <link href="/Ade6d2d759d9502d5e071947527272fe8" rel="icon" type="image/x-icon"></link>
+        <link href="/Ade6d2d759d9502d5e071947527272fe8" rel="shortcut icon" type="image/x-icon"></link>
+-->
+        <style language="text/css">
+.propln { font-size:60%; background-color:silver; }
+</style>
+       </head>
+       <body bgcolor="white">
+        <table border="0" style="border:none" width="100%">
+         <tr>
+	  <td valign="top">
+           <h1><a href="http://www.askemos.org">Askemos</a><sup>®</sup> Ordner</h1>
+<!--
+           <b:copy-of>
+(sxml `(a (@ (href ,(read-locator (list  "" (oid->string (message-creator msg) message-replicates( current-place() ))))) ) "@"))
+	   </b:copy-of>
+-->
+          </td>
+          <td style="font-size:x-small;" title="Current Version Number">
+           <d:copy-of select="literal (version-identifier me)"></d:copy-of>
+          </td><!-- Again owner only for this link. -->
+          <d:if test="(service-level (message-creator me))">
+           <td style="font-size:x-small;">
+            <b:a b:href="read-locator (list (oid->string self-reference() message-replicates( current-place() ))) body: &quot;xmlns=a&quot; ">debug</b:a>
+           </td>
+          </d:if>
+          <td valign="top">
+           <d:if test="link-ref &quot;logo&quot;">
+           <d:img align="right" alt="logo" border="0" d:src="link-ref &quot;logo&quot;"></d:img>
+           </d:if>
+          </td>
+         </tr>
+        </table>
+        <d:copy-of select="((sxpath &apos;(headline *)) (grove-root (current-node)))"></d:copy-of>
+        <h2 title="Visible PATH">
+         <b:copy-of>
+string-append
+ (string-join (reverse (message-location msg)) "/"  'prefix )
+ (string-join (message-destination msg) "/" 'prefix)
+         </b:copy-of>
+        </h2>
+        <div>
+         <p>File upload:</p>
+         <d:form enctype="multipart/form-data" method="post" d:action="(write-locator (append (reverse (message-destination msg)) (message-location msg)))">
+          <input name="body" type="file"></input>
+          <input name="*xmlns*" type="hidden" value="urn:local"></input>
+          <input name="action" type="hidden" value="save"></input>
+          <input type="submit" value="Übermitteln"></input>
+<!--
+          <input name="mkdir" type="submit" value="mkdir"></input>
+-->
+          <input name="snapshot" type="submit" value="Aufnahme" title="Sicherungskopie (Schnappschuß) anlegen (gesamter Verzeichnisbaum)."></input>
+          <input name="restore" type="submit" value="Zurück" title="Auf die letzte Sicherungskopie zurücksetzen."></input>
+          <input type="reset" value="Eingaben löschen"></input>
+          <d:if test="
+	(equal?
+         (attribute-string &apos;lock (node-list-first ((sxpath `(headline)) (grove-root (current-node)))))
+         &quot;&quot;)
+	">
+           <input name="edit" type="submit" value="edit"></input>
+          </d:if>
+          <table>
+           <tr>
+            <th>Name</th>
+            <th>Save As</th>
+            <th><!--Lock--></th>
+            <th>OID</th>
+            <th>Delete</th>
+           </tr><!--
+         <tr bgcolor="silver">
+          <td>
+           <input name="name" size="15" type="text"></input>
+          </td>
+          <td colspan="3">
+           <small>Hier Namen für neue Dokumente eintragen
+<em>oder aber</em> "Speicherziel" wählen.</small>
+          </td>
+         </tr>
+-->
+           <d:if test="(link-ref &quot;objects&quot;)">
+            <xsl:for-each select="$childs">
+             <d:apply-templates mode="tr" select="(sxml `(entry
+    (@ (resource ,(attribute-string &apos;resource (current-node)))
+       (href ,(attribute-string &apos;href (current-node))))
+    ,(guard (ex (else (empty-node-list)))
+      (metainfo (attribute-string &apos;href (current-node)) ))))
+"></d:apply-templates>
+            </xsl:for-each>
+           </d:if>
+          </table>
+         </d:form>
+        </div>
+       </body>
+      </html>
+     </xsl:otherwise>
+    </xsl:choose>
+   </xsl:otherwise>
+  </xsl:choose>
+ </xsl:template>
+ <xsl:template match="request[@type=&quot;write&quot;]">
+  <xsl:choose>
+<!--
+
+   Standard Fall: Alle angebotenen Rechte werden akzeptiert.
+
+-->
+   <d:when test=" (eq? &apos;grant (first-child-gi (current-node))) ">
+    <ac:reply>
+     <ac:become>
+      <d:copy-of select="(grove-root (current-node))"></d:copy-of>
+     </ac:become>
+     <d:copy-of select="((sxpath &apos;(grant right)) (current-node))"></d:copy-of>
+     <ac:output method="xml"></ac:output>
+    </ac:reply>
+   </d:when>
+<!--
+
+Support the standard debug interface.
+
+-->
+   <d:when test="(and (is-meta-form? msg) (service-level) )">
+    <b:copy-of>
+(cond
+ ((member
+   (data (form-field 'action (current-node)))
+   '("change" "protect" "toggle-replication-state" "adjust-capabilities")) ;"link" 
+  (message-body (metactrl me msg)))
+ (else
+  (collection-update-propose me msg "objects"
+   action: (action-document (current-contract)))))
+</b:copy-of>
+   </d:when>
+   <d:when test="
+ (and
+  (or (service-level (message-creator me))
+      (error &quot;permission denied&quot;))
+  (eq? &apos;form (gi (document-element (children (current-node)))))
+  (eq? &apos;urn:local
+       (ns (document-element (children (current-node))))))">
+    <d:call-template name="
+(cond
+ ((ormap
+    (lambda(f)
+     (and (not (node-list-empty? (form-field f (current-node)))) f))
+   '(restore snapshot mkdir rename))
+  => symbol->string)
+ (else (data ((sxpath &apos;(form action)) (current-node)))))
+   "></d:call-template>
+   </d:when>
+   <xsl:otherwise>
+    <b:copy-of>(error (current-node))</b:copy-of>
+   </xsl:otherwise>
+  </xsl:choose>
+ </xsl:template>
+ <xsl:template name="restore">
+  <ac:reply>
+   <continue>
+    <d:copy-of select="(grove-root (current-node))"></d:copy-of>
+   </continue>
+   <ac:link name="objects">
+    <ac:id>
+     <d:copy-of select="literal (link-ref &quot;backup&quot;)"></d:copy-of>
+    </ac:id>
+   </ac:link>
+  </ac:reply>
+ </xsl:template>
+ <xsl:template name="snapshot">
+  <ac:reply>
+   <continue>
+    <d:copy-of select="(grove-root (current-node))"></d:copy-of>
+   </continue>
+   <ac:link name="backup">
+    <ac:id>
+     <d:copy-of select="literal (link-ref &quot;objects&quot;)"></d:copy-of>
+    </ac:id>
+   </ac:link>
+  </ac:reply>
+ </xsl:template>
+ <xsl:template name="save">
+  <ac:reply>
+   <continue>
+    <d:copy-of select="(grove-root (current-node))"></d:copy-of>
+   </continue>
+   <ac:link name="objects">
+    <b:copy-of>
+ (let* ((dst (message-destination msg))
+        (action (action-document (current-contract)))
+        (o (fold
+           (lambda (delete objects)
+            (collection-update-tree
+             objects dst (data delete) #f context: me action: action))
+           "objects"
+           (form-field 'delete (current-node))) ))
+  (if (equal? (data (form-field 'body (current-node))) "")
+      (if (equal? o "objects")
+          (make element gi: 'id (literal (link-ref "objects")))
+          o)
+      (collection-update-tree
+       o dst
+       (let ((n (data (form-field 'name (current-node)))))
+        (if (string=? n "")
+            (or (attribute-string 'filename
+				  (form-field 'body (current-node)))
+                (oid->string (message-creator msg)))
+            n))
+       (SXML
+        (new (@ (protection ,(right->string (message-protection me)))
+                 (action ,(literal action)))
+          . ,(children (form-field 'body (current-node)))))
+       context: me action: action)))
+    </b:copy-of>
+   </ac:link>
+  </ac:reply>
+ </xsl:template>
+<!--
+
+The ac:body/methods allow this source code to be used as passive
+type contract.  In constrast to the reflexive alternative this one
+evaluates the underlying contract not the current state.  Therefore it
+is unable to ever change the contract.
+
+TBD: discuss in more detail.
+
+-->
+ <ac:body>
+  <h1>BAIL</h1>
+  <p>The <u>B</u>ALL <u>A</u>pplication <u>I</u>nterface <u>L</u>anguage
+  embedded in XSLT.</p>
+  <h2>Read Method</h2>
+  <p>This is envoked when the subject answer an idempotent message to
+  display the current state.</p>
+  <ac:method request="message" this="current-place" type="read">
+   <programlisting class="executable">bail/confirm current-place message</programlisting>
+  </ac:method>
+  <h2>The Proposal</h2>
+  <p>This script produces a proposed update according to the attached
+  contract.  It runs in the first phase of a transaction.  The result
+  of this script is available as the third parameter in the
+  <code>accept</code> procedure (see below).</p>
+  <ac:method request="message" this="current-place" type="propose">
+   <programlisting class="executable">bail/submit current-place message</programlisting>
+  </ac:method>
+  <h2>Taking Effect</h2>
+  <p>Once the agreement process has commenced, the <code>accept</code>
+  script is invoked to update the local current state.</p>
+  <ac:method plan="update" request="message" this="current-place" type="accept">
+   <programlisting class="executable">bail/accept current-place message update</programlisting>
+  </ac:method>
+ </ac:body>
+</xsl:stylesheet>

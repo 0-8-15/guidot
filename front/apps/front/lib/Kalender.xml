@@ -1,0 +1,602 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xsl:stylesheet xmlns:core="http://www.askemos.org/2000/CoreAPI#" xmlns:d="http://www.askemos.org/2005/NameSpaceDSSSL/" xmlns:b="http://www.askemos.org/2013/bail/" xmlns:editor="urn:editor" xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xmlns:xsql="http://www.askemos.org/2006/XSQL/" version="1.0">
+ <xsl:variable name="view">diary</xsl:variable>
+ <xsl:variable name="date">
+  <b:copy-of>
+let
+ ((d (form-field 'date) ))
+ if (node-list-empty? d)
+    message-date msg
+    guard
+     ex (else (string-&gt;date (data d) "~a, ~d ~b ~Y ~H:~M:~S ~z"))
+     string-&gt;date (data d) "~Y-~m-~d"
+  </b:copy-of>
+ </xsl:variable>
+ <xsl:variable name="edit-type">
+  <b:copy-of>
+let {* d (form-field 'edit-type) *}
+ if node-list-empty?(d)
+    "text/wikipedia"
+    data d
+  </b:copy-of>
+ </xsl:variable>
+ <xsl:template name="start">
+<!-- create calendar database -->
+  <reply>
+   <update>create table dates(date date unique primary key, public boolean, private boolean)</update>
+  </reply>
+ </xsl:template>
+ <xsl:template name="fetch-entry">
+  <xsl:param name="date">
+   <d:copy-of select="message-date msg"/>
+  </xsl:param>
+  <b:copy-of>
+guard
+  ex (else (empty-node-list))
+  let {* date xsl-variable("date") *}
+    (fetch (list "webdav" "dates"
+                  (date-&gt;string date "~Y")
+                  (date-&gt;string date "~j")) adopt: #t)
+  </b:copy-of>
+ </xsl:template>
+ <xsl:template name="calmth.tpl">
+<!-- monthly calendar view -->
+<!--
+Benutze
+http://ietf.webdav.org/caldav/homepage/papers.html
+http://www.ietf.org/rfc/rfc2445.txt
+! -->
+  <xsl:param name="date">
+   <d:copy-of select="message-date msg"/>
+  </xsl:param>
+  <xsl:param name="location"/>
+  <xsl:param name="entries"/>
+  <xsl:comment> googleoff: all </xsl:comment>
+  <b:copy-of>
+(define local "de")
+(define wkstart 1) ; Monday starts the week
+(define location
+  (if (node-list-empty? (xsl-variable "location"))
+      (message-location msg)
+      (reverse (parsed-locator (data (xsl-variable "location"))))))
+(define privileged (service-level))
+
+(define (calendar month . off)
+  (define offset (if (pair? off) (car off) 1))
+  (define mon1st (make-date 0 0 0 0  1 (date-month month)
+			    (date-year month) (date-zone-offset month)))
+  (define mon1stj (date-&gt;julian-day mon1st))
+  (define lml (julian-day-&gt;date (- mon1stj 1)
+				(date-zone-offset month)))
+  (define nm1st
+    (if (eqv? (date-month month) 12)
+	(make-date 0 0 0 0  1 1
+		   (+ (date-year month) 1) (date-zone-offset month))
+	(make-date 0 0 0 0  1 (+ 1 (date-month month))
+		   (date-year month) (date-zone-offset month))))
+  (define tml (julian-day-&gt;date (- (date-&gt;julian-day nm1st) 1)
+				(date-zone-offset month)))
+
+  (define wk1 (let ((x (modulo (- offset (date-week-day mon1st)) 7)))
+		(if (eqv? x 0) 7 x)))
+
+  (define (d-&gt;s x) (date-&gt;string x "~Y-~m-~d"))
+  (define (make-date-ref month daynr)
+    (read-locator
+     location
+     body: (sxml
+            `(form
+              (date ,(d-&gt;s (julian-day-&gt;date daynr (date-zone-offset month))))
+              ))))
+
+  (define maybe-make-link
+   (if privileged
+       (lambda (jday month day)
+	 (sxml `(a (@ (href ,(make-date-ref month jday)))
+			    ,(literal day))))
+       (lambda (jday month day)
+	 (let ((date-string (d-&gt;s (julian-day-&gt;date jday (date-zone-offset month)))))
+	   (if (positive?
+		(sql-ref
+		 `(select exists (select date from dates where public and date = ,date-string))))
+	       (sxml `(a (@ (href ,(read-locator
+				    location
+				    body: (sxml `(form (date ,date-string) )))))
+			 ,(literal day)))
+	       (literal day))))))
+
+  (define (make-week-number month daynr)
+    `(td (@ (class "wkno"))
+         ,(literal (date-week-number
+         (julian-day-&gt;date daynr (date-zone-offset month)) wkstart))))
+
+  (define (week start end daynr)
+    (cons*
+     'tr
+     (make-week-number month (+ 1 daynr) )
+     (let loop ((day start) (class #f) (wd 7) (daynr daynr))
+       (if (eqv? wd 0)
+	   '()
+	   `((td ,@(if class '((@ (class "off-month"))) '())
+		 ($ ,(if class
+			 (literal day)
+			 (maybe-make-link daynr month day))))
+	     . ,(if (eqv? day end)
+		    (loop 1 #t (- wd 1) (+ daynr 1))
+		    (loop (+ day 1) class (- wd 1) (+ daynr 1))))))))
+
+  (sxml
+   `(table
+     (@ (border "0"))
+     ,(if privileged
+          `(tr (td (a (@ (href ,(make-date-ref mon1st (- mon1stj 1)))) "&lt;"))
+               (td (@ (align "center"))
+                   ,(date-&gt;string mon1st "~B ~Y" local))
+               (td (@ (align "right"))
+                   (a (@ (href ,(make-date-ref nm1st (date-&gt;julian-day nm1st)))) "&gt;")))
+          `(tr (td)
+               (td (@ (align "center"))
+                   ,(date-&gt;string mon1st "~B ~Y" local))
+               (td)))
+    (tr
+     (td (@  (colspan "3")) (table
+     (@ (border "1") (cellpadding "2")
+	(style "border-collapse:collapse; text-align:center;"))
+     (tr (td "#")
+         . ,(let loop ((n 7)
+		       (day (+ (date-&gt;julian-day lml)
+			       (- offset (date-week-day lml)))))
+	      (if (eqv? n 0) '()
+		  `((th ,(date-&gt;string 
+			  (julian-day-&gt;date day (date-zone-offset month))
+			  "~a" local))
+		    . ,(loop (- n 1) (+ day 1))))))
+     (tr
+      ,(make-week-number month mon1stj)
+      . ,(let loop ((run  (- 7 wk1))
+		   (day (+ (date-day lml)
+			   (- offset (date-week-day lml)))))
+	  (if (&lt;= run 0)
+	      (let loop ((day 1) (jday mon1stj))
+		(if (&lt; wk1 day) '()
+		    `((td ($ ,(maybe-make-link jday month day)))
+		      . ,(loop (+ day 1) (+ jday 1)))))
+	      `((td (@ (class "off-month")) ,(literal day))
+		. ,(loop (- run 1) (+ day 1))))))
+     ,(week (+ wk1 1) (+ wk1 7) (+ wk1 mon1stj))
+     ,(week (+ wk1 8) (+ wk1 14) (+ wk1 mon1stj 7))
+     ,(week (+ wk1 15) (date-day tml) (+ wk1 mon1stj 14))
+     ,@(let ((start (+ wk1 22)))
+	 (if (&gt;= (date-day tml) start)
+	     (list (week start (date-day tml) (+ wk1 mon1stj 21)))
+	     '()))
+     . ,(let ((start (+ wk1 29)))
+	  (if (&gt;= (date-day tml) start)
+	      (list (week start (date-day tml) (+ wk1 mon1stj 28)))
+	      '()))
+     )) ; table td
+    )) ;table 
+ ) ; sxml
+)
+
+;; (calendar (make-date 0 0 0 0  23 12 1965 0) 1)
+
+(calendar (xsl-variable "date") 1)
+  </b:copy-of>
+  <xsl:comment> googleon: all </xsl:comment>
+ </xsl:template>
+ <xsl:template name="calday.tpl">
+<!-- daily calendar view -->
+<!--
+Benutze
+http://ietf.webdav.org/caldav/homepage/papers.html
+! -->
+  <xsl:param name="date">
+   <d:copy-of select="message-date msg"/>
+  </xsl:param>
+  <xsl:param name="edit-type"><xsl:copy-of select="$edit-type"/></xsl:param>
+  <xsl:param name="entries"/>
+   <d:form method="post">
+    <b:copy-of>
+define date (xsl-variable "date")
+define edit-type (data (xsl-variable "edit-type"))
+define date/str (date-&gt;string date "~Y-~m-~d")
+(define location
+   (if (node-list-empty? (form-field 'return-to (current-node)))
+       (message-location msg)
+       (reverse (parsed-locator (data (form-field 'return-to (current-node)))))))
+define entry
+  xsl-variable apply: "fetch-entry" param: "date" date
+define cols (if (node-list-empty? (form-field 'cols (current-node)))
+                "30" (data (form-field 'cols (current-node))))
+define rows (if (node-list-empty? (form-field 'rows (current-node)))
+                "10" (data (form-field 'rows (current-node))))
+if (service-level)
+  SXML
+     input (@ (type "hidden") (name "action") (value "diary-save"))
+     input (@ (type "hidden") (name "date") (value ,(literal date)))
+     input (@ (type "hidden") (name "return-to") (value ,(data (form-field 'return-to (current-node)))))
+     input (@ (type "submit") (value "speichern"))
+     p (@ (id "edit-type"))
+      span
+       input (@ (type "hidden") (name "edit-type") (value ,edit-type))
+       $$ ,edit-type
+      $$
+       unquote
+        node-list-reduce
+         node-list "text/wikipedia" "text/x-markdown" "text/xml"
+         lambda (i n)
+          if (equal? n edit-type) i
+             node-list
+              i
+              sxml `(a (@ (href ,(read-locator
+				  location
+				  body:
+				  (sxml `(form (date ,date/str) (edit-type ,n)
+					       )))))
+                       ,n)
+         (empty-node-list)
+     fieldset
+      legend "][" ; gate shut
+      textarea (@ (name "privatetext") (cols ,cols) (rows ,rows))
+       ,@(if (and (node-list-empty? ((sxpath '(private *any*)) entry))
+                  (node-list-empty? ((sxpath '(public *any*)) entry)))
+             ((sxpath '(*any*)) entry)
+             ((mime-cast (data (xsl-variable "edit-type")) "text/xml") ((sxpath '(private *any*)) entry)))
+     fieldset
+      legend "[]" ; gate open
+      textarea (@ (name "publictext") (cols ,cols) (rows ,rows))
+       ,@((mime-cast (data (xsl-variable "edit-type")) "text/xml") ((sxpath '(public *any*)) entry))
+  ((sxpath '(public *any*)) entry)
+</b:copy-of>
+    </d:form>
+ </xsl:template>
+ <xsl:template name="diary-save">
+  <xsl:param name="edit-type"><xsl:copy-of select="$edit-type"/></xsl:param>
+<!-- update calendar entry -->
+  <reply>
+   <b:copy-of>
+define protection (right-&gt;string (message-protection me))
+define date (xsl-variable "date")
+define (d-&gt;s x) (date-&gt;string x "~Y-~m-~d")
+define encode (mime-cast "text/xml" (data (xsl-variable "edit-type")))
+define privatetext (data (form-field 'privatetext (current-node)))
+define publictext (data (form-field 'publictext (current-node)))
+define empty? (pcre "^[[:space:][:cntrl:]]*$")
+define delete? (and (empty? privatetext) (empty? publictext))
+define nt (collection-update-tree
+ "webdav"
+ (list "dates" (date-&gt;string date "~Y"))
+ (date-&gt;string date "~j")
+ (and (not delete?)
+      (sxml `(new (@ (action "public")
+                  (protection ,protection))
+            (text (private . ,(children (encode privatetext)))
+                  (public . ,(children (encode publictext)))))))
+ action: "public"
+ protection: protection
+ context: me
+)
+define up
+  if delete?
+    literal "delete from dates where date = '" (d-&gt;s date) "'"
+    (literal "insert or replace into dates(date, public, private) values('"
+     (d-&gt;s date) "','" (if (empty? publictext) 0 1)
+      "','" (if (empty? privatetext) 0 1) "')")
+SXML (link (@ (name "webdav")) ,nt) (update ,up)
+</b:copy-of>
+   <b:output b:location="let {* next (data (form-field 'return-to)) *} (read-locator (if (string-null? next) (message-location msg) (reverse (parsed-locator next)))      body: (make element gi: 'form (form-field 'date (current-node)) (form-field 'edit-type (current-node))))  "/>
+  </reply>
+ </xsl:template>
+ <xsl:variable name="public-entry">
+  <xsl:variable name="date">
+   <xsql:query rowset-element="" row-element="">
+    select max(date) as h1 from dates where public
+    and date &lt;= '<d:copy-of select="date-&gt;string (xsl-variable &quot;date&quot;) &quot;~Y-~m-~d&quot;"/>'
+    </xsql:query>
+  </xsl:variable>
+  <xsl:variable name="last">
+  <p>
+   <b:copy-of>
+define nxb
+ sql-query `(select max (date) from dates where public and date &lt; ,(xsl-variable "date"))
+define formb
+ and
+  (sql-ref nxb 0 0)
+  SXML
+   form
+    date ,(sql-ref nxb 0 0)
+define nxf
+ sql-query `(select min (date) from dates where public and date &gt; ,(xsl-variable "date"))
+define formf
+ and
+  (sql-ref nxf 0 0)
+  SXML
+   form
+    date ,(sql-ref nxf 0 0)
+SXML
+ , if formb
+  ` a
+   @
+    href
+     , read-locator body: formb
+   "«"
+  ""
+ , if formf
+  ` a
+   @
+    href
+     , read-locator body: formf
+   "»"
+  ""
+   </b:copy-of>
+  </p>
+  </xsl:variable>
+  <xsl:variable name="e">
+   <xsl:call-template name="fetch-entry">
+    <xsl:with-param name="date">
+     <d:copy-of select="string-&gt;date (data (xsl-variable &quot;date&quot;)) &quot;~Y-~m-~d&quot;"/>
+    </xsl:with-param>
+   </xsl:call-template>
+  </xsl:variable>
+  <xsl:comment>public-entry</xsl:comment>
+  <table width="100%">
+   <tr>
+    <td valign="top">
+<!--
+    <d:copy-of select="literal (date-&gt;string (xsl-variable &quot;date&quot;) &quot;~a ~d. ~m. ~Y (~j)&quot; &quot;de&quot;)"/>
+-->
+  <xsl:copy-of select="$date"/>
+  <xsl:copy-of select="$last"/>
+  <b:copy-of select="(sxpath '(public)) (xsl-variable &quot;e&quot;)"/>
+  <hr/>
+  <xsl:copy-of select="$last"/>
+<!--
+  <xsl:call-template name="last-entries">
+   <xsl:with-param name="kind">public</xsl:with-param>
+  </xsl:call-template>
+-->
+    </td>
+    <td valign="top">
+    <dl style="white-space:nowrap;">
+     <b:copy-of>
+sql-fold
+ "select distinct date(date,'start of month','+1 month','-1 day') from dates where public order by date desc"
+ lambda (c i)
+  node-list
+   i
+   SXML
+    dd
+     a (@ (href ,(read-locator body: (SXML (form (date ,(c 0))))) ))
+       , substring (c 0) 0 7
+ (empty-node-list)
+     </b:copy-of>
+    </dl>
+    </td>
+   </tr>
+  </table>
+ </xsl:variable>
+ <xsl:template name="next-entries">
+  <xsl:param name="date">
+   <d:copy-of select="xsl-variable &quot;date&quot;"/>
+  </xsl:param>
+  <xsl:param name="kind">public</xsl:param>
+  <xsl:param name="limit">2</xsl:param>
+  <xsl:variable name="p">
+   <xsql:query rowset-element="" row-element="">
+    select date from dates where
+    <d:copy-of select="sql-quote (xsl-variable &quot;kind&quot;)"/>
+    and date &gt; '<d:copy-of select="date-&gt;string (xsl-variable &quot;date&quot;) &quot;~Y-~m-~d&quot;"/>'
+    limit <d:copy-of select="sql-quote (xsl-variable &quot;limit&quot;)"/>
+    </xsql:query>
+  </xsl:variable>
+  <dl>
+   <d:for-each select="xsl-variable &quot;p&quot;">
+    <dt><xsl:copy-of select="."/></dt>
+    <dd>
+     <d:copy-of select="#CONTENT">
+(sxpath `(,(string-&gt;symbol (xsl-variable "kind")) *any*))
+ (xsl-variable apply: "fetch-entry" param: "date" (string-&gt;date (data (current-node)) "~Y-~m-~d"))
+     </d:copy-of>
+    </dd>
+   </d:for-each>
+  </dl>
+ </xsl:template>
+ <xsl:template name="last-entries">
+  <xsl:param name="date">
+   <d:copy-of select="xsl-variable &quot;date&quot;"/>
+  </xsl:param>
+  <xsl:param name="kind">public</xsl:param>
+  <xsl:param name="limit">3</xsl:param>
+  <xsl:variable name="p">
+   <xsql:query rowset-element="" row-element="">
+    select date from dates where
+    <d:copy-of select="sql-quote (xsl-variable &quot;kind&quot;)"/>
+    and date &lt; '<d:copy-of select="date-&gt;string (xsl-variable &quot;date&quot;) &quot;~Y-~m-~d&quot;"/>'
+    order by date desc
+    limit <d:copy-of select="sql-quote (xsl-variable &quot;limit&quot;)"/>
+    </xsql:query>
+  </xsl:variable>
+  <dl>
+   <d:for-each select="xsl-variable &quot;p&quot;">
+    <dt><xsl:copy-of select="."/></dt>
+    <dd>
+     <d:copy-of select="#CONTENT">
+(sxpath `(,(string-&gt;symbol (xsl-variable "kind")) *any*))
+ (xsl-variable apply: "fetch-entry" param: "date" (string-&gt;date (data (current-node)) "~Y-~m-~d"))
+     </d:copy-of>
+    </dd>
+   </d:for-each>
+  </dl>
+ </xsl:template>
+ <xsl:variable name="next-public-entries">
+  <xsl:call-template name="next-entries"/>
+ </xsl:variable>
+ <xsl:variable name="diary">
+  <div style="position:relative;left:0;top:0;">
+   <xsl:call-template name="calmth.tpl">
+    <xsl:with-param name="date">
+     <d:copy-of select="xsl-variable &quot;date&quot;"/>
+    </xsl:with-param>
+    <xsl:with-param name="location">
+     <d:copy-of select="form-field 'return-to (current-node)"/>
+    </xsl:with-param>
+   </xsl:call-template>
+  </div>
+  <div style="position:relative;left:0;top:0;" align="left">
+   <h1>
+    <d:copy-of select="literal (date-&gt;string (xsl-variable &quot;date&quot;) &quot;~a ~d. ~m. ~Y (~j)&quot; &quot;de&quot;)"/>
+   </h1>
+   <d:if test="(service-level)">
+    <xsl:call-template name="calday.tpl">
+     <xsl:with-param name="date">
+      <d:copy-of select="xsl-variable &quot;date&quot;"/>
+     </xsl:with-param>
+    </xsl:call-template>
+   </d:if>
+  </div>
+  <div align="left">
+   <xsl:variable name="next">
+    <d:if test="(service-level)">
+     <xsl:call-template name="next-entries">
+      <xsl:with-param name="kind">private</xsl:with-param>
+      <xsl:with-param name="date"><d:copy-of select="message-date msg"/></xsl:with-param>
+     </xsl:call-template>
+     <hr/>
+    </d:if>
+    <xsl:call-template name="next-entries">
+     <xsl:with-param name="kind">public</xsl:with-param>
+     <xsl:with-param name="date"><d:copy-of select="message-date msg"/></xsl:with-param>
+    </xsl:call-template>
+   </xsl:variable>
+   <d:if test="(pair? ((sxpath '(* *)) (xsl-variable &quot;next&quot;)))">
+    <h4>Demnächst</h4>
+    <d:copy-of select="xsl-variable &quot;next&quot;"/>
+   </d:if>
+  </div>
+  <div align="left">
+   <xsl:variable name="last">
+    <d:if test="(service-level)">
+     <xsl:call-template name="last-entries">
+      <xsl:with-param name="kind">private</xsl:with-param>
+      <xsl:with-param name="limit">3</xsl:with-param>
+     </xsl:call-template>
+     <hr/>
+    <xsl:call-template name="last-entries">
+     <xsl:with-param name="kind">public</xsl:with-param>
+      <xsl:with-param name="limit">2</xsl:with-param>
+    </xsl:call-template>
+    </d:if>
+   </xsl:variable>
+   <d:if test="(pair? ((sxpath '(* *)) (xsl-variable &quot;last&quot;)))">
+    <h4>BackLog</h4>
+    <d:copy-of select="xsl-variable &quot;last&quot;"/>
+   </d:if>
+  </div>
+ </xsl:variable>
+ <xsl:template match="*[@type=&quot;read&quot;]">
+  <xsl:variable name="view">
+   <d:copy-of select="    (let ((form-selection (form-field 'select (current-node))))      (if (node-list-empty? form-selection)          &quot;public-entry&quot;          (data form-selection))) "/>
+  </xsl:variable>
+  <xsl:choose>
+   <d:when test="(and (pair? (message-destination msg)) (not (string-null? (car (message-destination msg)) )))">
+    <d:copy-of select="(fetch (cons &quot;webdav&quot; (message-destination msg)) body: (children (current-node)) 'location (message-location msg) )"/>
+   </d:when>
+   <d:when test="(is-metainfo-request? msg)">
+    <d:copy-of select="(metainfo (self-reference))"/>
+   </d:when>
+   <d:when test="(and (service-level) (is-meta-form? msg))">
+    <d:copy-of select=" (if (is-propfind-request? msg)     (if (link-ref &quot;webdav&quot;)         (fetch (cons &quot;webdav&quot; (message-destination msg))                'location (message-location msg)                body: (children (current-node)))         (dav-propfind-reply me msg collection: #t children: '()))     (message-body (metaview me msg))) "/>
+   </d:when>
+   <xsl:otherwise>
+    <html xmlns="http://www.w3.org/1999/xhtml">
+     <head>
+      <title>Kalender</title>
+      <meta content="application/xhtml+xml; charset=UTF-8" http-equiv="Content-Type" />
+     </head>
+     <body bgcolor="white">
+      <d:if test="(service-level)">
+       <d:form method="post" style="display:inline">
+        <select name="view">
+         <d:copy-of select="#CONTENT">sxml
+ quasiquote
+  option "1"
+</d:copy-of>
+        </select>
+        <input value="View" type="submit" />
+        <input name="action" value="set-view" type="hidden" />
+       </d:form>
+       <a href="https://localhost:2143/Ad5f050a6cb4358197a5c6d72d248c6b9/Kalender.xml?xmlns=mind">debug</a>
+       <hr />
+      </d:if>
+      <d:copy-of select="#CONTENT">
+(guard (ex (else 
+            (sxml `(*TOP*
+                    (div (@ (class "errmsg"))
+                     (h2 "Error")
+                     (pre ,((if (message-condition? ex) condition-message literal) ex)))
+               (form (@ (method "post") (action ,(write-locator)))
+                     (input (@ (name "action") (value "start") (type "submit"))))
+              ,(if (service-level) (message-body (metaview me msg)) '())))))
+ (xsl-variable (data (xsl-variable "view"))))
+</d:copy-of>
+     </body>
+    </html>
+   </xsl:otherwise>
+  </xsl:choose>
+ </xsl:template>
+ <xsl:template match="request[@type=&quot;write&quot;]">
+  <d:if test="(or (service-level)  (error &quot;Pfoten wech!&quot;))">
+   <xsl:choose>
+    <d:when test=" (eq? 'grant (gi (children (current-node)))) ">
+     <core:reply>
+      <d:copy-of select="((sxpath '(grant right)) (current-node))"/>
+      <core:output method="xml"/>
+     </core:reply>
+    </d:when>
+    <d:when test="(is-meta-form? msg)">
+     <d:copy-of select="(message-body (metactrl me msg))"/>
+    </d:when>
+    <d:when test="(not (string-null? (data (form-field 'action (current-node))) ))">
+     <d:call-template name="(data (form-field 'action (current-node)))"/>
+    </d:when>
+    <xsl:otherwise>
+     <core:reply>
+      <d:if test="(not (string-null? (data (form-field 'update (current-node))) ))">
+       <core:update>
+        <d:copy-of select="(form-field 'update (current-node))"/>
+       </core:update>
+      </d:if>
+      <core:become>
+       <d:copy-of select="#CONTENT">
+
+  (let ((this-root (document-element (grove-root (current-node)))))
+    (make element
+      gi: (gi this-root) ns: (ns this-root)
+      attributes: (copy-attributes this-root)
+      (node-list-map
+       (lambda (node)
+         (cond
+          ((match-element? 'state node)
+           (make element
+               gi: (gi node) ns: (ns node)
+               (let ((query (form-field 'query (current-node))))
+                 (if (equal? (data query) "")
+                     ((sxpath '(query)) node)
+                     query))
+               (let ((update (form-field 'update (current-node))))
+                 (if (equal? (data update) "")
+                     ((sxpath '(update)) node)
+                     update))))
+          (else node)))
+       ;; The children of the root of the style sheet.
+       (children this-root))))
+
+ </d:copy-of>
+      </core:become>
+     </core:reply>
+    </xsl:otherwise>
+   </xsl:choose>
+  </d:if>
+ </xsl:template>
+</xsl:stylesheet>
