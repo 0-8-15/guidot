@@ -4,7 +4,9 @@
 
 WARNING -+- WARNING
 
-This is really outdated code.  Do NOT take it as an example!
+This contains really outdated code.  Do NOT take it as an example!
+Especially the sql query constructing by way of "add-listing-deco"
+should be rewritten to avoid the deprecated 'sql-qote'.
 
 WARNING -+- WARNING
 
@@ -257,6 +259,7 @@ attack targets I''ll cover:
 * trust model (openssl/gnutls, setup) - SPOF vs. WOT
 * attack network topology
 * collaborate - that''s the downside of democracy
+')
     </textarea>
    </fieldset>
   </d:form>
@@ -476,14 +479,17 @@ General View Format (Utilities).
  </xsl:template>
  <xsl:template mode="listing" match="attachments">
   <xsl:variable name="selection">
-   <xsql:query rowset-element="" row-element="tr">
+   <xsql:query parameterized="yes" rowset-element="" row-element="tr">
+    <template>
   select
    '[↗' || id || ']' as td
    ,title as td
    ,oid as '<d:copy-of select="if (service-level) &quot;link&quot; &quot;public-link&quot;"/>'
   from
    attachment
-  where event = '<d:copy-of select="sql-quote (data (current-node))"/>'
+  where event = ?1
+    </template>
+    <with-param><xsl:value-of select="."/></with-param>
    </xsql:query>
   </xsl:variable>
   <table class="footnotes">
@@ -615,7 +621,7 @@ if (or (not val) (member (data val) '("#f" "")))
   <d:input name="delete" type="checkbox" d:value="(data (current-node))"/>
  </xsl:template>
  <xsl:template mode="listing" match="new-event">
-  <d:copy-of select="(sxml `(a (@ (href ,(read-locator (sxml `(form (_v &quot;event&quot;) (id ,(data (current-node)))))))) ,(sql-ref `(select count(event.id) from event join issue on event.issue = issue.id where issue.id = ,(data (current-node)))))) "/>
+  <d:copy-of select="(sxml `(a (@ (href ,(read-locator (sxml `(form (_v &quot;event&quot;) (id ,(data (current-node)))))))) ,(sql-ref (sql-query &quot;select count(event.id) from event join issue on event.issue = issue.id where issue.id = ?1&quot; (data (current-node)))))) "/>
  </xsl:template>
  <xsl:template mode="listing" match="deldep">
   <d:input name="deldep" type="checkbox" d:value="(data (current-node))"/>
@@ -802,7 +808,7 @@ left join
   ( issue.state = 5 and milestone.due > ?1 )
   group by milestone.project
  ) as next_due on next_due.id = p.id
-where milestone.deleted is null or not milestone.deleted
+-- where milestone.deleted is null or not milestone.deleted
 group by p.id -- milestone.id
 order by
 case when next_due.due is null then 2 else 1 end
@@ -931,10 +937,13 @@ insert into project(name, link, description) values(
     <span><d:copy-of select="(xsl-variable apply: &quot;l10n&quot; param: &quot;n&quot; &quot;description&quot;)"/></span>
     <input type="submit" value="change project"/>
    </p>
-<textarea name="description" cols="40" rows="5"><xsql:value-of>select description from project where id = <d:copy-of select="sql-quote (data (form-field 'id (current-node)))"/></xsql:value-of></textarea>
+<textarea name="description" cols="40" rows="5"><xsql:value-of parameterized="yes">
+ <template>select description from project where id = ?1</template>
+ <with-param><xsl:value-of select="form/id"/></with-param>
+</xsql:value-of></textarea>
    <bail:copy-of>
 define p
-   (sql-query `(select pr : pl from project where id = ,(data (form-field 'id (current-node)))))
+   (sql-query "select pr,pl from project where id = ?1" (data (form-field 'id (current-node))))
 SXML $ p
   $$( ,xsl-variable apply: "l10n" param: "n" "Public Reports ")
   input (@ (name "pr") (type "checkbox") (value "1")
@@ -1139,10 +1148,16 @@ map exwrap '(id name description weight dim due)
   <d:output d:location="read-locator (format &quot;_v=attach&amp;id=~D&quot; (sql-ref '(select max(id + 1) from event)))"/>
   <ac:update parameterized="yes">
    <template>insert into event(issue,moment,author,comment) values(?1,?2,?3,?4)</template>
+<!--
    <with-param select="$issue"/>
    <with-param bail:select="(date-&gt;string (message-date (current-message)) (data (xsl-variable &quot;date-format&quot;)))"/>
    <with-param select="form/author"/>
    <with-param select="form/comment"/>
+-->
+   <with-param><xsl:value-of select="$issue"/></with-param>
+   <with-param><bail:copy-of>(date-&gt;string (message-date (current-message)) (data (xsl-variable &quot;date-format&quot;)))</bail:copy-of></with-param>
+   <with-param><xsl:value-of select="form/author"/></with-param>
+   <with-param><xsl:value-of select="form/comment"/></with-param>
   </ac:update>
  </xsl:template>
  <xsl:template name="event-delete">
@@ -1150,9 +1165,9 @@ map exwrap '(id name description weight dim due)
    <d:copy-of select="sql-quote (data (form-field 'id (current-node)))"/>
   </xsl:param>
   <d:output d:location="read-locator (format &quot;_v=event&amp;id=~D&quot; (sql-ref (sql-query &quot;select issue from event where id = ?1&quot; (data (xsl-variable &quot;id&quot;)))))"/>
-  <ac:update>
-update event set deleted = not deleted where id =
-'<d:copy-of select="data (xsl-variable &quot;id&quot;)"/>'
+  <ac:update parameterized="yes">
+   <template>update event set deleted = not deleted where id = ?1</template>
+   <with-param><xsl:value-of select="id/text()"/></with-param>
   </ac:update>
  </xsl:template>
  <xsl:variable name="report">
@@ -1309,16 +1324,17 @@ where r.id =
     <span class="legend">+</span>
     <select name="adddep">
      <option value="" selected="selected"/>
-      <xsql:query rowset-element="" row-element="option" id-attribute-column="id" id-attribute="value">
-select milestone.id as id, milestone.name as span
+      <xsql:query parameterized="yes" rowset-element="" row-element="option" id-attribute-column="id" id-attribute="value">
+       <template>select milestone.id as id, milestone.name as span
 from issue
 join project on issue.project = project.id
 join milestone on project.id = milestone.project
      and not milestone.deleted
 left join dependency on dependency.need = issue.id and dependency.goal = milestone.id
-where issue.id = '<d:copy-of select="sql-quote (data (form-field 'id (current-node)))"/>'
+where issue.id = ?1
 and dependency.goal is null
-order by milestone.name
+order by milestone.name</template>
+      <with-param><xsl:value-of select="form/id"/></with-param>
      </xsql:query>
     </select>
    </p>
@@ -1460,6 +1476,25 @@ where event =
  <xsl:variable name="attach">
   <d:copy-of select="xsl-variable &quot;attach-object&quot;"/>
  </xsl:variable>
+ <xsl:template name="attach-sanitize-link-text">
+  <xsl:param name="from">no message</xsl:param>
+  <bail:copy-of>
+define from string-trim-both(data(xsl-variable("from")))
+
+;; FIXME: Add support for IPv6
+define m "(?:http(?:s)?://([[:alnum:].-]+)(?::[0-9]+)?)?/?(.+)"
+
+define seen
+  pcre(m) from
+
+define host cadr(seen)
+
+define ignorable
+  member host '("localhost" "127.0.0.1")
+
+if ignorable caddr(seen) from
+  </bail:copy-of>
+ </xsl:template>
  <xsl:template name="attach">
   <!--
    Precondition: The request is sane.  Request which would violate
@@ -1476,14 +1511,18 @@ where event =
    <ac:update parameterized="yes">
     <template>insert into attachment(event,oid,title) values(?1,?2,?3)</template>
     <with-param><xsl:value-of select="form/id"/></with-param>
-    <with-param><xsl:value-of select="form/oid"/></with-param>
+    <with-param>
+     <xsl:call-template name="attach-sanitize-link-text">
+      <xsl:with-param name="from"><xsl:copy-of select="form/oid"/></xsl:with-param>
+     </xsl:call-template>
+    </with-param>
     <with-param><xsl:value-of select="form/title"/></with-param>
    </ac:update>
   </xsl:if>
   <ac:link name="attachment">
    <bail:copy-of>
 define extract-oid(from)
-  define m "(?:http(?:s)?://[[:alnum:].:-]*(?::[0-9]+)?)?/?(.+)"
+  define m "(?:http(?:s)?://[[:alnum:].:-]*(?::[0-9]+)?)?/?([^?]+)"
   cadr
     pcre(m) string-trim-both(data(from))
 
