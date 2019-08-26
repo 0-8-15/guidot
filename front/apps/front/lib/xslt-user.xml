@@ -71,6 +71,17 @@
       <div><d:a d:href='link-ref "publications"' target="_blank">publications</d:a></div>
      </xsl:otherwise>
     </xsl:choose>
+    <xsl:choose>
+     <d:when test='not link-ref("hoist")'>
+      <input name="action" type="submit" value="hoist"></input>
+      <d:input name="hoist.code" type="hidden" d:value='data $ xsl-variable apply: "find-in-syslinks" param: "name" "hoist.xml"'/>
+     </d:when>
+     <xsl:otherwise>
+      <!--<d:iframe d:name='literal "via " self-reference()' d:src="read-locator $ list $ oid->string link-ref(&quot;clipboard&quot;) $ message-replicates current-place()" width="480">-->
+       <div><d:a d:href='link-ref "hoist"' target="_blank">Hoist</d:a></div>
+      <!--</d:iframe>-->
+     </xsl:otherwise>
+    </xsl:choose>
    </d:form>
   </fieldset>
  </xsl:variable>
@@ -533,7 +544,7 @@ fetch code body: #f
      <ac:link name="publications">
       <!-- FIXME: The protection is not yet correct. -->
       <d:new d:action='current-contract()'
-             d:protection="right->string(message-protection(current-place()))">
+             d:protection="right->string( append( message-protection(current-place()) (list (public-oid))) )">
        <d:copy-of>
 define code $ string->oid $ data
   form-field 'publications.code
@@ -544,6 +555,24 @@ fetch code body: #f
      </ac:link>
      <ac:output method="xml">
       <p>Created fresh upload area for publications.</p>
+     </ac:output>
+    </ac:reply>
+   </xsl:when>
+   <xsl:when test="form/action = 'tut create' and form/action = 'hoist'">
+    <ac:reply>
+     <ac:link name="hoist">
+      <d:new d:action='current-contract()'
+             d:protection="right->string(message-protection(current-place()))">
+       <d:copy-of>
+define code $ string->oid $ data
+  form-field 'hoist.code
+
+fetch code body: #f
+       </d:copy-of>
+      </d:new>
+     </ac:link>
+     <ac:output method="xml">
+      <p>Created fresh hoist.</p>
      </ac:output>
     </ac:reply>
    </xsl:when>
