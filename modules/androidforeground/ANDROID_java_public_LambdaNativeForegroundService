@@ -12,7 +12,7 @@ import android.os.SystemClock;
 public class LambdaNativeForegroundService extends Service {
   final static int notificationIsRunningId = 1;
   boolean running=true;
-  Thread backgroundThread; 
+  Thread backgroundThread;
   public LambdaNativeForegroundService() {
   }
   @Override
@@ -43,7 +43,7 @@ public class LambdaNativeForegroundService extends Service {
                 }
             } catch (InterruptedException e) {}
         }
-//        Log.d("","LambdaNativeForegroundService thread stopped");       
+//        Log.d("","LambdaNativeForegroundService thread stopped");
       }
     };
     backgroundThread.start();
@@ -74,4 +74,3 @@ public class LambdaNativeForegroundService extends Service {
   }
   native void nativeEvent(int t, int x, int y);
 }
-
