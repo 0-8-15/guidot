@@ -18,7 +18,7 @@ void startLnForegroundService() {
              * comment out startActivity(...) in the line after.
              */
             // startActivityForResult(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS), 0);
-            startActivity(new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).setData(Uri.parse("package:"+pkg)))
+            startActivity(new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).setData(Uri.parse("package:"+pkg)));
         }
     }
     /* // END "conditionally compiled code" */
