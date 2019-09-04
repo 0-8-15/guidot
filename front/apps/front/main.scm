@@ -820,7 +820,7 @@ Is the service not yet running?")))
       ;; Don't store the password in the database table, just store it in the UI
       (textentry id password text "Password:" password #t location ui)
       (spacer)
-      (textentry id CN text "CN:")
+      ,@(CN-entry-form-section)
       (spacer)
       (checkbox id setup-large text "Large Setup")
       (spacer)
