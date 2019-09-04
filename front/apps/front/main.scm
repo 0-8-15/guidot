@@ -401,10 +401,11 @@
 (define-once/or local-connect-string *entry-missing*
   (and (check-kernel-server!)
        (let ((ip (onion-address)))
+         (if ip (set! ip (ipconnect-string ip 443)))
 	 (if ip
 	     (set! myip ip)
 	     (set! ip myip))
-	 (and ip (ipconnect-string ip (external-https-port))))))
+	 ip)))
 
 (define (have-local-connect?)
   (not (eq? (local-connect-string) *entry-missing*)))
@@ -421,7 +422,8 @@
        (unless (have-local-connect?)
 	       (when (and (check-kernel-server!)
 			  (eq? (local-connect-string #t) *entry-missing*))
-		     (set! myip (host-ipaddr)))
+		     (set! myip (let ((myip (host-ipaddr)))
+                                  (and myip (ipconnect-string myip (external-https-port))))))
 	     (if (procedure? postproc) (postproc)))
        #f)))
 
@@ -738,7 +740,6 @@ Is the service not yet running?")))
 (define (uiform:pages again)
   (define upnrunning (check-kernel-server!))
   (define (again1 lst) (again (list->table lst)))
-  (unless myip (when upnrunning (set! myip (onion-address))))
   (again1
    `(
      (main
@@ -888,9 +889,9 @@ Is the service not yet running?")))
       (spacer)
       (label text ,(if (symbol? (public-oid)) (public-oid-string) "Error retrieving public OID."))
       (spacer)
-      ,@(let ((connstr (and myip (ipconnect-string myip))))
+      ,@(let ((connstr (and (have-local-connect?) (local-connect-string))))
 	  `((label text ,(if connstr (string-append "my IP: " connstr) "No IP address known!"))
-	    ,(if (not myip)
+	    ,(if connstr
 		 (my-ip-address-display update-pages!)
 		 `(dmencode text ,connstr))
 	    (spacer)))
