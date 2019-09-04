@@ -607,8 +607,11 @@ Is the service not yet running?")))
 	    (display ".")
 	    (display (u8vector-ref ip i)))))
        ((string? ip) (display ip)))
-      (display ":")
-      (display port))))
+      (unless (if https
+                  (= port 443)
+                  (= port 80))
+              (display ":")
+              (display port)))))
 
 (define (local-map-entry-name->oid name default)
   (let ((e (assoc name (entry-points))))
