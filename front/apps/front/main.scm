@@ -454,7 +454,13 @@
 
 (define-cached-kernel-value onion-address
   #f (lambda (#!optional (v #f)) (if (equal? v "") #f v))
-  "print" "onion-route")
+  'begin '($external-address))
+
+(define (copy-onion-address-to-db)
+  (when (and (onion-address)
+             (not (member (dbget (dbget 'CN) #f) '(#f "localhost"))))
+        (dbset 'CN (onion-address)))
+  #f)
 
 (define-cached-kernel-value public-oid #f #f 'begin '(public-oid) #;("print" "public"))
 
@@ -652,6 +658,21 @@ Is the service not yet running?")))
 		     (map car eps))))
       (or value '()))))
 
+(define (help-url page)
+  (string-append "file://" (embedded-file '("lib" "help") page)))
+
+(define (CN-entry-form-section)
+  `((button text "Help on CN setup" action
+            ,(lambda ()
+               (launch-url (help-url "onion-setup.html"))
+               #f))
+    (textentry id CN text "CN:")
+    ,(lambda ()
+       (if (clipboard-hascontent)
+           `(button text "Paste From Clipboard" action
+                    ,(lambda () (dbset 'CN (clipboard-paste)) #f))
+           '(label text "nothing to paste in clipboard")))))
+
 (define pages-again-hook #f)
 
 (define (update-pages!)
@@ -715,6 +736,7 @@ Is the service not yet running?")))
 (define *other-pages*
   '(("Connections" connections)
     ("Status" status)
+    ("Onion" address)
     ("Debug" debug)
     ))
 
@@ -966,6 +988,22 @@ Is the service not yet running?")))
 		 (entry-points #t)
 		 'channels))
       ;; end of "channels-support-verification" page
+      )
+     (address
+      "Address"
+      ("Back" ,pop-page)
+      #f
+      (spacer)
+      ,@(CN-entry-form-section)
+      (spacer)
+      (textentry id password text "Password:" password #t location ui)
+      (spacer)
+      (button text "Sign New Cert" action
+              ,(lambda ()
+                 (kernel-send-set-auth 'tofu (main-entry-name) (uiget 'password) (dbget 'CN))
+                 (onion-address #t)
+                 'identification))
+      ;; end of "address" page
       )
      (status
       "Status"
