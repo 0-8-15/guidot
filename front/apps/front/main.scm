@@ -56,6 +56,21 @@
   (unless (call-kernel "support" from name remote)
 	  (error "failed to support" from name remote)))
 
+(define (is-onion? name) (string-suffix? ".onion" name))
+
+(define (kernel-send-set-auth kind user password cn)
+  (unless (call-kernel
+           'begin
+           `(and (install-x509-default ,user ,password ,cn)
+                 (begin
+                   ;; not exported ($tc-tofu ,(equal? kind 'tofu))
+                   (local-id ,cn)
+                   (if ,(is-onion? cn)
+                       ($external-address ,cn))
+                   (ball-save-config)
+                   #t)))
+	  (error "failed to set auth" kind user cn)))
+
 (define (get-channels-command #!optional (source #f) (oid? #f))
   (define from
     (cond
@@ -70,7 +85,7 @@
   `(let ((links (fget (find-local-frame-by-id ,from 'gui-client) 'mind-links)))
      (fold-links-sorted (lambda (k v i) ,ff) '() links)))
 
-(define (kernel-initial-configuration logname)
+(define (kernel-initial-configuration cn logname)
   (call-kernel
    'begin
    `(guard
@@ -84,6 +99,11 @@
      ($http-client-connections-maximum 10)
      (respond-timeout-interval 20)
      ($broadcast-timeout 8)
+     (if ,(is-onion? cn)
+         (begin
+           ($https-use-socks4a #t)
+           ($external-port 443)
+           ($external-address ,cn)))
      (ball-save-config)
      #; (logerr "Fixing protection on \"system\" to be usable by \"~a\"\n" ,logname)
      (let* ((sid (entry-name->oid "system"))
@@ -287,7 +307,7 @@
 	 "-start" kernel-data-directory)
 	(and (wait-for-kernel-server 10000)
              (begin (if large? (delete-file user-app)) #t)
-             (kernel-initial-configuration logname)
+             (kernel-initial-configuration CN logname)
              (kernel-additional-configuration logname large?)
              (kernel-start-custom-services!)))))))
 
