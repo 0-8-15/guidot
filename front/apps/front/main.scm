@@ -66,7 +66,10 @@
                    ;; not exported ($tc-tofu ,(equal? kind 'tofu))
                    (local-id ,cn)
                    (if ,(is-onion? cn)
-                       ($external-address ,cn))
+                       (begin
+                         ($https-socks4a-server "127.0.0.1")
+                         ($external-port 443)
+                         ($external-address ,cn)))
                    (ball-save-config)
                    #t)))
 	  (error "failed to set auth" kind user cn)))
@@ -102,6 +105,7 @@
      (if ,(is-onion? cn)
          (begin
            ($https-use-socks4a #t)
+           ($https-socks4a-server "127.0.0.1")
            ($external-port 443)
            ($external-address ,cn)))
      (ball-save-config)
