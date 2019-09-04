@@ -35,10 +35,10 @@
 (let ((o mutex-unlock!))
   (set! mutex-unlock!
 	(lambda (m . args)
-	  (debug 'ct (current-thread))
-	  (debug 'unlocking m)
+	  ;(debug 'ct (current-thread))
+	  (debug (list (current-thread) 'unlocking) m)
 	  (apply o m args))))
-|#
+;|#
 
 ;; Server connection
 
@@ -49,14 +49,14 @@
 	   (lambda (ex)
 	     (mutex-unlock! conn)
 	     #;(raise ex)
-             #!eof))
+             (list #!eof)))
 	  (catch-clean
 	   (lambda (ex)
 	     (log-error "kernel control connection change failed.\n Setting to #f." ex)
 	     (mutex-specific-set! conn (debug 'Clean #f))
 	     (mutex-unlock! conn)
 	     #;(raise ex)
-             #!eof)))
+             #f)))
       (lambda (proc #!optional (values values) (mode 'wait))
 	(mutex-lock! conn)
 	(let ((v (mutex-specific conn)))
@@ -130,7 +130,7 @@
                          (if (or (= p srv)
                                  (= p -1))
                              (begin
-                               (if (= p -1) (log-error "failed to wait for process " srv " ECHILD: " c "?? if so, someone stole the value" ))
+                               (if (= p -1) (log-error "failed to wait for process " srv " ECHILD: " c "?? if so, gambit stole the value" ))
                                (cleanup!)
                                (list c n p))
                              #f)))
