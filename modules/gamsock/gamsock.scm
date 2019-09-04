@@ -100,8 +100,8 @@ struct sockaddr_un {
    (c s) (open-u8vector-pipe '(buffering: #t) '(buffering: #t))
    (define (cleanup!)
      (log-debug "gamsock cleaning up" 1)
-     (close-port s)
      (close-socket sock)
+     (close-port s)
      ;; (close-port c)
      )
    (thread-start!
@@ -112,8 +112,8 @@ struct sockaddr_un {
 	 (let ((n (read-subu8vector d 0 (u8vector-length d) s 1)))
 	   (if (not (= n 0))
 	       (let ((d (if (< n (u8vector-length d)) (subu8vector d 0 n) d)))
-		 (send-message sock d)
-		 (loop)))))
+		 (if (= (send-message sock d) n)
+                     (loop))))))
        (cleanup!))
      'sender))
    (thread-start!
@@ -122,12 +122,13 @@ struct sockaddr_un {
        (let loop ()
 	 (receive
 	  (d from) (recv-message sock 1000)
-	  (let ((n (u8vector-length d)))
-	    (if (not (= n 0))
-		(begin
-		  (write-subu8vector d 0 n s)
-		  (force-output s)
-		  (loop))))))
+	  (if d
+              (let ((n (u8vector-length d)))
+                (if (not (= n 0))
+                    (begin
+                      (write-subu8vector d 0 n s)
+                      (force-output s)
+                      (loop)))))))
        (cleanup!))
      'receiver))
    ;; (thread-yield!) ;; Otherwise might lock on SOME versions of Android at least.
@@ -692,6 +693,11 @@ C-END
 	  (close-port p))
     (if (>= fd 0) (c-close fd))))
 
+(define (socket-closed? sock)
+  (if (not (socket? sock))
+      (##raise-type-exception 0 'socket socket-closed? (list sock))
+      (< (macro-socket-fd sock) 0)))
+
 ; Creates a new socket of the specified domain (protocol family),
 ; type (e.g., stream, datagram), and optional protocol.
 
@@ -752,21 +758,22 @@ C-END
 	(##raise-type-exception 0 'socket send-message (list sock vec start end flags addr)))
     (if (not (u8vector? vec))
 	(##raise-type-exception 1 'u8vector send-message (list sock vec start end flags addr)))
-    (if (not addr)
-	(raise-socket-exception-if-error
-	 (lambda ()
-	   (##wait-output-port (macro-socket-port sock))
-	   (c-send (macro-socket-fd sock) svec flags))
-	 send-message)
-	(if (not (socket-address? addr))
-	    (##raise-type-exception
-	     3 'socket-address send-message
-	     (list sock vec start end flags addr))
-	    (raise-socket-exception-if-error
-	     (lambda ()
-	       (##wait-output-port (macro-socket-port sock))
-	       (c-sendto (macro-socket-fd sock) svec flags addr))
-	     send-message)))))
+    (if (< (macro-socket-fd sock) 0) -1
+        (if (not addr)
+            (raise-socket-exception-if-error
+             (lambda ()
+               (##wait-output-port (macro-socket-port sock))
+               (c-send (macro-socket-fd sock) svec flags))
+             send-message)
+            (if (not (socket-address? addr))
+                (##raise-type-exception
+                 3 'socket-address send-message
+                 (list sock vec start end flags addr))
+                (raise-socket-exception-if-error
+                 (lambda ()
+                   (##wait-output-port (macro-socket-port sock))
+                   (c-sendto (macro-socket-fd sock) svec flags addr))
+                 send-message))))))
 
 ; Receives a message from a socket of a given length and returns it as a
 ; u8vector. Optional flags may be specified. This procedure actually returns
@@ -797,19 +804,22 @@ C-END
   (if (not (socket? sock))
       (##raise-type-exception
        0 'socket receive-message (list sock len flags)))
-  (let ((vec (make-u8vector len 0)))
-    ;; (log-debug "waiting for message" 1)
-    (let* ((size-actually-recvd
-	    (raise-socket-exception-if-error
-	     (lambda ()
-	       (##wait-input-port (macro-socket-port sock))
-	       (thread-sleep! 0.1) ;; Argh
-	       (c-recv (macro-socket-fd sock) vec flags))
-	     recv-message)))
-      ;; (log-debug "received bytes:" size-actually-recvd)
-      (values
-       (subu8vector vec 0 size-actually-recvd)
-       #f))))
+  (let ((fd (macro-socket-fd sock)))
+    (if (< fd 0)
+        (values #f #f)
+        (let ((vec (make-u8vector len 0)))
+          ;; (log-debug "waiting for message" 1)
+          (let* ((size-actually-recvd
+                  (raise-socket-exception-if-error
+                   (lambda ()
+                     (##wait-input-port (macro-socket-port sock))
+                     (thread-sleep! 0.1) ;; Argh
+                     (c-recv fd vec flags))
+                   recv-message)))
+            ;; (log-debug "received bytes:" size-actually-recvd)
+            (values
+             (subu8vector vec 0 size-actually-recvd)
+             #f))))))
 
 ; Sets up a socket to listen for incoming connections, with the specified number
 ; of backlogged connections allowed.
