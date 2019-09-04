@@ -6,20 +6,6 @@
  (else
    (if #f (let ((ot terminate)) (set! terminate (lambda () (debug 'terminating #t) (ot)))))))
 
-#;(define (embedded-file path name)
-  (let* ((sep (system-pathseparator))
-	 (fn (apply
-	      string-append
-	      (system-directory) sep
-	      (let loop ((path path))
-		(if (null? path) (list name)
-		    `(,(car path) ,sep . ,(loop (cdr path))))))))
-    (if (file-exists? fn)
-	fn
-	(begin
-	  (log-error "missing file" fn)
-	  #f))))
-
 (define (kernel-start-custom-services!)
   (kernel-start-satellite!))
 
