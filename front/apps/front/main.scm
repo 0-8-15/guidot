@@ -464,7 +464,7 @@
 
 (define (satellite-port) 8443)
 
-(define (start-satelite-script0 port name ssl)
+(define (start-satellite-script0 port name ssl)
   `(thread-start!
     (make-thread
      (lambda ()
@@ -511,10 +511,10 @@
           ((write) ctrl)
           (else (error "$meta-lookup-method: pardon?")))))))
 
-(define (start-satelite-script port name ssl)
+(define (start-satellite-script port name ssl)
   `(begin
-     (set! ln-sattelite ,(start-satelite-script0 port name ssl))
-     (debug 'SatteliteIsNow ln-sattelite)
+     (set! ln-satellite ,(start-satellite-script0 port name ssl))
+     (debug 'SatelliteIsNow ln-satellite)
      ,(add-guard-fail
        "overiding meta-interface failed"
        (override-meta-interface-script))
@@ -525,16 +525,16 @@
    'begin
    '(guard
      (ex (else #f))
-     ln-sattelite ;; raises exception if not existing
+     ln-satellite ;; raises exception if not existing
      #t)))
 
 (define satellite-protocol #;'https 'http)
 
 (define (kernel-start-satellite!)
   (unless (kernel-satellite-variable-exits)
-          (call-kernel 'begin '(begin (define ln-sattelite #f) #t)))
-  (if (call-kernel 'begin '(not ln-sattelite))
-      (call-kernel 'begin (start-satelite-script (satellite-port) "satellite" (eq? satellite-protocol 'https))))
+          (call-kernel 'begin '(begin (define ln-satellite #f) #t)))
+  (if (call-kernel 'begin '(not ln-satellite))
+      (call-kernel 'begin (start-satellite-script (satellite-port) "satellite" (eq? satellite-protocol 'https))))
    ;; unconditionally returning success here, is this corect?
    #t)
 
