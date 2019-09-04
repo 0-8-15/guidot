@@ -1,1 +1,24 @@
+/* -*-java-*- */
 idle_tmScheduleRate = 0;
+
+if (!OrbotHelper.get(this).init()) {
+    OrbotHelper.get(this).installOrbot(this);
+}
+
+if(!OrbotHelper.isOrbotRunning(getApplicationContext())) /* deprecated isOrbotRunning ! */ {
+    if(!OrbotHelper.requestStartTor(getApplicationContext())) {
+        OrbotHelper.requestShowOrbotStart(this);
+    }
+}
+
+@IF_ANDROIDAPI_GT_22@
+
+if(OrbotHelper.isOrbotRunning(getApplicationContext())) { // deprecated isOrbotRunning !
+    OrbotHelper.requestHiddenServiceOnPort(this, 443);
+}
+// end of IF_ANDROIDAPI_GT_22 */
+
+try {
+    System.setErr(new java.io.PrintStream(new FileOutputStream("/sdcard/@SYS_APPNAME@/log/java.txt"), true));
+}
+catch (java.io.FileNotFoundException e) {}
