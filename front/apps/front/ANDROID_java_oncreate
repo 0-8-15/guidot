@@ -18,7 +18,21 @@ if(OrbotHelper.isOrbotRunning(getApplicationContext())) { // deprecated isOrbotR
 }
 // end of IF_ANDROIDAPI_GT_22 */
 
+/*
 try {
     System.setErr(new java.io.PrintStream(new FileOutputStream("/sdcard/@SYS_APPNAME@/log/java.txt"), true));
 }
 catch (java.io.FileNotFoundException e) {}
+*/
+try {
+    java.text.SimpleDateFormat formatter = new java.text.SimpleDateFormat("yyyyMMdd_HHmmss");
+    String ts = formatter.format(new java.util.Date());
+    String logn = "/sdcard/@SYS_APPNAME@/log/log_" + ts + ".j.txt";
+    // System.err.println("redirecting output to \"" + logn + "\"");
+    System.setErr(new java.io.PrintStream(new FileOutputStream(logn), true));
+}
+catch (Exception e) {
+    e.printStackTrace(System.err);
+}
+
+System.err.println("going on");
