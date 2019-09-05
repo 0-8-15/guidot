@@ -95,7 +95,19 @@ struct sockaddr_un {
 
 (implement-type-socket)
 
+;; FIXME: This depends on lambdanative!
+(define gamsock:exception-handler
+  (lambda (ex)
+    (log-error (thread-name (current-thread)) ": " (exception->string e))))
+
 (define (socket-port sock)
+  (define (start! name proc cleanup!)
+    (thread-start!
+     (make-thread
+      (lambda ()
+        (with-exception-catcher gamsock:exception-handler proc)
+        (cleanup!))
+      name)))
   (receive
    (c s) (open-u8vector-pipe '(buffering: #t) '(buffering: #t))
    (define (cleanup!)
@@ -104,33 +116,31 @@ struct sockaddr_un {
      (close-port s)
      ;; (close-port c)
      )
-   (thread-start!
-    (make-thread
-     (lambda ()
-       (define d (make-u8vector 100))
-       (let loop ()
-	 (let ((n (read-subu8vector d 0 (u8vector-length d) s 1)))
-	   (if (not (= n 0))
-	       (let ((d (if (< n (u8vector-length d)) (subu8vector d 0 n) d)))
-		 (if (= (send-message sock d) n)
-                     (loop))))))
-       (cleanup!))
-     'sender))
-   (thread-start!
-    (make-thread
-     (lambda ()
-       (let loop ()
-	 (receive
-	  (d from) (recv-message sock 1000)
-	  (if d
-              (let ((n (u8vector-length d)))
-                (if (not (= n 0))
-                    (begin
-                      (write-subu8vector d 0 n s)
-                      (force-output s)
-                      (loop)))))))
-       (cleanup!))
-     'receiver))
+   (start!
+    'sender
+    (lambda ()
+      (define d (make-u8vector 100))
+      (let loop ()
+        (let ((n (read-subu8vector d 0 (u8vector-length d) s 1)))
+          (if (not (= n 0))
+              (let ((d (if (< n (u8vector-length d)) (subu8vector d 0 n) d)))
+                (if (= (send-message sock d) n)
+                    (loop)))))))
+    cleanup!)
+   (start!
+    'receiver
+    (lambda ()
+      (let loop ()
+        (receive
+         (d from) (recv-message sock 1000)
+         (if d
+             (let ((n (u8vector-length d)))
+               (if (not (= n 0))
+                   (begin
+                     (write-subu8vector d 0 n s)
+                     (force-output s)
+                     (loop))))))))
+    cleanup!)
    ;; (thread-yield!) ;; Otherwise might lock on SOME versions of Android at least.
    ;; (log-debug "returning socket port " c)
    c))
