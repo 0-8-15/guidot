@@ -813,7 +813,7 @@ C-END
 (define (recv-message sock len #!optional (flags 0))
   (if (not (socket? sock))
       (##raise-type-exception
-       0 'socket receive-message (list sock len flags)))
+       0 'socket recv-message (list sock len flags)))
   (let ((fd (macro-socket-fd sock)))
     (if (< fd 0)
         (values #f #f)
