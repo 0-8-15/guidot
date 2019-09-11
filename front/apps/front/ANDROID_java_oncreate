@@ -1,22 +1,4 @@
 /* -*-java-*- */
-idle_tmScheduleRate = 0;
-
-if (!OrbotHelper.get(this).init()) {
-    OrbotHelper.get(this).installOrbot(this);
-}
-
-if(!OrbotHelper.isOrbotRunning(getApplicationContext())) /* deprecated isOrbotRunning ! */ {
-    if(!OrbotHelper.requestStartTor(getApplicationContext())) {
-        OrbotHelper.requestShowOrbotStart(this);
-    }
-}
-
-@IF_ANDROIDAPI_GT_22@
-
-if(OrbotHelper.isOrbotRunning(getApplicationContext())) { // deprecated isOrbotRunning !
-    OrbotHelper.requestHiddenServiceOnPort(this, 443);
-}
-// end of IF_ANDROIDAPI_GT_22 */
 
 /*
 try {
@@ -36,3 +18,23 @@ catch (Exception e) {
 }
 
 System.err.println("going on");
+
+/*
+try {
+String msg = "getFilesDir: " + getApplicationContext().getFilesDir();
+
+// Toast.makeText(this, msg, Toast.LENGTH_LONG).show();
+System.err.println(msg);
+}
+catch (Exception e) {
+    e.printStackTrace(System.err);
+}
+*/
+idle_tmScheduleRate = 0;
+
+if (!OrbotHelper.get(this).init()) {
+    OrbotHelper.get(this).installOrbot(this);
+}
+
+ensureOrbotRunning();
+
