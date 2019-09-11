@@ -732,8 +732,8 @@ Is the service not yet running?")))
 
 (define (update-pages!)
   (if (procedure? pages-again-hook)
-      (begin (pages-again-hook) #t)
-      #f))
+      (pages-again-hook))
+  #f)
 
 (define *unset-code* "<no code>")
 
