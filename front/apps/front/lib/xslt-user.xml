@@ -29,6 +29,28 @@
    <p class="warning">Warning: Less than four notaties in support.  Do
    NOT complete any steps of the tutorial, except if you know what you
    do.  First commission additional support.</p>
+   <p>To add other reps paste their <em>public-oid</em> (or an URL pointing to it) here.  Don't submit the form with an rep already there -- it will be removed then.</p>
+   <d:form method="post">
+   <p>
+    <input name="xmlns" type="hidden" value="http://www.askemos.org/2000/CoreAPI#"></input>
+    <input name="action" type="hidden" value="toggle-replication-state"></input>
+    <input name="name" size="35" type="text"></input>
+    <input type="submit" value="submit"></input>
+    <input type="reset" value="C"></input>
+   </p>
+  </d:form>
+<table>
+  <d:for-each select="((sxpath '(Bag li)) (message-replicates (self-reference)))">
+   <xsl:variable name="host-id">
+    <xsl:value-of select="@resource/text()"/>
+   </xsl:variable>
+   <tr>
+    <td>
+     <d:a d:href='read-locator $ list xsl-variable("host-id")'><xsl:value-of select="$host-id"/></d:a>
+    </td>
+   </tr>
+  </d:for-each>
+ </table>
   </d:if>
   <fieldset>
    <legend>Tutorial</legend>
