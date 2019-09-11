@@ -144,7 +144,7 @@ spool.db-journal
 (define kernel-data-directory
   (cond
    (app:android?
-    (make-pathname (system-directory) "data"))
+    (make-pathname (system-appdirectory) "data"))
    (else "data")))
 
 (define (rep-exists?)
@@ -173,8 +173,9 @@ spool.db-journal
 	  (lambda () (mutex-lock! mux))
 	  (if (pair? args)
 	      (lambda ()
-		(if (and (null? (cdr args)) (not (car args)))
-		    (let ((srv process))
+		(if (and (null? (cdr args)) (boolean? (car args)))
+		    (let ((check-only (car args))
+                          (srv process))
                       (cond
                        ((port? srv)
                         (process-status srv) (cleanup!) srv)
@@ -184,16 +185,19 @@ spool.db-journal
                          (if (or (= p srv)
                                  (= p -1))
                              (begin
-                               (if (= p -1) (log-error "failed to wait for process " srv " ECHILD: " c "?? if so, gambit stole the value" ))
+                               (if (and (= p -1) (= c errno/child))
+                                   (log-error "failed to wait for process " srv " ECHILD: gambit stole the value" ))
                                (cleanup!)
                                (list c n p))
                              #f)))
                        (else
                         ;; FIXME: always wait for it!
+                        (log-error "kernel-server unhandled waiting case (not forking)")
                         #f)))
 		    (begin
-		      (when process (error "kernel already running"))
-		      (set! process (apply (car args) (cdr args)))
+		      (if process
+                          (log-error "kernel already running")
+                          (set! process (apply (car args) (cdr args))))
 		      process)))
 	      (lambda () process))
 	  (lambda () (mutex-unlock! mux))))))
@@ -202,9 +206,14 @@ spool.db-journal
   (cond
    ((not (rep-exists?))
     (log-error "data directory does not exist" kernel-data-directory))
-   ((not (kernel-server))
+   ((and (not (kernel-server))
+         (not (check-kernel-server!)))
     (foreground-service! #t)
     (kernel-server fork-process "ball" "-start" kernel-data-directory))
+   ((and (kernel-server #t)
+         (not (check-kernel-server!)))
+    (log-error "Kernel died at some time, retrying")
+    (start-kernel-server!))
    (else (log-error "Not starting kernel server, still " (kernel-server)))))
 
 (define restart-kernel-server!
@@ -218,6 +227,8 @@ spool.db-journal
               (begin
                 (set! in-restart #t)
                 (when (debug 'current-server (kernel-server))
+                      (unless (kernel-server-kill! "-USR2") ;; report alive state
+                              (log-error "failed to send signal to kernel"))
                       (let loop ((n 200))
                         (unless (kernel-server #f)
                                 (thread-sleep! 0.1)
@@ -263,6 +274,11 @@ spool.db-journal
 	   ((D) (apply values (cdr ans)))
 	   (else (error "protocol error")))))))
 
+(define (kernel-server-kill! #!optional (sig "-TERM"))
+  (and (eq? (subprocess-style) 'fork)
+       (let ((pid (kernel-server)))
+         (and (number? pid) (run/boolean "kill" sig pid)))))
+
 (define (stop-kernel-server!0)
   (foreground-service! #f)
   (with-ball-kernel
@@ -274,8 +290,16 @@ spool.db-journal
       (close-port p)
       #f))
    values 'set)
-  (let loop ((srv (kernel-server)))
-    (when srv (unless (kernel-server #f) (thread-sleep! 0.1) (loop (kernel-server #f))))
+  (let loop ((srv (kernel-server)) (n 20))
+    (when
+     srv
+     (unless
+      (kernel-server #f)
+      (thread-sleep! 0.1)
+      (kernel-server-kill! "-USR1")
+      (when (< n 0)
+            (kernel-server-kill! (if (< n -10) "-KILL" "-TERM")))
+      (loop (kernel-server #f) (- n 1))))
     #;(when (and (not-using-fork-alike) (debug 'kernel-server srv))
 	  (thread-sleep! 5)
 	  (terminate)))
@@ -301,7 +325,7 @@ spool.db-journal
 	     (lambda ()
 	       ;; (log-debug "trying to connect to control socket " 1)
 	       (connect-socket sock addr)
-	       ;; (log-debug "connect to control socket " 1)
+	       (log-debug "connected to control socket " 1)
 	       (socket-port sock)))))))
    values
    'set))
