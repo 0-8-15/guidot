@@ -1,12 +1,45 @@
 ;; frontend (to be changed to mimic the Calculator demo)
 
-(cond
- (app:android?
-  (let ((ot terminate)) (set! terminate (lambda () (log-error "No terminate on Android!") #f))))
+(define (android-directory-files)
+  ((c-lambda () char-string "___result=
+#ifdef ANDROID
+android_get_getFilesDir();
+#else
+NULL;
+#endif
+")))
+
+(cond-expand
+ (android
+  (let ((ot terminate)) (set! terminate (lambda () (log-error "No terminate on Android!") #f)))
+  (define (orbot-running?)
+    (let ((v ((c-lambda () int "___result=orbot_is_running();"))))
+      (case v
+        ((0) #f)
+        ((1) #t)
+        ((-1)
+         (log-error "orbot_is_running failed to locate Java part")
+         #f)
+        (else (log-error "orbot_is_running returned unhandled code" v)))))
+  (define orbot-running! (c-lambda () void "orbot_ensure_running();"))
+  )
  (else
-   (if #f (let ((ot terminate)) (set! terminate (lambda () (debug 'terminating #t) (ot)))))))
+  (define (orbot-running?) #f)
+  (define (orbot-running!) #f)
+  ))
+
+(define (migrate-data-to-protected-space!)
+  (let ((target kernel-data-directory)
+        (source (make-pathname (system-directory) "data")))
+    (if (and (file-exists? source)
+             (not (file-exists? target))
+             (not (equal? source target))
+             (kernel-backup! from: source))
+        (run/boolean 'mv source target)
+        #t)))
 
 (define (kernel-start-custom-services!)
+  (kernel-start-idle-handler!)
   (kernel-start-satellite!))
 
 (define (restart-kernel-and-custom-services!)
@@ -17,10 +50,28 @@
   (thread-yield!)
   #t)
 
+(define (kernel-start-idle-handler!)
+  (call-kernel
+   'begin
+   '(define handle-idle-event!
+      (let ((sig #f))
+        (define (keepalive)
+          (thread-sleep! 180)
+          (let ((pid (current-process-id)))
+            (logerr "Keepalive timeout in ~a\n" pid)
+            (process-signal pid 15)))
+        (lambda ()
+          ;; (logerr "EVENT_IDLE\n")
+          (if sig (thread-terminate! sig))
+          (set! sig (thread-start! keepalive))
+          #t)))
+   '(logerr "I: installed idle-event-handler\n")
+   '(handle-idle-event!)))
+
 (define (kernel-send-idle0)
   (if (eq? (with-exception-catcher
             (lambda (ex) (log-error "exn in idle talk " (exception-->printable ex))  #f)
-            (lambda () (call-kernel 'begin #;'(logerr "EVENT_IDLE\n") #t)))
+            (lambda () (call-kernel 'begin '(handle-idle-event!))))
            #t)
       #t
       (begin
@@ -29,6 +80,12 @@
         #f)))
 
 (define (kernel-send-idle)
+  (cond-expand
+   (android
+    (unless (orbot-running?)
+            (log-error "Orbot not running")
+            #;(orbot-running!)))
+   (else))
   (when (check-kernel-server!) (kernel-send-idle0)))
 
 (define (kernel-send-connect to)
