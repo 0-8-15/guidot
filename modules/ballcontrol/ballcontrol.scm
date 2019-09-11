@@ -40,6 +40,60 @@
 	  (apply o m args))))
 ;|#
 
+(include "scsh-utils.scm")
+
+(define (backup-file-name)
+  (make-pathname
+   (cond-expand
+    (android (system-directory))
+    (else "."))
+   "backup.tar.gz"))
+
+(define (kernel-backup!
+         #!key
+         (to (backup-file-name))
+         (from kernel-data-directory))
+  (define excludes-file
+    (make-pathname
+     (cond-expand
+      (android (system-appdirectory))
+      (else "."))
+     "excluding"))
+  (define excludes "spool.db
+spool.db-journal
+")
+  (and (not (file-exists? to))
+       (file-exists? from)
+       (dynamic-wind
+           (lambda ()
+             (call-with-output-file excludes-file
+               (lambda (p) (display excludes p))))
+           (lambda ()
+             (run/boolean "tar" "-c" "-z" "-f" to "-X" excludes-file "-C" from "."))
+           (lambda ()
+             (delete-file excludes-file)))))
+
+(define (kernel-restore!
+         #!key
+         (from (backup-file-name))
+         (to kernel-data-directory))
+  (and (not (file-exists? to))
+       (file-exists? from)
+       (begin
+         (create-directory to)
+         (run/boolean "tar" "-x" "-z" "-f" from "-C" to))))
+
+(define (kernel-remove!
+         #!key
+         (from kernel-data-directory))
+  (and (file-exists? from)
+       (begin
+         (log-status "Will remove kernel data from " from)
+         (when (kernel-server)
+               (log-status "Stopping kernel")
+               (stop-kernel-server!))
+         (run/boolean "rm" "-rf" from))))
+
 ;; Server connection
 
 (define with-ball-kernel
