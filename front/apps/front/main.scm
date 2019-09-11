@@ -1242,8 +1242,17 @@ Is the service not yet running?")))
    (lambda (w h)
 
      (redirect-standard-ports-for-logging)
+     (debug "compiled for"
+            (cond-expand
+             (android 'android)
+             (linux 'linux)
+             (win32 'win32)
+             (else 'unknown)))
+     (unless (migrate-data-to-protected-space!)
+             (display "ERROR data migration failed.  Exiting.\n" (current-error-port))
+             (exit 1))
 
-     ;; initialize gui here
+;; initialize gui here
      (make-window 480 800)
      (glgui-orientation-set! GUI_PORTRAIT)
      (set! gui (make-glgui))
