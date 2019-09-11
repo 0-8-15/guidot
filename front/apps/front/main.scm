@@ -505,12 +505,6 @@ NULL;
   #f (lambda (#!optional (v #f)) (if (equal? v "") #f v))
   'begin '($external-address))
 
-(define (copy-onion-address-to-db)
-  (when (and (onion-address)
-             (not (member (dbget (dbget 'CN) #f) '(#f "localhost"))))
-        (dbset 'CN (onion-address)))
-  #f)
-
 (define-cached-kernel-value public-oid #f #f 'begin '(public-oid) #;("print" "public"))
 
 (define-cached-kernel-value entry-points #f '() 'begin (get-channels-command))
@@ -708,7 +702,14 @@ Is the service not yet running?")))
       (or value '()))))
 
 (define (help-url page)
+  ;; FIXME: does NOT work on Android (anymore) as it replaces the
+  ;; `file://` scheme with `file//` and prepends `http://`.
   (string-append "file://" (embedded-file '("lib" "help") page)))
+
+(define (copy-onion-address-to-db)
+  (when (and (onion-address)
+             (not (member (dbget (dbget 'CN) #f) '(#f "localhost"))))
+        (dbset 'CN (onion-address))))
 
 (define (CN-entry-form-section)
   `((button text "Help on CN setup" action
@@ -717,6 +718,7 @@ Is the service not yet running?")))
                #f))
     (textentry id CN text "CN:")
     ,(lambda ()
+       (copy-onion-address-to-db)
        (if (clipboard-hascontent)
            `(button text "Paste From Clipboard" action
                     ,(lambda () (dbset 'CN (clipboard-paste)) #f))
