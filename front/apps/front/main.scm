@@ -521,6 +521,7 @@ NULL;
   `(thread-start!
     (make-thread
      (lambda ()
+       (logerr "I: satellite in ~a starting on ~a\n" (current-process-id) ,port)
        (and-let*
         ((user (mesh-cert-o (tc-private-cert))))
         (parameterize
@@ -566,8 +567,11 @@ NULL;
 
 (define (start-satellite-script port name ssl)
   `(begin
-     (set! ln-satellite ,(start-satellite-script0 port name ssl))
-     (debug 'SatelliteIsNow ln-satellite)
+     (if ln-satellite
+         (logerr "ln-satellite in ~a is already ~a\n" (current-process-id) ln-satellite)
+         (begin
+           (set! ln-satellite ,(start-satellite-script0 port name ssl))
+           (debug 'SatelliteIsNow ln-satellite)))
      ,(add-guard-fail
        "overiding meta-interface failed"
        (override-meta-interface-script))
@@ -584,10 +588,10 @@ NULL;
 (define satellite-protocol #;'https 'http)
 
 (define (kernel-start-satellite!)
-  (unless (kernel-satellite-variable-exits)
-          (call-kernel 'begin '(begin (define ln-satellite #f) #t)))
-  (if (call-kernel 'begin '(not ln-satellite))
-      (call-kernel 'begin (start-satellite-script (satellite-port) "satellite" (eq? satellite-protocol 'https))))
+  (if (kernel-satellite-variable-exits)
+      (log-error "kernel-start-satellite!: ln-satellite already defined")
+      (call-kernel 'begin '(begin (define ln-satellite #f) #t)))
+  (call-kernel 'begin (start-satellite-script (satellite-port) "satellite" (eq? satellite-protocol 'https)))
    ;; unconditionally returning success here, is this corect?
    #t)
 
