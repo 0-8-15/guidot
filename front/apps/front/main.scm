@@ -792,6 +792,7 @@ Is the service not yet running?")))
   '(("Connections" connections)
     ("Status" status)
     ("Onion" address)
+    ("Manage" manage)
     ("Debug" debug)
     ))
 
@@ -849,9 +850,13 @@ Is the service not yet running?")))
                        'starting)))
                 (if app:android?
                     `((redirect action ,kick-start))
-                    `((button h 75 size header #;(indent 0.05) rounded #f text "Start" action ,kick-start))))))
+                    `((button h 75 size header #;(indent 0.05) rounded #f text "Start" action ,kick-start)
+                      (spacer)
+                      (button h 75 size header #;(indent 0.05) rounded #f text "Manage" action manage))))))
 	 (else
-	  `((button h 75 size header indent 0.05 rounded #t text "Initialize" action ,(lambda () 'init)))))
+	  `((button h 75 size header indent 0.05 rounded #t text "Initialize" action init)
+            (spacer)
+            (button h 75 size header indent 0.05 rounded #t text "Manage" action manage))))
       ;; Show an image (file listed in EMBED)
       ;; (image file "LN_logo.png")
       )
@@ -1073,21 +1078,37 @@ Is the service not yet running?")))
       (spacer)
       (label text ,(string-append "Kernel running as: " (symbol->string (subprocess-style))))
       (spacer)
-      (label text "Network Connections")
-      (spacer)
-      (list id remote-host entries ,(kernel-connections))
-      (spacer)
-      (button text "Refresh Listing" action
+      (button text "Network Connections (Refresh List)" action
 	      ,(lambda ()
 		 (local-connect-string #t)
 		 (kernel-connections #t)
                  (update-pages!)
 		 #f))
+      (label text "")
+      (spacer)
+      (list id remote-host entries ,(kernel-connections))
       (spacer)
       ,(my-ip-address-display update-pages!)
       (spacer)
       #;,(lambda () `(label align left text ,kernel-connections))
       ;; end of "status" page
+      )
+     (manage
+      "Manage"
+      ("Back" ,pop-page)
+      #f
+      (spacer)
+      ,@(let ((comeback (lambda (job) (lambda () (job) (update-pages!)))))
+          (if (rep-exists?)
+              `((button text "Backup" action ,(comeback kernel-backup!))
+                (spacer)
+                (button text "Remove" action
+                        ,(modal-if "Sure? Got a backup?" (comeback kernel-remove!))))
+              `((button text "Initialize" action init)
+                (spacer)
+                (button text "Restore" action
+                        ,(lambda () (and (kernel-restore!) (begin (update-pages!) 'main)))))))
+      ;; end of "manage" page
       )
      (about
       "About"
