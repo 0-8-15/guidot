@@ -11,7 +11,7 @@
 
     (define (hook-add! hook proc)
       (let ((procs (hook-procs hook)))
-        (hook-procs! hook (cons proc procs))))
+        (hook-procs! hook (append procs (list proc)))))
 
     (define (hook-delete! hook proc)
       (let loop ((procs (hook-procs hook))
