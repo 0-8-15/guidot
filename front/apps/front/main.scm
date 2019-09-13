@@ -39,45 +39,7 @@ NULL;
         #t)))
 
 (define (kernel-start-custom-services!)
-  (kernel-start-idle-handler!)
-  (kernel-start-satellite!))
-
-(define (restart-kernel-and-custom-services!)
-  (define (restart-kernel-and-custom-services-task)
-    (and (restart-kernel-server!)
-         (kernel-start-custom-services!)))
-  (thread-start! (make-thread restart-kernel-and-custom-services-task 'restart))
-  (thread-yield!)
-  #t)
-
-(define (kernel-start-idle-handler!)
-  (call-kernel
-   'begin
-   '(define handle-idle-event!
-      (let ((sig #f))
-        (define (keepalive)
-          (thread-sleep! 180)
-          (let ((pid (current-process-id)))
-            (logerr "Keepalive timeout in ~a\n" pid)
-            (process-signal pid 15)))
-        (lambda ()
-          ;; (logerr "EVENT_IDLE\n")
-          (if sig (thread-terminate! sig))
-          (set! sig (thread-start! keepalive))
-          #t)))
-   '(logerr "I: installed idle-event-handler\n")
-   '(handle-idle-event!)))
-
-(define (kernel-send-idle0)
-  (if (eq? (with-exception-catcher
-            (lambda (ex) (log-error "exn in idle talk " (exception-->printable ex))  #f)
-            (lambda () (call-kernel 'begin '(handle-idle-event!))))
-           #t)
-      #t
-      (begin
-        (log-error "Kernel failed to answer idle notification.")
-        (restart-kernel-and-custom-services!)
-        #f)))
+  (hook-run kernel-on-start))
 
 (define (kernel-send-idle)
   (cond-expand
@@ -86,7 +48,7 @@ NULL;
             (log-error "Orbot not running")
             #;(orbot-running!)))
    (else))
-  (when (check-kernel-server!) (kernel-send-idle0)))
+  (kernel-control-send! 'idle))
 
 (define (kernel-send-connect to)
   (unless (call-kernel "connect" to)
@@ -594,6 +556,8 @@ NULL;
   (call-kernel 'begin (start-satellite-script (satellite-port) "satellite" (eq? satellite-protocol 'https)))
    ;; unconditionally returning success here, is this corect?
    #t)
+
+(hook-add! kernel-on-start kernel-start-satellite!)
 
 (define (public-oid-string)
   (let ((v (public-oid)))
@@ -1137,6 +1101,9 @@ Is the service not yet running?")))
                       (terminate))
                       (terminate))))))
       (spacer)
+      ,(if (eq? (subprocess-style) 'fork)
+           `(button text "Kill Kernel Server" action ,(lambda () (kernel-server-kill!) (update-pages!)))
+           '(spacer))
       #;,(lambda ()
 	 (if upnrunning
 	     `(button h 50 size header indent 0.05 rounded #t text "Debug" action ,(lambda () 'debug))
@@ -1182,12 +1149,6 @@ Is the service not yet running?")))
       ;; end of "debug page"
       )
      )))
-
-(unless app:android?
-        (thread-start!
-         (make-thread
-          (lambda () (do () (#f) (thread-sleep! 30) (kernel-send-idle)))
-          'idle)))
 
 (define dispatch-events
   (let ((check-magic-keys

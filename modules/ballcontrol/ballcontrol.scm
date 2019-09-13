@@ -1,5 +1,7 @@
 ;; Helpers (maybe to be moved elsewhere)
 
+(include "hook.scm")
+
 (define getpid (c-lambda () int "getpid"))
 
 (define this-pid (getpid))
@@ -94,52 +96,155 @@ spool.db-journal
                (stop-kernel-server!))
          (run/boolean "rm" "-rf" from))))
 
-;; Server connection
+;; Kernel Control
 
-(define with-ball-kernel
-  (let ((conn (make-mutex 'kernel)))
-    (mutex-specific-set! conn #f)
-    (let ((catching
-	   (lambda (ex)
-	     (mutex-unlock! conn)
-	     #;(raise ex)
-             (list #!eof)))
-	  (catch-clean
-	   (lambda (ex)
-	     (log-error "kernel control connection change failed.\n Setting to #f." ex)
-	     (mutex-specific-set! conn (debug 'Clean #f))
-	     (mutex-unlock! conn)
-	     #;(raise ex)
-             #f)))
-      (lambda (proc #!optional (values values) (mode 'wait))
-	(mutex-lock! conn)
-	(let ((v (mutex-specific conn)))
-	  (case mode
-	    ((set)
-	     (let ((nv (with-exception-catcher
-			catch-clean
-			(lambda () (proc v)))))
-	       (mutex-specific-set! conn nv)
-	       (mutex-unlock! conn)
-	       (values (and nv #t))))
-	    (else
-	     (apply
-	      values
-	      (with-exception-catcher
-	       catching
-	       (lambda ()
-		 (receive
-		  results (proc v)
-		  (mutex-unlock! conn)
-		  results)))))))))))
+(define kernel-on-start (make-hook 0))
 
-(define (close-kernel-connection!)
-  (with-ball-kernel
-   (lambda (p) (if p (close-port p)) #f)
-   (lambda (x) x)
-   'set))
+;; Async send with no reply expected
+(define (kernel-control-send! msg . args)
+  (let ((to ballcontrol#kernel-control-thread))
+    (if (null? args)
+        (thread-send to msg)
+        (thread-send to (cons msg args)))))
+
+(define (kernel-control-call immediately key payload)
+  (let ((m (make-mutex key)))
+    (mutex-lock! m #f #f)
+    (mutex-specific-set! m payload)
+    (thread-send ballcontrol#kernel-control-thread m)
+    (if immediately
+        (begin
+          (mutex-lock! m #f #f)
+          ((mutex-specific m)))
+        (let ((r #f) (m m))
+          (lambda args
+            (if r (r)
+                (let ((tmo (if (pair? args) (car args) #f)))
+                  (if (mutex-lock! m tmo #f)
+                      (begin
+                        (set! r (mutex-specific m))
+                        (set! m #f)
+                        (r))
+                      (let ((default-provided? (and (pair? args) (pair? (cdr args)))))
+                        (if default-provided? (cadr args)
+                            (error "timeout waiting for reply from kernel control thread")))))))))))
+
+(define (call-kernel/promise . msg)
+  (kernel-control-call #f 'call-kernel msg))
+
+(define (call-kernel . msg)
+  (kernel-control-call #t 'call-kernel msg))
+
+(define (kernel-send-stop!) (kernel-control-send! 'stop!))
+
+(define (close-kernel-connection!) (kernel-control-send! 'close!))
+
+#;(define (write-kernel! msg)
+(kernel-send! (cons 'send! msg)))
+
+(namespace
+ ("ballcontrol#"
+  kernel-control-thread
+  get-kernel-connection
+  %call-kernel))
 
 (define string->socket-address abstract-address->socket-address)
+
+(define (control-socket-path)
+  (make-pathname kernel-data-directory "control"))
+
+(define enable-removal-of-control-socket #f) ; NOT a good idea!
+
+(define (possibly-remove-control-socket! #!optional (enforce enable-removal-of-control-socket))
+  (if enforce
+      (let ((f (control-socket-path)))
+	(if (file-exists? f) (delete-file (debug 'removing f))))))
+
+(define kernel-control-thread)
+(let ((tmo (vector #!eof))
+      (check-period 60)
+      (retry-period 1)
+      (wait #f)
+      (conn #f))
+  (define (bailout msg)
+    (error "kernel-control-thread: unhandled message" msg))
+  (define (conn-set! v)
+    (set! conn v)
+    (set! wait (if conn check-period retry-period)))
+  (define (close-kernel-connection!)
+    (if conn (close-port conn))
+    (conn-set! #f))
+  (define (idle)
+    (when conn (kernel-send-idle0)))
+  (define (return-connected)
+    (if conn (lambda () #t) (lambda () #f)))
+  (include "kconn.scm")
+  (define (dispatch msg)
+    (cond
+     ((eq? msg 'idle) (idle))
+     ((eq? msg 'close!) (close-kernel-connection!))
+     ((eq? msg 'stop!)
+      (when (debug 'conn conn)
+            (%write-kernel! conn '("stop" "-f"))
+            (thread-sleep! 1))
+      (dispatch 'close!))
+     ((pair? msg)
+      (cond
+       ((procedure? (car msg))
+        )
+       (else
+        (case (car msg)
+          ((call-kernel) (call-kernel2 (cdr msg)))
+          ((send!) (%%write-kernel! (cdr msg)))
+          ((connect)
+           (if (rep-exists?)
+               (if (not conn)
+                   (conn-set! (get-kernel-connection))))
+           (return-connected))
+          (else (bailout msg))))))
+     (else (bailout msg))))
+  (define (dispatch/enx-handled msg)
+    (with-exception-catcher
+     (lambda (exn) (lambda () (raise exn)))
+     (lambda () (dispatch msg))))
+  (define (handle-one)
+    (let ((msg (if wait (thread-receive wait tmo) (thread-receive))))
+      ;; (debug 'MSG msg)
+      (cond
+       #;((not conn)
+        (conn-set! (get-kernel-connection))
+        )
+       ((mutex? msg)
+        (mutex-specific-set! msg (dispatch/enx-handled (cons (mutex-name msg) (mutex-specific msg))))
+        (mutex-unlock! msg))
+       ((eq? msg tmo) (dispatch 'idle))
+       (else (dispatch msg)))))
+  (define (exn-handler ex)
+    (log-error (thread-name (current-thread)) ": " (debug 'EXN (exception->string ex))))
+  (define (loop)
+    (with-exception-catcher exn-handler handle-one)
+    (loop))
+  (set! kernel-control-thread (thread-start! (make-thread loop 'kernel-control-job))))
+
+(define (kernel-start-idle-handler!)
+  (call-kernel
+   'begin
+   '(define handle-idle-event!
+      (let ((sig #f))
+        (define (keepalive)
+          (thread-sleep! 180)
+          (let ((pid (current-process-id)))
+            (logerr "Keepalive timeout in ~a\n" pid)
+            (process-signal pid 15)))
+        (lambda ()
+          ;; (logerr "EVENT_IDLE\n")
+          (if sig (thread-terminate! sig))
+          #;(set! sig (thread-start! keepalive))
+          #t)))
+   '(logerr "I: installed idle-event-handler\n")
+   '(handle-idle-event!)))
+
+(hook-add! kernel-on-start kernel-start-idle-handler!)
 
 (define kernel-data-directory
   (cond
@@ -151,16 +256,6 @@ spool.db-journal
   (and
    (file-exists? kernel-data-directory)
    (eq? (file-info-type (file-info kernel-data-directory)) 'directory)))
-
-(define (control-socket-path)
-  (make-pathname kernel-data-directory "control"))
-
-(define enable-removal-of-control-socket #f) ; NOT a good idea!
-
-(define (possibly-remove-control-socket! #!optional (enforce enable-removal-of-control-socket))
-  (if enforce
-      (let ((f (control-socket-path)))
-	(if (file-exists? f) (delete-file (debug 'removing f))))))
 
 (define kernel-server
   (let ((process #f)
@@ -223,7 +318,7 @@ spool.db-journal
           (begin
             (log-error "can not (yet) restart kernel when running as pthread")
             #f)
-          (if (not in-restart)
+          (if (and (not in-restart) (rep-exists?))
               (begin
                 (set! in-restart #t)
                 (when (debug 'current-server (kernel-server))
@@ -233,7 +328,6 @@ spool.db-journal
                         (unless (kernel-server #f)
                                 (thread-sleep! 0.1)
                                 (loop (- n 1)))))
-                (close-kernel-connection!)
                 (unless (kernel-server) (start-kernel-server!))
                 (let ((r (wait-for-kernel-server 60)))
                   (set! in-restart #f))
@@ -242,37 +336,13 @@ spool.db-journal
                       (log-error "Kernel server did not restart!")
                       #f))))))))
 
-(define (%write-kernel! p msg)
-  (write msg p)
-  (force-output p))
-
-(define (write-kernel! msg)
-  (with-ball-kernel
-   (lambda (p)
-     (unless (port? p) (error "no connection"))
-     (%write-kernel! p msg))))
-
-#;(define (expect-from-kernel p)
-  (let ((t (make-thread (lambda () (read-from-kernel p)) 'kernel-read)))
-    (thread-start! t)
-    (thread-yield!)
-    t))
-
-(define (call-kernel . msg)
-  (with-ball-kernel
-   (lambda (p)
-     (unless (port? p) (error "no connection"))
-     (%write-kernel! p msg)
-     (read p))
-   (lambda (ans)
-     (if (eof-object? ans)
-	 (begin
-	   (close-kernel-connection!)
-	   ans)
-	 (case (car ans)
-	   ((E) (error (cdr ans)))
-	   ((D) (apply values (cdr ans)))
-	   (else (error "protocol error")))))))
+(define (restart-kernel-and-custom-services!)
+  (define (restart-kernel-and-custom-services-task)
+    (and (restart-kernel-server!)
+         (hook-run kernel-on-start)))
+  (thread-start! (make-thread restart-kernel-and-custom-services-task 'restart))
+  (thread-yield!)
+  #t)
 
 (define (kernel-server-kill! #!optional (sig "-TERM"))
   (and (eq? (subprocess-style) 'fork)
@@ -281,16 +351,8 @@ spool.db-journal
 
 (define (stop-kernel-server!0)
   (foreground-service! #f)
-  (with-ball-kernel
-   (lambda (p)
-     (when
-      p
-      (%write-kernel! p '("stop" "-f"))
-      (thread-sleep! 1)
-      (close-port p)
-      #f))
-   values 'set)
-  (let loop ((srv (kernel-server)) (n 20))
+  (kernel-send-stop!)
+  #;(let loop ((srv (kernel-server)) (n 20))
     (when
      srv
      (unless
@@ -299,36 +361,15 @@ spool.db-journal
       (kernel-server-kill! "-USR1")
       (when (< n 0)
             (kernel-server-kill! (if (< n -10) "-KILL" "-TERM")))
-      (loop (kernel-server #f) (- n 1))))
+      (loop (kernel-server) (- n 1))))
     #;(when (and (not-using-fork-alike) (debug 'kernel-server srv))
 	  (thread-sleep! 5)
-	  (terminate)))
-  (close-kernel-connection!))
+	  (terminate))))
 
 (set! stop-kernel-server! stop-kernel-server!0)
 
 (define (check-kernel-server!)
-  (with-ball-kernel
-   (lambda (p)
-     (if p p
-	 (and
-	  (rep-exists?)
-	  (let ((addr (string->socket-address (control-socket-path)))
-		(sock (create-socket protocol-family/unix socket-type/stream)))
-	    (with-exception-catcher
-	     (lambda (ex)
-	       #;(debug 'Check-EX (exception-->printable ex))
-	       #;(start-kernel-server!)
-	       ;; (log-debug "connecting to control socket failed with " 1 (exception-->printable ex))
-	       (close-socket sock)
-	       #f)
-	     (lambda ()
-	       ;; (log-debug "trying to connect to control socket " 1)
-	       (connect-socket sock addr)
-	       (log-debug "connected to control socket " 1)
-	       (socket-port sock)))))))
-   values
-   'set))
+  (kernel-control-call #t 'connect #f))
 
 (define (wait-for-kernel-server limit)
   (let loop ((w 0))
