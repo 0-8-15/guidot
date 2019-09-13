@@ -98,7 +98,7 @@ struct sockaddr_un {
 ;; FIXME: This depends on lambdanative!
 (define gamsock:exception-handler
   (lambda (ex)
-    (log-error (thread-name (current-thread)) ": " (exception->string e))))
+    (log-error "gamsock:" (thread-name (current-thread)) ": " (exception->string e))))
 
 (define (socket-port sock)
   (define (start! name proc cleanup!)

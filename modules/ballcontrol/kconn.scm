@@ -57,7 +57,7 @@
                 results (proc v)
                 results))))))))))
 
-(define (kernel-send-idle0)
+(define (kernel-send-idle0 restart)
   (if (eq? (with-exception-catcher
             (lambda (ex) (log-error "exn in idle talk " (exception-->printable ex))  #f)
             (lambda () (call-kernel 'begin '(handle-idle-event!))))
@@ -65,7 +65,8 @@
       #t
       (begin
         (log-error "Kernel failed to answer idle notification.")
-        (restart-kernel-and-custom-services!)
+        (close-kernel-connection!)
+        (if restart (restart))
         #f)))
 
 (define (%write-kernel! p msg)
