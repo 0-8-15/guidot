@@ -137,6 +137,8 @@ spool.db-journal
 
 (define (kernel-send-stop!) (kernel-control-send! 'stop!))
 
+(define (kernel-control-set-running! flag) (kernel-control-send! 'set-running flag))
+
 (define (close-kernel-connection!) (kernel-control-send! 'close!))
 
 #;(define (write-kernel! msg)
@@ -162,6 +164,7 @@ spool.db-journal
 
 (define kernel-control-thread)
 (let ((tmo (vector #!eof))
+      (kernel-supposed-to-run #f)
       (check-period 60)
       (retry-period 1)
       (wait #f)
@@ -174,8 +177,21 @@ spool.db-journal
   (define (close-kernel-connection!)
     (if conn (close-port conn))
     (conn-set! #f))
+  (define (try-restart)
+    (unless conn
+            (let loop ((n 10))
+              (if (> n 0)
+                  (begin
+                    (conn-set! (get-kernel-connection))
+                    (unless conn
+                            (begin
+                              (thread-sleep! 0.5)
+                              (loop (- n 1)))))))
+            (unless conn (restart-kernel-and-custom-services!))))
   (define (idle)
-    (when conn (kernel-send-idle0)))
+    (if conn
+        (kernel-send-idle0 (and kernel-supposed-to-run try-restart))
+        (if kernel-supposed-to-run (try-restart))))
   (define (return-connected)
     (if conn (lambda () #t) (lambda () #f)))
   (include "kconn.scm")
@@ -184,6 +200,7 @@ spool.db-journal
      ((eq? msg 'idle) (idle))
      ((eq? msg 'close!) (close-kernel-connection!))
      ((eq? msg 'stop!)
+      (set! kernel-supposed-to-run #f)
       (when (debug 'conn conn)
             (%write-kernel! conn '("stop" "-f"))
             (thread-sleep! 1))
@@ -201,6 +218,7 @@ spool.db-journal
                (if (not conn)
                    (conn-set! (get-kernel-connection))))
            (return-connected))
+          ((set-running) (set! kernel-supposed-to-run (cadr msg)))
           (else (bailout msg))))))
      (else (bailout msg))))
   (define (dispatch/enx-handled msg)
@@ -220,7 +238,7 @@ spool.db-journal
        ((eq? msg tmo) (dispatch 'idle))
        (else (dispatch msg)))))
   (define (exn-handler ex)
-    (log-error (thread-name (current-thread)) ": " (debug 'EXN (exception->string ex))))
+    (log-error (thread-name (current-thread)) ": " (debug 'EXN (exception-->printable ex))))
   (define (loop)
     (with-exception-catcher exn-handler handle-one)
     (loop))
@@ -304,11 +322,12 @@ spool.db-journal
    ((and (not (kernel-server))
          (not (check-kernel-server!)))
     (foreground-service! #t)
-    (kernel-server fork-process "ball" "-start" kernel-data-directory))
+    (kernel-server fork-process "ball" "-start" kernel-data-directory)
+    (kernel-control-set-running! #t))
    ((and (kernel-server #t)
          (not (check-kernel-server!)))
     (log-error "Kernel died at some time, retrying")
-    (start-kernel-server!))
+    (restart-kernel-and-custom-services!))
    (else (log-error "Not starting kernel server, still " (kernel-server)))))
 
 (define restart-kernel-server!

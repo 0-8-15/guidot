@@ -545,6 +545,7 @@ NULL;
    '(guard
      (ex (else #f))
      ln-satellite ;; raises exception if not existing
+     (logerr "ln-satellite already defined as ~a in process ~a\n" ln-satellite (current-process-id))
      #t)))
 
 (define satellite-protocol #;'https 'http)
