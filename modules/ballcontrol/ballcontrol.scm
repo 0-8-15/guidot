@@ -165,7 +165,7 @@ spool.db-journal
 (define kernel-control-thread)
 (let ((tmo (vector #!eof))
       (kernel-supposed-to-run #f)
-      (check-period 60)
+      (check-period 15)
       (retry-period 1)
       (wait #f)
       (conn #f))
@@ -178,6 +178,8 @@ spool.db-journal
     (if conn (close-port conn))
     (conn-set! #f))
   (define (try-restart)
+    (log-status "try-restart: connection " conn)
+    (run/boolean "ps" "-a")
     (unless conn
             (let loop ((n 10))
               (if (> n 0)
@@ -187,6 +189,7 @@ spool.db-journal
                             (begin
                               (thread-sleep! 0.5)
                               (loop (- n 1)))))))
+            (log-status "re-establisch connection?: " conn)
             (unless conn (restart-kernel-and-custom-services!))))
   (define (idle)
     (if conn
@@ -333,6 +336,7 @@ spool.db-journal
 (define restart-kernel-server!
   (let ((in-restart #f))
     (lambda ()
+      (log-status "In " (current-thread) " in-restart: " in-restart)
       (if (eq? (subprocess-style) 'pthread)
           (begin
             (log-error "can not (yet) restart kernel when running as pthread")
@@ -348,18 +352,16 @@ spool.db-journal
                                 (thread-sleep! 0.1)
                                 (loop (- n 1)))))
                 (unless (kernel-server) (start-kernel-server!))
-                (let ((r (wait-for-kernel-server 60)))
-                  (set! in-restart #f))
-                (or r
+                (or (let ((r (wait-for-kernel-server 60)))
+                      (set! in-restart #f)
+                      (hook-run kernel-on-start)
+                      r)
                     (begin
                       (log-error "Kernel server did not restart!")
                       #f))))))))
 
 (define (restart-kernel-and-custom-services!)
-  (define (restart-kernel-and-custom-services-task)
-    (and (restart-kernel-server!)
-         (hook-run kernel-on-start)))
-  (thread-start! (make-thread restart-kernel-and-custom-services-task 'restart))
+  (thread-start! (make-thread restart-kernel-server! 'restart))
   (thread-yield!)
   #t)
 
