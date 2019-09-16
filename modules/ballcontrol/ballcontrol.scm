@@ -162,6 +162,18 @@ spool.db-journal
       (let ((f (control-socket-path)))
 	(if (file-exists? f) (delete-file (debug 'removing f))))))
 
+(define log-ballcontrol
+  (let ((on #f))
+    (lambda args
+      (cond
+       ((and (pair? args) (boolean? (car args)) (null? (cdr args)))
+        (set! on (car args)))
+       ((null? args) on)
+       (on
+        (apply log:submit (cons "ballcontrol" args)))))))
+
+(log-ballcontrol #t)
+
 (define kernel-control-thread)
 (let ((tmo (vector #!eof))
       (kernel-supposed-to-run #f)
@@ -177,19 +189,23 @@ spool.db-journal
   (define (close-kernel-connection!)
     (if conn (close-port conn))
     (conn-set! #f))
+  (define (retry-to-connect times #!key (sleep 0.5))
+    (let loop ((n times))
+      (if (> n 0)
+          (unless conn
+            (conn-set! (get-kernel-connection))
+            (unless conn
+                    (let ((slptm sleep))
+                      ;;(log-ballcontrol "try-restart: sleeping " slptm)
+                      (thread-sleep! slptm)
+                      ;;(log-ballcontrol "try-restart: woke up from retry #" n)
+                      (loop (- n 1)))))))
+    conn)
   (define (try-restart)
-    (log-status "try-restart: connection " conn)
-    (run/boolean "ps" "-a")
-    (unless conn
-            (let loop ((n 10))
-              (if (> n 0)
-                  (begin
-                    (conn-set! (get-kernel-connection))
-                    (unless conn
-                            (begin
-                              (thread-sleep! 0.5)
-                              (loop (- n 1)))))))
-            (log-status "re-establisch connection?: " conn)
+    (log-ballcontrol "try-restart: connection " conn)
+    ;;(run/boolean "ps" "-a")
+    (unless conn (retry-to-connect 10)
+            (log-ballcontrol "re-establisch connection?: " conn)
             (unless conn (restart-kernel-and-custom-services!))))
   (define (idle)
     (if conn
@@ -229,8 +245,13 @@ spool.db-journal
      (lambda (exn) (lambda () (raise exn)))
      (lambda () (dispatch msg))))
   (define (handle-one)
+    ;; (log-ballcontrol "handle-one: " (current-thread) " waiting " wait " for message")
+    (define t0 (current-second))
     (let ((msg (if wait (thread-receive wait tmo) (thread-receive))))
-      ;; (debug 'MSG msg)
+      (define t1 (current-second))
+      (if (and wait (> (- t1 t0) (* 1.2 wait)))
+          (log-error "thread-receive timeout " wait " missed, waited for " (- t1 t0)))
+      (log-ballcontrol "handle-one: got " msg)
       (cond
        #;((not conn)
         (conn-set! (get-kernel-connection))
@@ -250,7 +271,7 @@ spool.db-journal
 (define (kernel-start-idle-handler!)
   (call-kernel
    'begin
-   '(define handle-idle-event!
+   `(define handle-idle-event!
       (let ((sig #f))
         (define (keepalive)
           (thread-sleep! 180)
@@ -258,7 +279,7 @@ spool.db-journal
             (logerr "Keepalive timeout in ~a\n" pid)
             (process-signal pid 15)))
         (lambda ()
-          ;; (logerr "EVENT_IDLE\n")
+          ,@(if (log-ballcontrol) '((logerr "EVENT_IDLE\n")) '())
           (if sig (thread-terminate! sig))
           #;(set! sig (thread-start! keepalive))
           #t)))
@@ -346,15 +367,15 @@ spool.db-journal
                 (set! in-restart #t)
                 (when (debug 'current-server (kernel-server))
                       (unless (kernel-server-kill! "-USR2") ;; report alive state
-                              (log-error "failed to send signal to kernel"))
+                              (log-error "failed to send USR2 signal to kernel"))
                       (let loop ((n 200))
                         (unless (kernel-server #f)
                                 (thread-sleep! 0.1)
                                 (loop (- n 1)))))
-                (unless (kernel-server) (start-kernel-server!))
+                (unless (debug 'Stillrunning??? (kernel-server)) (start-kernel-server!))
                 (or (let ((r (wait-for-kernel-server 60)))
                       (set! in-restart #f)
-                      (hook-run kernel-on-start)
+                      (if r (hook-run kernel-on-start))
                       r)
                     (begin
                       (log-error "Kernel server did not restart!")

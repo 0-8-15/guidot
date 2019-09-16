@@ -30,7 +30,7 @@ catch (Exception e) {
     e.printStackTrace(System.err);
 }
 */
-idle_tmScheduleRate = 0;
+idle_tmScheduleRate = 100;
 
 if (!OrbotHelper.get(this).init()) {
     OrbotHelper.get(this).installOrbot(this);

@@ -1,5 +1,25 @@
 ;; frontend (to be changed to mimic the Calculator demo)
 
+(set!
+ thread-sleep!
+ (let ((thread-sleep! thread-sleep!))
+   (lambda (t)
+     (let ((t0 (current-second)))
+       (thread-sleep! t)
+       (let* ((t1 (current-second))
+              (delta (- t1 t0)))
+         (if (> (abs (- t delta)) (* 0.3 t))
+             (log-error "Error in thread sleep, sleeping for " t " took " delta)))))))
+
+(cond-expand
+ (android
+  (define (setup-heartbeat!)
+    #;((c-lambda () scheme-object "___setup_heartbeat_interrupt_handling"))
+    (##set-heartbeat-interval! (exact->inexact 1/100)))
+  #;(setup-heartbeat!)
+  )
+ (else))
+
 (define (android-directory-files)
   ((c-lambda () char-string "___result=
 #ifdef ANDROID
@@ -1161,11 +1181,12 @@ Is the service not yet running?")))
     (cond
      (app:android? ;;(member (system-platform) '("android"))
       (lambda (gui t x y)
+        (##thread-heartbeat!)
         (thread-yield!)
 	(cond
          ((eq? t EVENT_IDLE)
           ;; (log-debug "idle" 1)
-          (kernel-send-idle)
+          #;(kernel-send-idle)
           #t)
          (else
           ;; (check-magic-keys gui t x y)
@@ -1204,12 +1225,14 @@ Is the service not yet running?")))
    (lambda (w h)
 
      (redirect-standard-ports-for-logging)
-     (debug "compiled for"
-            (cond-expand
-             (android 'android)
-             (linux 'linux)
-             (win32 'win32)
-             (else 'unknown)))
+     (log-status
+      "compiled for "
+      (cond-expand
+       (android 'android)
+       (linux 'linux)
+       (win32 'win32)
+       (else 'unknown))
+      " subprocess-style: " (subprocess-style))
      (unless (migrate-data-to-protected-space!)
              (display "ERROR data migration failed.  Exiting.\n" (current-error-port))
              (exit 1))
