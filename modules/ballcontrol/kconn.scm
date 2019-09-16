@@ -95,6 +95,9 @@
 	   ((D) (apply values (cdr ans)))
 	   (else (error "protocol error" msg)))))))
 
+(define (kc-connection-lost-reply)
+  (error "lost connection"))
+
 (define (call-kernel2 msg)
   (with-ball-kernel
    (lambda (p)
@@ -105,7 +108,7 @@
      (if (eof-object? ans)
 	 (begin
 	   (close-kernel-connection!)
-	   (lambda () ans))
+	   kc-connection-lost-reply)
 	 (lambda ()
            (case (car ans)
              ((E) (error (cdr ans)))
