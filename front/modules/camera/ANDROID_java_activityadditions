@@ -1,0 +1,58 @@
+/* -*-java-*- */
+private String camera_tmp;
+private String camera_fnl;
+
+private String vid_tmp;
+private String vid_fnl;
+
+static final int REQUEST_IMAGE_CAPTURE = 76781;
+static final int REQUEST_VIDEO_CAPTURE = 76782;
+
+private Uri compatGetUriForFile(File f) {
+  boolean x = false;
+  boolean y = true;
+  Uri result = null;
+  @IF_ANDROIDAPI_GT_22@
+  result = FileProvider.getUriForFile(getApplicationContext(), "@SYS_PACKAGE_DOT@.camerafileprovider", f);
+  x = true;
+  // end: IF_ANDROIDAPI_GT_22 */
+  if( !x && y ) result = Uri.fromFile(f);
+  return result;
+}
+
+private void startCamera(String fnl_name, String tmp_name) {
+  camera_fnl = fnl_name;
+  camera_tmp = tmp_name;
+  if(checkOrRequestPermission(android.Manifest.permission.CAMERA)) {
+      Intent intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+      File f = new File(camera_tmp);
+      //File f = new File(Context.getExternalFilesDir(null), tmp_name_without_dir);
+      if (f != null) {
+          Uri out = compatGetUriForFile(f);
+          // Uri out = FileProvider.getUriForFile(getApplicationContext(), "@SYS_ORGDOMAIN_REVERSE_DOT@.fileprovider", f);
+          intent.putExtra(MediaStore.EXTRA_OUTPUT, out);
+          intent.setClipData(ClipData.newRawUri("", out));
+          intent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION|Intent.FLAG_GRANT_READ_URI_PERMISSION);
+
+          //    intent.putExtra(android.provider.MediaStore.EXTRA_SCREEN_ORIENTATION,ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+          startActivityForResult(intent, REQUEST_IMAGE_CAPTURE);
+      }
+  }
+}
+
+private void startVidCamera(String fnl_name, String tmp_name, int maxlength) {
+  vid_fnl = fnl_name;
+  vid_tmp = tmp_name;
+  if(checkOrRequestPermission(android.Manifest.permission.CAMERA)) {
+      Intent intent = new Intent(MediaStore.ACTION_VIDEO_CAPTURE);
+      File f = new File(vid_tmp);
+      if (f != null) {
+          intent.putExtra(MediaStore.EXTRA_OUTPUT, Uri.fromFile(f));
+          intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+          if (maxlength > 0) {
+              intent.putExtra(MediaStore.EXTRA_DURATION_LIMIT, maxlength);
+          }
+          startActivityForResult(intent, REQUEST_VIDEO_CAPTURE);
+      }
+  }
+}
