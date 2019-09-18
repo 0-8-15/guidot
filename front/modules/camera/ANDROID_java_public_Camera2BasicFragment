@@ -1,4 +1,6 @@
-/* -*-java-*- */
+/* -*-java-*-
+ * From https://github.com/googlesamples/android-Camera2Basic
+ */
 /*
  * Copyright 2017 The Android Open Source Project
  *
@@ -45,7 +47,7 @@ import android.media.ImageReader;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
-import android.support.annotation.NonNull;
+// import android.support.annotation.NonNull;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.app.DialogFragment;
 import android.support.v4.app.Fragment;
@@ -188,7 +190,7 @@ public class Camera2BasicFragment extends Fragment
     private final CameraDevice.StateCallback mStateCallback = new CameraDevice.StateCallback() {
 
         @Override
-        public void onOpened(@NonNull CameraDevice cameraDevice) {
+        public void onOpened(/*@NonNull*/ CameraDevice cameraDevice) {
             // This method is called when the camera is opened.  We start camera preview here.
             mCameraOpenCloseLock.release();
             mCameraDevice = cameraDevice;
@@ -196,14 +198,14 @@ public class Camera2BasicFragment extends Fragment
         }
 
         @Override
-        public void onDisconnected(@NonNull CameraDevice cameraDevice) {
+        public void onDisconnected(/*@NonNull*/ CameraDevice cameraDevice) {
             mCameraOpenCloseLock.release();
             cameraDevice.close();
             mCameraDevice = null;
         }
 
         @Override
-        public void onError(@NonNull CameraDevice cameraDevice, int error) {
+        public void onError(/*@NonNull*/ CameraDevice cameraDevice, int error) {
             mCameraOpenCloseLock.release();
             cameraDevice.close();
             mCameraDevice = null;
@@ -334,16 +336,16 @@ public class Camera2BasicFragment extends Fragment
         }
 
         @Override
-        public void onCaptureProgressed(@NonNull CameraCaptureSession session,
-                                        @NonNull CaptureRequest request,
-                                        @NonNull CaptureResult partialResult) {
+        public void onCaptureProgressed(/*@NonNull*/ CameraCaptureSession session,
+                                        /*@NonNull*/ CaptureRequest request,
+                                        /*@NonNull*/ CaptureResult partialResult) {
             process(partialResult);
         }
 
         @Override
-        public void onCaptureCompleted(@NonNull CameraCaptureSession session,
-                                       @NonNull CaptureRequest request,
-                                       @NonNull TotalCaptureResult result) {
+        public void onCaptureCompleted(/*@NonNull*/ CameraCaptureSession session,
+                                       /*@NonNull*/ CaptureRequest request,
+                                       /*@NonNull*/ TotalCaptureResult result) {
             process(result);
         }
 
@@ -470,8 +472,8 @@ public class Camera2BasicFragment extends Fragment
     }
 
     @Override
-    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
-                                           @NonNull int[] grantResults) {
+    public void onRequestPermissionsResult(int requestCode, /*@NonNull*/ String[] permissions,
+                                           /*@NonNull*/ int[] grantResults) {
         if (requestCode == REQUEST_CAMERA_PERMISSION) {
             if (grantResults.length != 1 || grantResults[0] != PackageManager.PERMISSION_GRANTED) {
                 ErrorDialog.newInstance(getString(R.string.request_permission))
@@ -694,7 +696,7 @@ public class Camera2BasicFragment extends Fragment
                     new CameraCaptureSession.StateCallback() {
 
                         @Override
-                        public void onConfigured(@NonNull CameraCaptureSession cameraCaptureSession) {
+                        public void onConfigured(/*@NonNull*/ CameraCaptureSession cameraCaptureSession) {
                             // The camera is already closed
                             if (null == mCameraDevice) {
                                 return;
@@ -720,7 +722,7 @@ public class Camera2BasicFragment extends Fragment
 
                         @Override
                         public void onConfigureFailed(
-                                @NonNull CameraCaptureSession cameraCaptureSession) {
+                                /*@NonNull*/ CameraCaptureSession cameraCaptureSession) {
                             showToast("Failed");
                         }
                     }, null
@@ -833,9 +835,9 @@ public class Camera2BasicFragment extends Fragment
                     = new CameraCaptureSession.CaptureCallback() {
 
                 @Override
-                public void onCaptureCompleted(@NonNull CameraCaptureSession session,
-                                               @NonNull CaptureRequest request,
-                                               @NonNull TotalCaptureResult result) {
+                public void onCaptureCompleted(/*@NonNull*/ CameraCaptureSession session,
+                                               /*@NonNull*/ CaptureRequest request,
+                                               /*@NonNull*/ TotalCaptureResult result) {
                     showToast("Saved: " + mFile);
                     Log.d(TAG, mFile.toString());
                     unlockFocus();
@@ -985,7 +987,7 @@ public class Camera2BasicFragment extends Fragment
             return dialog;
         }
 
-        @NonNull
+        /*@NonNull*/
         @Override
         public Dialog onCreateDialog(Bundle savedInstanceState) {
             final Activity activity = getActivity();
@@ -1007,7 +1009,7 @@ public class Camera2BasicFragment extends Fragment
      */
     public static class ConfirmationDialog extends DialogFragment {
 
-        @NonNull
+        /*@NonNull*/
         @Override
         public Dialog onCreateDialog(Bundle savedInstanceState) {
             final Fragment parent = getParentFragment();
