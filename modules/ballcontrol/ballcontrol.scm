@@ -64,6 +64,8 @@
   (define excludes "spool.db
 spool.db-journal
 ")
+  (if (file-exists? to)
+      (error "backup file exists already" to))
   (and (not (file-exists? to))
        (file-exists? from)
        (dynamic-wind
@@ -71,6 +73,7 @@ spool.db-journal
              (call-with-output-file excludes-file
                (lambda (p) (display excludes p))))
            (lambda ()
+             (log-status "Creating backup in " to " from " from)
              (run/boolean "tar" "-c" "-z" "-f" to "-X" excludes-file "-C" from "."))
            (lambda ()
              (delete-file excludes-file)))))
@@ -220,7 +223,7 @@ spool.db-journal
      ((eq? msg 'close!) (close-kernel-connection!))
      ((eq? msg 'stop!)
       (set! kernel-supposed-to-run #f)
-      (when (debug 'conn conn)
+      (when conn
             (%write-kernel! conn '("stop" "-f"))
             (thread-sleep! 1))
       (dispatch 'close!))
