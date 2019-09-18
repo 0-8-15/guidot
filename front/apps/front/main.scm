@@ -21,9 +21,13 @@
  (else))
 
 (define (android-directory-files)
-  ((c-lambda () char-string "___result=
+  ((c-lambda () char-string "
 #ifdef ANDROID
-android_get_getFilesDir();
+extern char *android_getFilesDir();
+#endif
+___result=
+#ifdef ANDROID
+android_getFilesDir();
 #else
 NULL;
 #endif
