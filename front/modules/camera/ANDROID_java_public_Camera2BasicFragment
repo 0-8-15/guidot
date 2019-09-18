@@ -430,7 +430,7 @@ public class Camera2BasicFragment extends Fragment
     @Override
     public void onViewCreated(final View view, Bundle savedInstanceState) {
         view.findViewById(R.id.picture).setOnClickListener(this);
-        view.findViewById(R.id.info).setOnClickListener(this);
+        // view.findViewById(R.id.info).setOnClickListener(this);
         mTextureView = (AutoFitTextureView) view.findViewById(R.id.texture);
     }
 
@@ -573,7 +573,7 @@ public class Camera2BasicFragment extends Fragment
         } catch (NullPointerException e) {
             // Currently an NPE is thrown when the Camera2API is used but not supported on the
             // device this code runs.
-            ErrorDialog.newInstance(getString(R.string.camera_error))
+            ErrorDialog.newInstance("getString(R.string.camera_error)")
                     .show(getChildFragmentManager(), FRAGMENT_DIALOG);
         }
     }
@@ -868,6 +868,7 @@ public class Camera2BasicFragment extends Fragment
                 takePicture();
                 break;
             }
+                /*
             case R.id.info: {
                 Activity activity = getActivity();
                 if (null != activity) {
@@ -878,6 +879,7 @@ public class Camera2BasicFragment extends Fragment
                 }
                 break;
             }
+                */
         }
     }
 
