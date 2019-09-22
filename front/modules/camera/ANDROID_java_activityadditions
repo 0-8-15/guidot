@@ -8,28 +8,14 @@ private String vid_fnl;
 static final int REQUEST_IMAGE_CAPTURE = 76781;
 static final int REQUEST_VIDEO_CAPTURE = 76782;
 
-private String faceBackCameraID = null;
-
-public void initBackCameraId(Context context) {
-    CameraManager mCameraManager = (CameraManager) context.getSystemService(Context.CAMERA_SERVICE);
-    try {
-        for(final String cameraId : mCameraManager.getCameraIdList()){
-            CameraCharacteristics characteristics = mCameraManager.getCameraCharacteristics(cameraId);
-            int cOrientation = characteristics.get(CameraCharacteristics.LENS_FACING);
-            if(cOrientation == CameraCharacteristics.LENS_FACING_BACK){
-                faceBackCameraID = cameraId;
-            }
-        }
-    } catch (CameraAccessException e) {
-        e.printStackTrace(System.err);
-        // Toast.makeText(context, e.getMessage(), Toast.LENGTH_SHORT).show();
-    }
-}
-
 private Uri compatGetUriForFile(File f) {
   boolean x = false;
   boolean y = true;
   Uri result = null;
+  @IF_ANDROIDAPI_GT_22@
+  result = FileProvider.getUriForFile(getApplicationContext(), "@SYS_PACKAGE_DOT@.camerafileprovider", f);
+  x = true;
+  // end: IF_ANDROIDAPI_GT_22 */
   if( !x && y ) result = Uri.fromFile(f);
   return result;
 }
@@ -37,33 +23,20 @@ private Uri compatGetUriForFile(File f) {
 private void startCamera(String fnl_name, String tmp_name) {
   camera_fnl = fnl_name;
   camera_tmp = tmp_name;
-  if(faceBackCameraID == null) initBackCameraId(getApplicationContext());
-  if(faceBackCameraID == null) {
-    ln_log("could not find camera");
-    return;
-  }
-  if(!checkOrRequestPermission(android.Manifest.permission.CAMERA)) {
-    ln_log("User failed to grant CAMERA permission");
-    return;
-  }
-  else {
-      android.view.View oldView = getCurrentView();
-      Camera2BasicFragment CameraFragment = null;
-      try {
-  setContentView(R.layout.fragment_camera2_basic);
-  CameraFragment = new Camera2BasicFragment();
-  /* should go into onCreate -- IF NEEDED AT ALL
-  if (null == savedInstanceState) {
-      getSupportFragmentManager().beginTransaction()
-          .replace(R.id.container, Camera2BasicFragment.newInstance())
-          .commit();
-  }
-  */
+  if(checkOrRequestPermission(android.Manifest.permission.CAMERA)) {
+      Intent intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+      File f = new File(camera_tmp);
+      //File f = new File(Context.getExternalFilesDir(null), tmp_name_without_dir);
+      if (f != null) {
+          Uri out = compatGetUriForFile(f);
+          // Uri out = FileProvider.getUriForFile(getApplicationContext(), "@SYS_ORGDOMAIN_REVERSE_DOT@.fileprovider", f);
+          intent.putExtra(MediaStore.EXTRA_OUTPUT, out);
+          intent.setClipData(ClipData.newRawUri("", out));
+          intent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION|Intent.FLAG_GRANT_READ_URI_PERMISSION);
 
-    } catch (Exception e){
-          e.printStackTrace(System.err);
-    }
-    setCurrentView(oldView);
+          //    intent.putExtra(android.provider.MediaStore.EXTRA_SCREEN_ORIENTATION,ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+          startActivityForResult(intent, REQUEST_IMAGE_CAPTURE);
+      }
   }
 }
 
