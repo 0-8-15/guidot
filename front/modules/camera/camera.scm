@@ -38,6 +38,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ;; camera support
 
+;; (define-macro (x) (error "forget it, this should not compile")) (x)
+
 (define camera:debuglevel 1)
 (define (camera:log level . x)
    (if (>= camera:debuglevel level) 
