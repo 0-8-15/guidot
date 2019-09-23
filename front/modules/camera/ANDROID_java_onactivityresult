@@ -1,4 +1,3 @@
-System.err.println ("onActivityResult");
   if (requestCode == REQUEST_IMAGE_CAPTURE && resultCode == Activity.RESULT_OK) {
 System.err.println ("Got IMAGE Result");
     int angle=0;
@@ -38,7 +37,7 @@ try {
           System.err.println("found result file file " + camera_tmp + " exists?: " + src.exists() + " size " + src.length() );
     if (src.exists()) { if(src.length() > 0) src.renameTo(tgt); else src.delete(); }
 } catch (Exception e) {
-    System.err.print("processing image result error Error: " + e);
+    System.err.println("processing image result error Error: " + e);
     e.printStackTrace(System.err);
 
 }
