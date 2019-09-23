@@ -1,10 +1,10 @@
 <provider
-    android:name="@SYS_PACKAGE_DOT@.LambdanativeCameraFileProvider"
+    android:name="android.support.v4.content.FileProvider"
     android:authorities="@SYS_PACKAGE_DOT@.camerafileprovider"
     android:exported="false"
     android:grantUriPermissions="true">
-  <paths xmlns:android="http://schemas.android.com/apk/res/android">
-    <external-files-path name="camera" path="." />
-  </paths>
+  <meta-data
+      android:name="android.support.FILE_PROVIDER_PATHS"
+      android:resource="@xml/camerafileproviderpaths" />
 </provider>
         
