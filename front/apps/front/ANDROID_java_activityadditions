@@ -1,20 +1,39 @@
 /* -*-java-*- */
 java.text.SimpleDateFormat ln_log_date_formatter = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss ");
 
+String TAG = "front";
+
 public void ln_log(String msg) {
-    System.err.println(ln_log_date_formatter.format(new java.util.Date()) + msg);
+    String m = ln_log_date_formatter.format(new java.util.Date()) + msg;
+    System.err.println(TAG + ": " + m);
+    Log.d(TAG, m);
+}
+
+private boolean OrbotInitialized = false;
+
+private void initializedOrbot() {
+  if( !OrbotInitialized ) {
+    OrbotInitialized = true;
+    if (!OrbotHelper.get(this).init()) {
+      OrbotHelper.get(this).installOrbot(this);
+    }
+  }
 }
 
 public void ensureOrbotRunning() {
+  initializedOrbot();
   if(!OrbotHelper.isOrbotRunning(getApplicationContext())) /* deprecated isOrbotRunning ! */ {
-    ln_log("Orbot not running, requesting start");
+    ln_log("Orbot not running");
+      //*
+    ln_log("requesting Orbot start");
     if(!OrbotHelper.requestStartTor(getApplicationContext())) {
       OrbotHelper.requestShowOrbotStart(this);
     }
     ln_log("Orbot should be running now.  Continuing.");
+      //*/
   }
 
-  @IF_ANDROIDAPI_GT_22@
+  /* @ IF_ANDROIDAPI_GT_22@
 
   if(OrbotHelper.isOrbotRunning(getApplicationContext())) { // deprecated isOrbotRunning !
     OrbotHelper.requestHiddenServiceOnPort(this, 443);
