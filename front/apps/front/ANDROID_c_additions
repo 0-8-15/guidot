@@ -25,3 +25,21 @@ void orbot_ensure_running()
     if(method) (*env)->CallVoidMethod(env, globalObj, method);
   }
 }
+
+const char *jscheme_eval(const char *input)
+{
+  static const char *str = NULL;
+  static jstring jstr = NULL;
+  JNIEnv *env = GetJNIEnv();
+  if (env&&globalObj){
+    jstring jin = (*env)->NewStringUTF(env,input);
+    jclass main_class = (*env)->FindClass(env, "@SYS_PACKAGE_SLASH@/@SYS_APPNAME@");
+    jmethodID method = main_class ? (*env)->GetMethodID(env, main_class, "jschemeCall", "(Ljava/lang/String)Ljava/lang/String;") : NULL;
+    if(jstr) { (*env)->ReleaseStringUTFChars(env, jstr, NULL); jstr = NULL; } // works?
+    jstr = (jstring) method ? (*env)->CallObjectMethod(env, globalObj, method, jin) : NULL;
+    (*env)->ReleaseStringUTFChars(env, jin, NULL);
+    str  = jstr ? (*env)->GetStringUTFChars(env, jstr, 0) : NULL;
+    // (*env)->ReleaseStringUTFChars(env, jstr, NULL);
+  }
+  return str;
+}

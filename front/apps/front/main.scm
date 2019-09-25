@@ -33,6 +33,19 @@ NULL;
 #endif
 ")))
 
+(define jscheme-call
+  (c-lambda (char-string) char-string "
+#ifdef ANDROID
+extern const char *jscheme_eval(const char *);
+#endif
+___result=
+#ifdef ANDROID
+(char*) jscheme_eval(___arg1);
+#else
+NULL;
+#endif
+"))
+
 (cond-expand
  (android
   (let ((ot terminate)) (set! terminate (lambda () (log-error "No terminate on Android!") #f)))
@@ -1109,7 +1122,9 @@ Is the service not yet running?")))
       ("Back" ,pop-page)
       #f
       (spacer height 50)
-      (label text "This is a first draft of the control app for Askemos/BALL. See also:")
+      (label text ,(string-append "Version: " (system-appversion)))
+      (spacer)
+      (label text "This is a second draft of the control app for Askemos/BALL. See also:")
       (button h 50 size normal indent 0.05 rounded #t text "askemos.org" action
               ,(lambda () (launch-url "http://ball.askemos.org") #f))
       (spacer)

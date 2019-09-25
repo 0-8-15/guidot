@@ -254,7 +254,7 @@ spool.db-journal
       (define t1 (current-second))
       (if (and wait (> (- t1 t0) (* 1.2 wait)))
           (log-error "thread-receive timeout " wait " missed, waited for " (- t1 t0)))
-      (log-ballcontrol "handle-one: got " msg)
+      ;; (log-ballcontrol "handle-one: got " msg)
       (cond
        #;((not conn)
         (conn-set! (get-kernel-connection))
