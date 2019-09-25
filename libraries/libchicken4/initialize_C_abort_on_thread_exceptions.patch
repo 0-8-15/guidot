@@ -1,0 +1,11 @@
+--- runtime.c~	2017-12-11 17:48:05.000000000 +0100
++++ runtime.c	2019-08-17 22:32:03.828936646 +0200
+@@ -355,0 +355,0 @@
+
+ C_TLS int
+   C_gui_mode = 0,
+-  C_abort_on_thread_exceptions,
++  C_abort_on_thread_exceptions = 0,
+   C_enable_repl,
+   C_interrupts_enabled,
+   C_disable_overflow_check,
