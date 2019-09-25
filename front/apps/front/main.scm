@@ -33,7 +33,7 @@ NULL;
 #endif
 ")))
 
-(define jscheme-call
+(define jscheme-invoke/s2s
   (c-lambda (char-string) char-string "
 #ifdef ANDROID
 extern const char *jscheme_eval(const char *);
@@ -45,6 +45,14 @@ ___result=
 NULL;
 #endif
 "))
+
+(define (jscheme-call obj)
+  (let* ((s (jscheme-invoke/s2s (object->string obj)))
+         (r0 (call-with-input-string s read)))
+    (cond
+     ;; Numbers are always printed as inexacts by jscheme.
+     ((integer? r0) (inexact->exact r0))
+     (else r0))))
 
 (cond-expand
  (android
