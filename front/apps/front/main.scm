@@ -3,7 +3,9 @@
 (set!
  thread-sleep!
  (let ((thread-sleep! thread-sleep!)
-       (short-time 0.03))
+       (short-time (cond-expand
+                    (android 0.3)
+                    (else 0.01))))
    (lambda (t)
      (let ((t0 (current-second)))
        (thread-sleep! t)
