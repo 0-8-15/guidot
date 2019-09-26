@@ -361,7 +361,7 @@ spool.db-journal
   (let ((in-restart #f))
     (lambda ()
       (log-status "In " (current-thread) " in-restart: " in-restart)
-      (with-excaption-catcher
+      (with-exception-catcher
        (lambda (ex)
          (log-error (thread-name (current-thread)) ": " (exception-->printable ex)))
        (lambda ()
