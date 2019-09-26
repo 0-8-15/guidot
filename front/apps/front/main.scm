@@ -46,13 +46,22 @@ NULL;
 #endif
 "))
 
-(define (jscheme-call obj)
-  (let* ((s (jscheme-invoke/s2s (object->string obj)))
-         (r0 (call-with-input-string s read)))
-    (cond
-     ;; Numbers are always printed as inexacts by jscheme.
-     ((integer? r0) (inexact->exact r0))
-     (else r0))))
+(define jscheme-call
+  ;; Not sure that we need a mutex here.  But what if the java side
+  ;; manages to call into gambit?
+  (let ((mutex (make-mutex 'jscheme)))
+    (define (jscheme-call obj)
+      (let* ((s (let ((req (object->string obj)))
+                  (mutex-lock! mutex)
+                  (jscheme-invoke/s2s req)))
+             (r0 (begin
+                   (mutex-unlock! mutex)
+                   (call-with-input-string s read))))
+        (cond
+         ;; Numbers are always printed as inexacts by jscheme.
+         ((integer? r0) (inexact->exact r0))
+         (else r0))))
+  jscheme-call))
 
 (cond-expand
  (android

@@ -49,14 +49,21 @@ silk.Scheme jschemeSession = new silk.Scheme(new String[0]);
 
 public Object jschemeCallBasic(Object expr) {
     if(jschemeSession != null) {
-        return jschemeSession.eval(expr);
+        synchronized(jschemeSession) {
+            return jschemeSession.eval(expr);
+        }
     } else return null;
 }
 
 public String jschemeCall(String msg) {
-    silk.InputPort in = new silk.InputPort(new java.io.ByteArrayInputStream(msg.getBytes(java.nio.charset.Charset.forName("UTF-8"))));
-    Object expr = in.read();
-    if(in.isEOF(expr)) return "error-input";
-    Object result = jschemeCallBasic(expr);
-    if(result == null) return "error-null"; else return result.toString();
+    try {
+        silk.InputPort in = new silk.InputPort(new java.io.ByteArrayInputStream(msg.getBytes(java.nio.charset.Charset.forName("UTF-8"))));
+        Object expr = in.read();
+        if(in.isEOF(expr)) return "error-input:";
+        Object result = jschemeCallBasic(expr);
+        if(result == null) return "error-null:"; else return result.toString();
+    } catch (Exception e) {
+        String msg1 = new String("error-jscheme: " + e);
+        return msg1;
+    }
 }
