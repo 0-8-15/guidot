@@ -2,13 +2,14 @@
 
 (set!
  thread-sleep!
- (let ((thread-sleep! thread-sleep!))
+ (let ((thread-sleep! thread-sleep!)
+       (short-time 0.03))
    (lambda (t)
      (let ((t0 (current-second)))
        (thread-sleep! t)
        (let* ((t1 (current-second))
               (delta (- t1 t0)))
-         (if (> (abs (- t delta)) (* 0.3 t))
+         (if (> (abs (- t delta)) (max short-time (* 0.3 t)))
              (log-error "Error in thread sleep, sleeping for " t " took " delta)))))))
 
 (cond-expand
