@@ -361,28 +361,33 @@ spool.db-journal
   (let ((in-restart #f))
     (lambda ()
       (log-status "In " (current-thread) " in-restart: " in-restart)
-      (if (eq? (subprocess-style) 'pthread)
-          (begin
-            (log-error "can not (yet) restart kernel when running as pthread")
-            #f)
-          (if (and (not in-restart) (rep-exists?))
-              (begin
-                (set! in-restart #t)
-                (when (debug 'current-server (kernel-server))
-                      (unless (kernel-server-kill! "-USR2") ;; report alive state
-                              (log-error "failed to send USR2 signal to kernel"))
-                      (let loop ((n 200))
-                        (unless (kernel-server #f)
-                                (thread-sleep! 0.1)
-                                (loop (- n 1)))))
-                (unless (debug 'Stillrunning??? (kernel-server)) (start-kernel-server!))
-                (or (let ((r (wait-for-kernel-server 60)))
-                      (set! in-restart #f)
-                      (if r (hook-run kernel-on-start))
-                      r)
-                    (begin
-                      (log-error "Kernel server did not restart!")
-                      #f))))))))
+      (with-excaption-catcher
+       (lambda (ex)
+         (log-error (thread-name (current-thread)) ": " (exception-->printable ex)))
+       (lambda ()
+         (if (eq? (subprocess-style) 'pthread)
+             (begin
+               (log-error "can not (yet) restart kernel when running as pthread")
+               #f)
+             (if (and (not in-restart) (rep-exists?))
+                 (begin
+                   (set! in-restart #t)
+                   (when (debug 'current-server (kernel-server))
+                         (unless (kernel-server-kill! "-USR2") ;; report alive state
+                                 (log-error "failed to send USR2 signal to kernel"))
+                         (let loop ((n 200))
+                           (unless (kernel-server #f)
+                                   (thread-sleep! 0.1)
+                                   (loop (- n 1)))))
+                   (unless (debug 'Stillrunning??? (kernel-server)) (start-kernel-server!))
+                   (or (let ((r (wait-for-kernel-server 60)))
+                         (set! in-restart #f)
+                         (if r (hook-run kernel-on-start))
+                         r)
+                       (begin
+                         (log-error "Kernel server did not restart!")
+                         #f)))))))
+      (set! in-restart #f))))
 
 (define (restart-kernel-and-custom-services!)
   (thread-start! (make-thread restart-kernel-server! 'restart))
