@@ -106,7 +106,7 @@ struct sockaddr_un {
      (make-thread
       (lambda ()
         (with-exception-catcher gamsock:exception-handler proc)
-        (cleanup!))
+        (with-exception-catcher gamsock:exception-handler cleanup!))
       name)))
   (receive
    (c s) (open-u8vector-pipe '(buffering: #t) '(buffering: #t))
