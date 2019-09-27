@@ -61,7 +61,13 @@ public String jschemeCall(String msg) {
         Object expr = in.read();
         if(in.isEOF(expr)) return "error-input:";
         Object result = jschemeCallBasic(expr);
-        if(result == null) return "error-null:"; else return result.toString();
+        if(result == null) return "error-null:";
+        else { //return silk.SchemeUtils.stringify(result, true);
+            java.io.StringWriter buf = new java.io.StringWriter();
+            java.io.PrintWriter port = new java.io.PrintWriter(buf);
+            silk.SchemeUtils.write(result, port, true);
+            return buf.toString();
+        }
     } catch (Exception e) {
         String msg1 = new String("error-jscheme: " + e);
         return msg1;
