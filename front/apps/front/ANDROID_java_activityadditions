@@ -59,17 +59,18 @@ public String jschemeCall(String msg) {
     try {
         silk.InputPort in = new silk.InputPort(new java.io.ByteArrayInputStream(msg.getBytes(java.nio.charset.Charset.forName("UTF-8"))));
         Object expr = in.read();
-        if(in.isEOF(expr)) return "error-input:";
+        if(in.isEOF(expr)) return "E\n\"invalid input\"";
         Object result = jschemeCallBasic(expr);
-        if(result == null) return "error-null:";
-        else { //return silk.SchemeUtils.stringify(result, true);
-            java.io.StringWriter buf = new java.io.StringWriter();
-            java.io.PrintWriter port = new java.io.PrintWriter(buf);
-            silk.SchemeUtils.write(result, port, true);
-            return buf.toString();
-        }
+        java.io.StringWriter buf = new java.io.StringWriter();
+        java.io.PrintWriter port = new java.io.PrintWriter(buf);
+        port.println("D");
+        silk.SchemeUtils.write(result, port, true);
+        return buf.toString();
     } catch (Exception e) {
-        String msg1 = new String("error-jscheme: " + e);
-        return msg1;
+        java.io.StringWriter buf = new java.io.StringWriter();
+        java.io.PrintWriter port = new java.io.PrintWriter(buf);
+        port.println("E");
+        silk.SchemeUtils.write(("" + e).toCharArray(), port, true);
+        return buf.toString();
     }
 }

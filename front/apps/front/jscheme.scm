@@ -23,7 +23,14 @@ NULL;
              (r0 (begin
                    (mutex-unlock! mutex)
                    (if (string? s)
-                       (call-with-input-string s read)
+                       (call-with-input-string s
+                         (lambda (port)
+                           (let* ((key (read port))
+                                  (value (read port)))
+                             (case key
+                               ((D) value)
+                               ((E) (raise value))
+                               (else (error "jscheme-call: unexpected reply " s))))))
                        (error "jscheme-call: unexpected reply " s)))))
         (cond
          ;; Numbers are always printed as inexacts by jscheme.
