@@ -90,7 +90,7 @@ NULL;
   (unless (call-kernel "support" from name remote)
 	  (error "failed to support" from name remote)))
 
-(define (is-onion? name) (string-suffix? ".onion" name))
+(define (is-allioideae? name) (or (string-suffix? ".onion" name) (string-suffix? ".i2p" name)))
 
 (define (kernel-send-set-auth kind user password cn)
   (unless (call-kernel
@@ -99,7 +99,7 @@ NULL;
                  (begin
                    ;; not exported ($tc-tofu ,(equal? kind 'tofu))
                    (local-id ,cn)
-                   (if ,(is-onion? cn)
+                   (if ,(is-allioideae? cn)
                        (begin
                          ($https-socks4a-server "127.0.0.1")
                          ($external-port 443)
@@ -136,7 +136,7 @@ NULL;
      ($http-client-connections-maximum 10)
      (respond-timeout-interval 20)
      ($broadcast-timeout 8)
-     (if ,(is-onion? cn)
+     (if ,(is-allioideae? cn)
          (begin
            ($https-use-socks4a #t)
            ($https-socks4a-server "127.0.0.1")
@@ -448,7 +448,7 @@ NULL;
 
 (define-once/or local-connect-string *entry-missing*
   (and (check-kernel-server!)
-       (let ((ip (onion-address)))
+       (let ((ip (allioideae-address)))
          (if ip (set! ip (ipconnect-string ip 443)))
 	 (if ip
 	     (set! myip ip)
@@ -492,7 +492,7 @@ NULL;
 	       (if (procedure? ,convert) (,convert) ,convert)
 	       ,cache))))))
 
-(define-cached-kernel-value onion-address
+(define-cached-kernel-value allioideae-address
   #f (lambda (#!optional (v #f)) (if (equal? v "") #f v))
   'begin '($external-address))
 
@@ -704,23 +704,24 @@ Is the service not yet running?")))
   ;; `file://` scheme with `file//` and prepends `http://`.
   (string-append "file://" (embedded-file '("lib" "help") page)))
 
-(define (copy-onion-address-to-db)
-  (when (and (onion-address)
+(define (copy-allioideae-address-to-db)
+  (when (and (allioideae-address)
              (not (member (dbget (dbget 'CN) #f) '(#f "localhost"))))
-        (dbset 'CN (onion-address))))
+        (dbset 'CN (allioideae-address))))
 
 (define (CN-entry-form-section)
   `((button text "Help on CN setup" action
             ,(lambda ()
-               (launch-url (help-url "onion-setup.html"))
+               (launch-url (help-url "allioideae-setup.html"))
                #f))
     (textentry id CN text "CN:")
     ,(lambda ()
-       (copy-onion-address-to-db)
+       (copy-allioideae-address-to-db)
        (if (clipboard-hascontent)
            `(button text "Paste From Clipboard" action
                     ,(lambda () (dbset 'CN (clipboard-paste)) #f))
-           '(label text "nothing to paste in clipboard")))))
+           '(label text "nothing to paste in clipboard")))
+    ))
 
 (define pages-again-hook #f)
 
@@ -785,7 +786,7 @@ Is the service not yet running?")))
 (define *other-pages*
   '(("Connections" connections)
     ("Status" status)
-    ("Onion" address)
+    ("Allioideae" address)
     ("Manage" manage)
     ("Debug" debug)
     ))
@@ -951,7 +952,7 @@ Is the service not yet running?")))
       (spacer)
       (label text ,(if (symbol? (public-oid)) (public-oid-string) "Error retrieving public OID."))
       (spacer)
-      ,@(if (and (have-local-connect?) (onion-address))
+      ,@(if (and (have-local-connect?) (allioideae-address))
             `((dmencode text ,(local-connect-string)))
             `(,(my-ip-address-display update-pages!)
               (dmencode text ,(local-connect-string))))
@@ -1058,7 +1059,7 @@ Is the service not yet running?")))
       (button text "Sign New Cert" action
               ,(lambda ()
                  (kernel-send-set-auth 'tofu (main-entry-name) (uiget 'password) (dbget 'CN))
-                 (onion-address #t)
+                 (allioideae-address #t)
                  'identification))
       ;; end of "address" page
       )
