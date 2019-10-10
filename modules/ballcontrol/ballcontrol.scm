@@ -349,7 +349,7 @@ spool.db-journal
    ((and (not (kernel-server))
          (not (check-kernel-server!)))
     (foreground-service! #t)
-    (kernel-server fork-process "ball" "-start" kernel-data-directory)
+    (kernel-server fork-process #t "ball" "-start" kernel-data-directory)
     (kernel-control-set-running! #t))
    ((and (kernel-server #t)
          (not (check-kernel-server!)))
@@ -451,14 +451,14 @@ spool.db-journal
     ((pthread) #t)
     (else #f)))
 
-(define (fork-process cmd . args)
+(define (fork-process heartbeat cmd . args)
   (case (subprocess-style)
     ((semi-fork) (semi-fork cmd args))
     ((pthread)
      (unless (equal? cmd "ball") (error "no pthread support for command" cmd))
      (log-debug "Starting pthread for " 1 cmd " on " args)
      (ballroll-pthread args))
-    ((fork) (fork-and-call cmd args))
+    ((fork) (fork-and-call heartbeat cmd args))
     (else (error "internal error, unknown subprocess style"))))
 
 (define (semi-fork cmd args)
@@ -533,7 +533,53 @@ end-of-c-declare
            ((c-lambda (char-string) bool "log_to_file") "/dev/null")
            (log-error "redirect failed to file " "/dev/null")))))
 
-(define (fork-and-call cmd args)
+(c-declare
+#<<end-of-c-declare
+#if defined(ANDROID) || defined(LINUX)
+#include <sys/prctl.h>
+#include <errno.h>
+#define proc_name_buf_size 15
+static void set_proc_name(const char* name) {
+  static char buf[proc_name_buf_size+1];
+  strncpy(buf, name, proc_name_buf_size);
+  if(prctl(PR_SET_NAME, (unsigned long) buf, 0, 0, 0))
+    fprintf(stderr, "ERROR: PR_SET_NAME %s\n", strerror(errno));
+  // else fprintf(stderr, "PR_SET_NAME success: %s\n", buf);
+}
+#endif
+end-of-c-declare
+)
+
+(define (fork-and-call use-heartbeat cmd args)
+  (define set-process-name!
+    (cond-expand
+     ((or android linux) (c-lambda (char-string) void "set_proc_name"))
+     (lambda (n) (debug 'set-process-name! 'ignored) #f)))
+  (define (heartbeat name proc args)
+    (set-process-name! (string-append "heartbeat " name))
+    (let ((pid ((c-lambda () int "fork"))))
+      (case pid
+        ((-1) (log-error "fork failed") (exit 1)) ;; TODO: include errno
+        ;; FIXME: establish signal handlers as with the original heartbeat.
+        ;; maybe simply use the latter here.
+        ((0) (set-process-name! name) (exit (proc args)))
+        (else
+         (log-status "Kernel running as PID " pid)
+         (receive
+          (sig success pid2) (process-wait pid #f)
+          (cond
+           ((equal? pid pid2)
+            (cond
+             ((and (equal? sig 0) success)
+              (log-status "Kernel PID " pid " terminated normally")
+              (exit 0))
+             (else
+              (log-status "Kernel PID " pid " terminated " (if success "normally" "abnormal") " code " sig " restarting")
+              (heartbeat name proc args))))
+           (else
+            (log-error "Kernel PID " pid " process-wait returned signal " sig
+                       " terminated " (if success "normally" "abnormal") " pid returned is " pid2)
+            (exit 1))))))))
   (let ((e (assoc cmd *registered-commands*)))
     (if e
 	(let ((pid ((c-lambda (int) int "fork_and_close_fds") 3)))
@@ -542,11 +588,14 @@ end-of-c-declare
 	    ((0)
 	     ;; ((c-lambda () void "microgl_close"))
 	     ;; (redirect-standard-ports-for-logging)
-	     (exit ((cdr e) args)))
+	     ;; was : (exit ((cdr e) args))
+	     (if use-heartbeat
+                 (heartbeat (car e) (cdr e) args)
+                 (exit ((cdr e) args))))
 	    (else
-	     (log-status "Kernel running as PID " pid)
+	     (log-status (if use-heartbeat "Heartbeat" "Kernel")" running as PID " pid)
 	     pid)))
-	(error "not procedure registered for command " cmd))))
+	(error "no procedure registered for command " cmd))))
 
 (define (system-command-line* offset)
   (let loop ((n (system-cmdargc)) (r '()))

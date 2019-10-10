@@ -329,7 +329,7 @@ NULL;
 		   ($$ ,xml-parse ,(filedata ,sysinf))))
 		 )))))
 	(kernel-server
-	 fork-process
+	 fork-process #f ;; no heartbeat
 	 "ball"
 	 "-init" kernel-data-directory rules
 	 "load" "-o" sysctrl syssetup
@@ -337,6 +337,8 @@ NULL;
 	 "channel" "-link" logname user-app
 	 "tofu" CN logname passwd
 	 ;; "channel" "secret" "set" logname passwd
+         ;;
+         ;; FIXME: This part should actually run under heartbeat.
 	 "-start" kernel-data-directory)
 	(and (wait-for-kernel-server 10000)
              (begin (if large? (delete-file user-app)) #t)
