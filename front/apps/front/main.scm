@@ -560,9 +560,7 @@ NULL;
   `(begin
      (if ln-satellite
          (logerr "ln-satellite in ~a is already ~a\n" (current-process-id) ln-satellite)
-         (begin
-           (set! ln-satellite ,(start-satellite-script0 port name ssl))
-           (debug 'SatelliteIsNow ln-satellite)))
+         (set! ln-satellite ,(start-satellite-script0 port name ssl)))
      ,(add-guard-fail
        "overiding meta-interface failed"
        (override-meta-interface-script))
