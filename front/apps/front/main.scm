@@ -75,7 +75,26 @@ NULL;
   (unless (call-kernel "support" from name remote)
 	  (error "failed to support" from name remote)))
 
-(define (is-allioideae? name) (or (string-suffix? ".onion" name) (string-suffix? ".i2p" name)))
+(define (is-garlic? name) (and name (string-suffix? ".i2p" name)))
+(define (is-onion? name) (string-suffix? ".onion" name))
+
+(define (is-allioideae? name) (or (is-onion? name) (is-garlic? name)))
+
+;; `documented-external-https-port` is actually a constant and maybe
+;; should be(come) a macro.
+;;
+;; We need this because so far we can't make Android I2P use a
+;; different external port than the one we forward to.
+(define (documented-external-https-port) 7443)
+
+(define (kernel-config-socks-script cn)
+  `(if ,(is-allioideae? cn)
+       (begin
+         ($https-use-socks4a #t)
+         ($https-socks4a-server ,(if (is-garlic? cn) "127.0.0.1:9051" "127.0.0.1"))
+         ($external-port 443)
+         ($external-address ,cn))
+       ($https-use-socks4a #f)))
 
 (define (kernel-send-set-auth kind user password cn)
   (unless (call-kernel
@@ -84,11 +103,7 @@ NULL;
                  (begin
                    ;; not exported ($tc-tofu ,(equal? kind 'tofu))
                    (local-id ,cn)
-                   (if ,(is-allioideae? cn)
-                       (begin
-                         ($https-socks4a-server "127.0.0.1")
-                         ($external-port 443)
-                         ($external-address ,cn)))
+                   ,(kernel-config-socks-script cn)
                    (ball-save-config)
                    #t)))
 	  (error "failed to set auth" kind user cn)))
@@ -121,12 +136,7 @@ NULL;
      ($http-client-connections-maximum 10)
      (respond-timeout-interval 20)
      ($broadcast-timeout 8)
-     (if ,(is-allioideae? cn)
-         (begin
-           ($https-use-socks4a #t)
-           ($https-socks4a-server "127.0.0.1")
-           ($external-port 443)
-           ($external-address ,cn)))
+     ,(kernel-config-socks-script cn)
      (ball-save-config)
      #; (logerr "Fixing protection on \"system\" to be usable by \"~a\"\n" ,logname)
      (let* ((sid (entry-name->oid "system"))
