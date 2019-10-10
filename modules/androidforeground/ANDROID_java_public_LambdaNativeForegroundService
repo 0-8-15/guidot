@@ -23,31 +23,6 @@ public class LambdaNativeForegroundService extends Service {
   public void onCreate() {
 //    Log.d("","LambdaNativeForegroundService created");
   }
-  private void bgActivity() {
-//    Log.d("","LambdaNativeForegroundService started");
-    backgroundThread = new Thread() {
-      public void run() {
-          // setPriority(Thread.MAX_PRIORITY);
-        setPriority(Thread.MIN_PRIORITY);
-        while (running) {
-//            Log.d("", "LambdaNativeForegroundService EVENT_IDLE");
-//            nativeEvent(19,0,0); // EVENT_IDLE
-
-            // SystemClock.sleep(30000);  // should be 30 seconds i.e. 30000 ms
-            try {
-                this.sleep(30000);  // should be 30 seconds i.e. 30000 ms
-                try {
-                    nativeEvent(19,0,0); // EVENT_IDLE
-                } catch (Throwable e) {
-                    Log.e("LambdaNativeForegroundService", "exception: " + e.toString());
-                }
-            } catch (InterruptedException e) {}
-        }
-//        Log.d("","LambdaNativeForegroundService thread stopped");
-      }
-    };
-    backgroundThread.start();
-  }
   @Override
   public void onStart(Intent intent, int startId) {
 //    Log.d("","LambdaNativeForegroundService starting");
@@ -61,7 +36,6 @@ public class LambdaNativeForegroundService extends Service {
         .build();
 
     startForeground(notificationIsRunningId, notification);
-    bgActivity();
   }
   @Override public int onStartCommand(Intent intent, int flags, int startId) {
       super.onStartCommand(intent, flags, startId);
@@ -72,5 +46,5 @@ public class LambdaNativeForegroundService extends Service {
       //    running=false;
 //    Log.d("","LambdaNativeForegroundService stopped");
   }
-  native void nativeEvent(int t, int x, int y);
+    // This is bound in the main class only!!!  native void nativeEvent(int t, int x, int y);
 }
