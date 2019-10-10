@@ -462,14 +462,14 @@ spool.db-journal
     ((pthread) #t)
     (else #f)))
 
-(define (fork-process heartbeat cmd . args)
+(define (fork-process watchdog cmd . args)
   (case (subprocess-style)
     ((semi-fork) (semi-fork cmd args))
     ((pthread)
      (unless (equal? cmd "ball") (error "no pthread support for command" cmd))
      (log-debug "Starting pthread for " 1 cmd " on " args)
      (ballroll-pthread args))
-    ((fork) (fork-and-call heartbeat cmd args))
+    ((fork) (fork-and-call watchdog cmd args))
     (else (error "internal error, unknown subprocess style"))))
 
 (define (semi-fork cmd args)
@@ -561,17 +561,17 @@ static void set_proc_name(const char* name) {
 end-of-c-declare
 )
 
-(define (fork-and-call use-heartbeat cmd args)
+(define (fork-and-call use-watchdog cmd args)
   (define set-process-name!
     (cond-expand
      ((or android linux) (c-lambda (char-string) void "set_proc_name"))
-     (lambda (n) (debug 'set-process-name! 'ignored) #f)))
-  (define (heartbeat name proc args)
-    (set-process-name! (string-append "heartbeat " name))
+     (else (lambda (n) (debug 'set-process-name! 'ignored) #f))))
+  (define (watchdog name proc args)
+    (set-process-name! (string-append "watchdog:" name))
     (let ((pid ((c-lambda () int "fork"))))
       (case pid
         ((-1) (log-error "fork failed") (exit 1)) ;; TODO: include errno
-        ;; FIXME: establish signal handlers as with the original heartbeat.
+        ;; FIXME: establish signal handlers as with the original watchdog.
         ;; maybe simply use the latter here.
         ((0) (set-process-name! name) (exit (proc args)))
         (else
@@ -586,7 +586,7 @@ end-of-c-declare
               (exit 0))
              (else
               (log-status "Kernel PID " pid " terminated " (if success "normally" "abnormal") " code " sig " restarting")
-              (heartbeat name proc args))))
+              (watchdog name proc args))))
            (else
             (log-error "Kernel PID " pid " process-wait returned signal " sig
                        " terminated " (if success "normally" "abnormal") " pid returned is " pid2)
@@ -600,11 +600,11 @@ end-of-c-declare
 	     ;; ((c-lambda () void "microgl_close"))
 	     ;; (redirect-standard-ports-for-logging)
 	     ;; was : (exit ((cdr e) args))
-	     (if use-heartbeat
-                 (heartbeat (car e) (cdr e) args)
+	     (if use-watchdog
+                 (watchdog (car e) (cdr e) args)
                  (exit ((cdr e) args))))
 	    (else
-	     (log-status (if use-heartbeat "Heartbeat" "Kernel")" running as PID " pid)
+	     (log-status (if use-watchdog "Watchdog" "Kernel")" running as PID " pid)
 	     pid)))
 	(error "no procedure registered for command " cmd))))
 

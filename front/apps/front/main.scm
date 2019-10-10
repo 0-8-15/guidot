@@ -329,7 +329,7 @@ NULL;
 		   ($$ ,xml-parse ,(filedata ,sysinf))))
 		 )))))
 	(kernel-server
-	 fork-process #f ;; no heartbeat
+	 fork-process #f ;; no watchdog
 	 "ball"
 	 "-init" kernel-data-directory rules
 	 "load" "-o" sysctrl syssetup
