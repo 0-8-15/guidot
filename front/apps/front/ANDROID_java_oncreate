@@ -32,9 +32,6 @@ catch (Exception e) {
 */
 idle_tmScheduleRate = 50;
 
-// ensureOrbotRunning();
-initializedOrbot();
-
 /* Optional
 if(!checkOrRequestPermission(android.Manifest.permission.INTERNET)) {
     ln_log("Failed to get permission \"" + android.Manifest.permission.INTERNET + "\"");
