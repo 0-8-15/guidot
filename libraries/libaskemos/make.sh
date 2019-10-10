@@ -1,6 +1,6 @@
 VERSION=0.9.5.9
 PKGURL=http://gitlab.com/askemos/ball-zero/askemos-$VERSION.tar.gz
-PKGHASH=56cbde82a6b619474b725a759b1106616c6b5837
+PKGHASH=1585fb27c412dcc435b65b568008ebac7a5158a3
 
 if [ ! -f testing ]; then
 
