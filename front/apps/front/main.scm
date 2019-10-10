@@ -337,14 +337,17 @@ NULL;
 	 "channel" "-link" logname user-app
 	 "tofu" CN logname passwd
 	 ;; "channel" "secret" "set" logname passwd
-         ;;
-         ;; FIXME: This part should actually run under heartbeat.
 	 "-start" kernel-data-directory)
 	(and (wait-for-kernel-server 10000)
              (begin (if large? (delete-file user-app)) #t)
              (kernel-initial-configuration CN logname)
              (kernel-additional-configuration logname large?)
-             (kernel-start-custom-services!)))))))
+             (begin
+               (hook-run kernel-on-init)
+               ;; Stop to be restarted as usual.
+               (kernel-server-kill!)
+               (kernel-server #t) ;; wait for it
+               #t)))))))
 
 (define in-initialization #f)
 
@@ -576,7 +579,7 @@ NULL;
 
 (define satellite-protocol #;'https 'http)
 
-(define (kernel-start-satellite!)
+(define (kernel-start-satellite!) ;; FIXME obsolete, remove
   (if (kernel-satellite-variable-exits)
       (log-error "kernel-start-satellite!: ln-satellite already defined")
       (call-kernel 'begin '(begin (define ln-satellite #f) #t)))
@@ -584,7 +587,19 @@ NULL;
    ;; unconditionally returning success here, is this corect?
    #t)
 
-(hook-add! kernel-on-start kernel-start-satellite!)
+(hook-add!
+ kernel-on-init
+ (lambda ()
+   (kernel-on-start-add!
+    "satellite"
+    `(begin
+       (if (not (guard
+                 (ex (else #f))
+                 ln-satellite ;; raises exception if not existing
+                 (logerr "ln-satellite already defined as ~a in process ~a\n" ln-satellite (current-process-id))
+                 #t))
+           (set! ln-satellite #f))
+       ,(start-satellite-script (satellite-port) "satellite" (eq? satellite-protocol 'https))))))
 
 (define (public-oid-string)
   (let ((v (public-oid)))
@@ -863,7 +878,7 @@ Is the service not yet running?")))
                    (and (wait-for-kernel-server 1)
                         (begin
                           ;; (thread-sleep! 0.1)
-                          (kernel-start-custom-services!)
+                          (hook-run kernel-on-init) ;; FIXME: disable/remove once old installes are updated.
                           (public-oid #t)
                           (uiform:pages again)
                           'main))))

@@ -101,7 +101,21 @@ spool.db-journal
 
 ;; Kernel Control
 
-(define kernel-on-start (make-hook 0))
+(define kernel-on-init (make-hook 0))
+
+(define (kernel-on-start-add! key expression)
+  (define (update-config-db-script! key expression)
+    `(let ((db (sqlite3-open (make-pathname (spool-directory) "config" "db"))))
+       (sqlite3-exec db "create table if not exists ExtensionCode (name text primary key, code text)")
+       (sqlite3-exec db "create view if not exists Extensions as select code from ExtensionCode")
+       (sqlite3-exec db "insert or replace into ExtensionCode values(?1, ?2)"
+                     ,key ,(with-output-to-string (lambda () (pretty-print expression))))
+       (sqlite3-close db)
+       ))
+  (call-kernel 'begin (update-config-db-script! key expression)))
+
+(define (kernel-start-custom-services!)
+  (call-kernel 'begin '(reload-virtual-hosts! eval (spool-directory))))
 
 ;; Async send with no reply expected
 (define (kernel-control-send! msg . args)
@@ -272,8 +286,8 @@ spool.db-journal
   (set! kernel-control-thread (thread-start! (make-thread loop 'kernel-control-job))))
 
 (define (kernel-start-idle-handler!)
-  (call-kernel
-   'begin
+  (kernel-on-start-add!
+   "idle-handler"
    `(define handle-idle-event!
       (let ((sig #f))
         (define (keepalive)
@@ -285,11 +299,9 @@ spool.db-journal
           ,@(if (log-ballcontrol) '((logerr "EVENT_IDLE\n")) '())
           (if sig (thread-terminate! sig))
           #;(set! sig (thread-start! keepalive))
-          #t)))
-   '(logerr "I: installed idle-event-handler\n")
-   '(handle-idle-event!)))
+          #t)))))
 
-(hook-add! kernel-on-start kernel-start-idle-handler!)
+(hook-add! kernel-on-init kernel-start-idle-handler!)
 
 (define kernel-data-directory
   (cond
@@ -382,12 +394,11 @@ spool.db-journal
                    (unless (debug 'Stillrunning??? (kernel-server)) (start-kernel-server!))
                    (or (let ((r (wait-for-kernel-server 60)))
                          (set! in-restart #f)
-                         (if r (hook-run kernel-on-start))
                          r)
                        (begin
                          (log-error "Kernel server did not restart!")
-                         #f)))))))
-      (set! in-restart #f))))
+                         #f)))
+                 #t)))))))
 
 (define (restart-kernel-and-custom-services!)
   (thread-start! (make-thread restart-kernel-server! 'restart))
