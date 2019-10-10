@@ -294,10 +294,10 @@ c-declare-end
  (c-define-type G_waitpid (pointer "G_waitpid_arg"))
  (namespace ("chckn#" c-waitpid-arg c-waitpid))
  (define c-waitpid-arg (c-lambda () G_waitpid "___result_voidstar = malloc(sizeof(G_waitpid_arg));"))
- (define c-waitpid (c-lambda (G_waitpid int) void "
+ (define c-waitpid (c-lambda (G_waitpid int bool) void "
   G_waitpid_arg *a = ___arg1;
   if(a!=NULL) {
-    a->pid = waitpid(___arg2, &a->status, WNOHANG);
+    a->pid = waitpid(___arg2, &a->status, ___arg3 ? WNOHANG : 0);
     if( a->pid==-1 ) {
       a->sig = errno;
       a->norm = 0;
@@ -311,9 +311,9 @@ c-declare-end
   // ___result_voidstar = a;
 "))
 
- (define (process-wait pid)
+ (define (process-wait pid . nohang)
    (let loop ((status (c-waitpid-arg)))
-     (c-waitpid status pid)
+     (c-waitpid status pid (and (pair? nohang) (car nohang)))
      (let ((r ((c-lambda (G_waitpid) int "___result = ___arg1->pid;") status))
            (norm ((c-lambda (G_waitpid) bool "___result = ___arg1->norm;") status))
            (sig ((c-lambda (G_waitpid) int "___result = ___arg1->sig;") status)))
