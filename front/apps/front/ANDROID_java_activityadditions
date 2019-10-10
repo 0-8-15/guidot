@@ -45,11 +45,15 @@ public boolean ln_IsOrbotRunning() {
   return OrbotHelper.isOrbotRunning(getApplicationContext());
 }
 
-silk.Scheme jschemeSession = new silk.Scheme(new String[0]);
+private static Object jscheme_this = null;
+public static @SYS_PACKAGE_DOT@.@SYS_APPNAME@ me() {return (@SYS_PACKAGE_DOT@.@SYS_APPNAME@) jscheme_this;}
+
+private static jscheme.Scheme jschemeSession = new jscheme.Scheme(new String[0]);
 
 public Object jschemeCallBasic(Object expr) {
     if(jschemeSession != null) {
         synchronized(jschemeSession) {
+            jscheme_this = this;
             return jschemeSession.eval(expr);
         }
     } else return null;
@@ -57,20 +61,20 @@ public Object jschemeCallBasic(Object expr) {
 
 public String jschemeCall(String msg) {
     try {
-        silk.InputPort in = new silk.InputPort(new java.io.ByteArrayInputStream(msg.getBytes(java.nio.charset.Charset.forName("UTF-8"))));
+        jscheme.InputPort in = new jscheme.InputPort(new java.io.ByteArrayInputStream(msg.getBytes(java.nio.charset.Charset.forName("UTF-8"))));
         Object expr = in.read();
         if(in.isEOF(expr)) return "E\n\"invalid input\"";
         Object result = jschemeCallBasic(expr);
         java.io.StringWriter buf = new java.io.StringWriter();
         java.io.PrintWriter port = new java.io.PrintWriter(buf);
         port.println("D");
-        silk.SchemeUtils.write(result, port, true);
+        jscheme.SchemeUtils.write(result, port, true);
         return buf.toString();
     } catch (Exception e) {
         java.io.StringWriter buf = new java.io.StringWriter();
         java.io.PrintWriter port = new java.io.PrintWriter(buf);
         port.println("E");
-        silk.SchemeUtils.write(("" + e).toCharArray(), port, true);
+        jscheme.SchemeUtils.write(("" + e).toCharArray(), port, true);
         return buf.toString();
     }
 }

@@ -1,3 +1,7 @@
+(cond-expand
+ (android (define android-app-class (c-lambda () char-string "___result=android_app_class();")))
+ (else (define (android-app-class) "android-app-class")))
+
 (define jscheme-eval
   ;; Not sure that we need a mutex here.  But what if the java side
   ;; manages to call into gambit?
