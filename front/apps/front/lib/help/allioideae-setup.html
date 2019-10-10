@@ -1,0 +1,61 @@
+<html>
+  <head><title>Network Setup</title></head>
+  <body>
+    <h1>Network Setup</h1>
+    <p>For your representative to be reachable on a mobile phone (or
+    any other device not directly connected to the internet) some kind
+    of tunnel service is required.</p>
+    <p>In principle this could be achieved among other options by a
+    reflector service, virtual private network, a galic router (I2P)
+    or an onion router (Tor).  Future versions will probably support
+    more of these options.  Currently only onion routing is
+    supported.</p>
+    <h2>Setting Up Garlic Routing</h2>
+    <h3>On Android: I2P Setup</h3>
+    <ol>
+      <li>Install <code>I2P</code> from play store, f-droid or elsewhere.</li>
+      <li>Using the upper right menu configure a garlic <em>client
+      tunnel</em> as <em>SOCKS</em> on port <em>9051</em> (FIXME, TDB:
+      check, risky, half done.)</li>
+      <li>Using the upper right menu configure a garlic <em>server tunnel</em>
+      to listen forward to <code>127.0.0.1:7443</code>. Give it any
+      name you like.</li>
+      <li>Wait for it. ... TBD: document details</li>
+      <li>Visit the server tunnel listing again.  This time the
+      service should be listet.  The entry and select <em>copy to
+      clipboard</em> icon.</li>
+      <li>Go back and paste the entry into the <code>CN</code>
+      field. The <code>CN</code> field should not contain the service
+      address (ending in <code>.onion</code>).</li>
+    </ol>
+    <h3>On Linux: i2pd</h3>
+    <p>For the setup of a galic service on Linux install
+    <code>i2pd</code> and configure a "server tunnel" in
+    <code>i2p</code> to listen to forward
+    to <code>127.0.0.1:7443</code> and a <em>client tunnel</em> of
+    type <code>SOCKS</code> listening on port ....FIXME, see
+    above.</p>
+    <h2>Setting Up Onion Routing</h2>
+    <h3>On Android: Orbot Setup</h3>
+    <p>Note: There where issues with </code>Orbot</code> up to the
+    point that trying <code>i2p</code> seemed to be the better idea.</p>
+    <ol>
+      <li>Install <code>Orbot</code> from play store, f-droid or elsewhere.</li>
+      <li>Using the upper right menu configure a onion service
+      (a.k.a. "hidden service") to listen on tor port <code>443</code>
+      and forward to port <code>7443</code>.  Give it any name you like.</li>
+      <li>Stop and restart Orbot.</li>
+      <li>Visit the onion service menu again.  This time the service
+      should be listet.  Long-tap the entry and select <em>copy to
+      clipboard</em>.</li>
+      <li>Go back and paste the entry into the <code>CN</code>
+      field. The <code>CN</code> field should not contain the service
+      address (ending in <code>.onion</code>).</li>
+    </ol>
+    <h3>On Linux: Tor</h3>
+    <p>For the setup of an onion service on Linux install
+    <code>tor</code> and configure a onion service in
+    <code>torrc</code> to listen on port <em>443</em> and forward to
+    <code>127.0.0.1:7443</code>.</p>
+  </body>
+</html>
