@@ -9,42 +9,6 @@ public void ln_log(String msg) {
     Log.d(TAG, m);
 }
 
-private boolean OrbotInitialized = false;
-
-private void initializedOrbot() {
-  if( !OrbotInitialized ) {
-    OrbotInitialized = true;
-    if (!OrbotHelper.get(this).init()) {
-      OrbotHelper.get(this).installOrbot(this);
-    }
-  }
-}
-
-public void ensureOrbotRunning() {
-  initializedOrbot();
-  if(!OrbotHelper.isOrbotRunning(getApplicationContext())) /* deprecated isOrbotRunning ! */ {
-    ln_log("Orbot not running");
-      //*
-    ln_log("requesting Orbot start");
-    if(!OrbotHelper.requestStartTor(getApplicationContext())) {
-      OrbotHelper.requestShowOrbotStart(this);
-    }
-    ln_log("Orbot should be running now.  Continuing.");
-      //*/
-  }
-
-  /* @ IF_ANDROIDAPI_GT_22@
-
-  if(OrbotHelper.isOrbotRunning(getApplicationContext())) { // deprecated isOrbotRunning !
-    OrbotHelper.requestHiddenServiceOnPort(this, 443);
-  }
-  // end of IF_ANDROIDAPI_GT_22 */
-}
-
-public boolean ln_IsOrbotRunning() {
-  return OrbotHelper.isOrbotRunning(getApplicationContext());
-}
-
 private static Object jscheme_this = null;
 public static @SYS_PACKAGE_DOT@.@SYS_APPNAME@ me() {return (@SYS_PACKAGE_DOT@.@SYS_APPNAME@) jscheme_this;}
 

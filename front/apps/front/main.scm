@@ -41,20 +41,8 @@ NULL;
 (cond-expand
  (android
   (let ((ot terminate)) (set! terminate (lambda () (log-error "No terminate on Android!") #f)))
-  (define (orbot-running?)
-    (let ((v ((c-lambda () int "___result=orbot_is_running();"))))
-      (case v
-        ((0) #f)
-        ((1) #t)
-        ((-1)
-         (log-error "orbot_is_running failed to locate Java part")
-         #f)
-        (else (log-error "orbot_is_running returned unhandled code" v)))))
-  (define orbot-running! (c-lambda () void "orbot_ensure_running();"))
   )
  (else
-  (define (orbot-running?) #f)
-  (define (orbot-running!) #f)
   ))
 
 (define (migrate-data-to-protected-space!)
@@ -67,15 +55,12 @@ NULL;
         (run/boolean 'mv source target)
         #t)))
 
-(define (kernel-start-custom-services!)
-  (hook-run kernel-on-start))
-
 (define (kernel-send-idle)
-  (cond-expand
+  #;(cond-expand
    (android
     (unless (orbot-running?)
             (log-error "Orbot not running")
-            #;(orbot-running!)))
+            (orbot-running!)))
    (else))
   (kernel-control-send! 'idle))
 
@@ -1084,7 +1069,7 @@ Is the service not yet running?")))
       (spacer)
       ,(my-ip-address-display update-pages!)
       (spacer)
-      ,(lambda ()
+      #;,(lambda ()
          (cond
           ((not app:android?) '(label text "No Orbot control on this platform"))
           ((not (orbot-running?))

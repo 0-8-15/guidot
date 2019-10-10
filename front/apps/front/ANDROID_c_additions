@@ -1,31 +1,5 @@
 /* -*-C-*- */
 
-int orbot_is_running()
-{
-  int rc = -1;
-  JNIEnv *env = GetJNIEnv();
-  if (env&&globalObj){
-    jclass cls = (*env)->FindClass(env, "@SYS_PACKAGE_SLASH@/@SYS_APPNAME@");
-    if(cls) {
-      jmethodID method = (*env)->GetMethodID(env, cls, "ln_IsOrbotRunning", "()Z");
-      if(method) {
-        rc = (*env)->CallBooleanMethod(env, globalObj, method);
-      }
-    }
-  }
-  return rc;
-}
-
-void orbot_ensure_running()
-{
-  JNIEnv *env = GetJNIEnv();
-  if (env&&globalObj){
-    jclass cls = (*env)->FindClass(env, "@SYS_PACKAGE_SLASH@/@SYS_APPNAME@");
-    jmethodID method = cls ? (*env)->GetMethodID(env, cls, "ensureOrbotRunning", "()V") : NULL;
-    if(method) (*env)->CallVoidMethod(env, globalObj, method);
-  }
-}
-
 const char *android_app_class() { return "@SYS_PACKAGE_DOT@.@SYS_APPNAME@"; } // for jscheme
 
 const char *jscheme_eval(const char *input)
