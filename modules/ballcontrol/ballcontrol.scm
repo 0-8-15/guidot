@@ -558,16 +558,28 @@ static void set_proc_name(const char* name) {
   // else fprintf(stderr, "PR_SET_NAME success: %s\n", buf);
 }
 #endif
+static void ballcontrol_deamonize()
+{
+ signal(SIGHUP,SIG_IGN);
+ signal(SIGTERM,SIG_IGN);
+ signal(SIGCHLD,SIG_IGN);
+ if(fork() != 0) _exit(0);
+ if(setsid() == -1) fprintf(stderr, "ERROR: setsid: %s\n", strerror(errno));
+}
 end-of-c-declare
 )
 
-(define (fork-and-call use-watchdog cmd args)
+(define (fork-and-call watchdog-style cmd args)
   (define set-process-name!
     (cond-expand
-     ((or android linux) (c-lambda (char-string) void "set_proc_name"))
+     ((or android #;linux) (c-lambda (char-string) void "set_proc_name"))
      (else (lambda (n) (debug 'set-process-name! 'ignored) #f))))
-  (define (watchdog name proc args)
+  (define (watchdog kind name proc args)
     (set-process-name! (string-append "watchdog:" name))
+    (cond
+     ((eq? kind 'deamon)
+      ((c-lambda () void "ballcontrol_deamonize"))
+      (log-status "Watchdog deamon running as PID " (getpid))))
     (let ((pid ((c-lambda () int "fork"))))
       (case pid
         ((-1) (log-error "fork failed") (exit 1)) ;; TODO: include errno
@@ -586,11 +598,15 @@ end-of-c-declare
               (exit 0))
              (else
               (log-status "Kernel PID " pid " terminated " (if success "normally" "abnormal") " code " sig " restarting")
-              (watchdog name proc args))))
+              (watchdog watchdog-style name proc args))))
            (else
             (log-error "Kernel PID " pid " process-wait returned signal " sig
                        " terminated " (if success "normally" "abnormal") " pid returned is " pid2)
             (exit 1))))))))
+  (cond-expand
+   ((or #;linux #;android)
+    (if (eq? watchdog-style #t) (set! watchdog-style 'deamon)))
+   (else))
   (let ((e (assoc cmd *registered-commands*)))
     (if e
 	(let ((pid ((c-lambda (int) int "fork_and_close_fds") 3)))
@@ -600,12 +616,21 @@ end-of-c-declare
 	     ;; ((c-lambda () void "microgl_close"))
 	     ;; (redirect-standard-ports-for-logging)
 	     ;; was : (exit ((cdr e) args))
-	     (if use-watchdog
-                 (watchdog (car e) (cdr e) args)
+	     (if watchdog-style
+                 (watchdog watchdog-style (car e) (cdr e) args)
                  (exit ((cdr e) args))))
 	    (else
-	     (log-status (if use-watchdog "Watchdog" "Kernel")" running as PID " pid)
-	     pid)))
+             (cond
+              ((not watchdog-style)
+               (log-status "Kernel running as PID " pid)
+               pid)
+              ((eq? watchdog-style #t)
+               (log-status "Watchdog running as PID " pid)
+               pid)
+              (else
+               (log-status "Forked watchdog deamon for " cmd)
+               ;; FIXME: what should we return here? #t, #f, 0, 1 all result in garbage
+               pid)))))
 	(error "no procedure registered for command " cmd))))
 
 (define (system-command-line* offset)
