@@ -94,7 +94,9 @@ NULL;
          ($https-socks4a-server ,(if (is-garlic? cn) "127.0.0.1:9051" "127.0.0.1"))
          ($external-port 443)
          ($external-address ,cn))
-       ($https-use-socks4a #f)))
+       (begin
+         ($external-port ,(documented-external-https-port))
+         ($https-use-socks4a #f))))
 
 (define (kernel-send-set-auth kind user password cn)
   (unless (call-kernel
@@ -654,21 +656,28 @@ Is the service not yet running?")))
   (with-output-to-string
     (lambda ()
       (display (if https "https://" "http://"))
-      (cond
-       ((u8vector? ip)
-	(display (ipaddr->string ip))
-	#;(begin  ;; This works only for IPv4
+      (let ((ps (if (if https
+                        (= port 443)
+                        (= port 80))
+                    #f
+                    (lambda () (display ":") (display port)))))
+        (cond
+         ((u8vector? ip)
+          (display (ipaddr->string ip))
+          #;(begin  ;; This works only for IPv4
 	  (display (u8vector-ref ip 0))
 	  (do ((i 1 (+ 1 i)))
-	      ((= i 4))
-	    (display ".")
-	    (display (u8vector-ref ip i)))))
-       ((string? ip) (display ip)))
-      (unless (if https
-                  (= port 443)
-                  (= port 80))
-              (display ":")
-              (display port)))))
+          ((= i 4))
+          (display ".")
+          (display (u8vector-ref ip i)))))
+         ((string? ip)
+          (if (and ps (ipv6-address? ip))
+              (begin
+                (display #\[)
+                (display ip)
+                (display #\]))
+              (display ip))))
+        (if ps (ps))))))
 
 (define (local-map-entry-name->oid name default)
   (let ((e (assoc name (entry-points))))

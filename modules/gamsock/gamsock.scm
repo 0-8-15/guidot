@@ -76,6 +76,58 @@ struct sockaddr_un {
 	     constants))))
 
 
+(c-declare #<<EOF
+#include <arpa/inet.h>
+#include <stdio.h>
+static int is_ip6_w_port(char *x) {
+ struct sockaddr_in6 addr; char *rb=NULL, memo; int rc;
+ if(*x=='[') {
+   ++x;
+   rb=strrchr(x, ']');
+   if(rb==NULL) return 0;
+   else {
+    if(rb[1]!=':') return 0;
+    memo=*rb;
+    *rb='\0';
+   }
+ }
+ rc= inet_pton(AF_INET6, x, &addr);
+ if(rb) *rb=memo;
+ return rc;
+}
+EOF
+) ;;
+
+(define (ipv4-address? x)
+  (cond
+   ((string? x)
+    ((c-lambda (nonnull-char-string) bool "struct sockaddr_in addr; ___result=inet_pton(AF_INET, ___arg1, &addr);") x))
+   (else #f)))
+
+(define (ipv4-address/port? x)
+  (cond
+   ((string? x)
+    ((c-lambda (nonnull-char-string) bool
+      "struct sockaddr_in addr; char memo;
+      char *colon = strrchr(___arg1, ':'); if(colon) {memo=*colon; *colon='\\0';}
+      ___result=inet_pton(AF_INET, ___arg1, &addr); if(colon) *colon=memo;")
+     x))
+   (else #f)))
+
+(define (ipv6-address? x)
+  (cond
+   ((string? x)
+    ((c-lambda (nonnull-char-string) bool "struct sockaddr_in6 addr;___result=inet_pton(AF_INET6, ___arg1, &addr);") x))
+   (else #f)))
+
+(define (ipv6-address/port? x)
+  (cond
+   ((string? x)
+    ((c-lambda (nonnull-char-string) bool "is_ip6_w_port") x))
+   (else #f)))
+
+(define (ip-address/port? x) (or (ipv6-address/port? x) (ipv4-address/port? x)))
+
 (include "gamsock-constants.scm")
 
 ; This is the definition of the socket type. It should be treated as opaque.
