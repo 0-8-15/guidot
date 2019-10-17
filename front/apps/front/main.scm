@@ -434,24 +434,30 @@ NULL;
 (define %local-void-value (list #!eof))
 (define (%is-local-void? value)
   (eq? value %local-void-value))
+(define %cached-kernel-values-hook (make-hook 1))
+(define (chached-kernel-values-flush!) (hook-run %cached-kernel-values-hook #t) #f)
 (define-macro (define-once/or name missing . body)
   (let ((refresh (gensym 'refresh))
-	(value (gensym name)))
+        (value (gensym name))
+        (proc (gensym name)))
     `(define ,name
-       (let ((,value %local-void-value))
-	 (lambda (#!optional (,refresh #f))
-	   (if ,refresh (set! ,value %local-void-value))
-	   (if (and (or (not ,value) (%is-local-void? ,value)) (not (eq? ,refresh 'void)))
-               (set! ,value (begin . ,body)))
-           ;; FIXME: That's a bit strange: these values can NOT be #f!!!
-	   (if (or (%is-local-void? ,value) (not ,value)) ,missing ,value))))))
+       (let* ((,value %local-void-value)
+              (,proc
+               (lambda (#!optional (,refresh #f))
+                 (if ,refresh (set! ,value %local-void-value))
+                 (if (and (or (not ,value) (%is-local-void? ,value)) (not (eq? ,refresh 'void)))
+                     (set! ,value (begin . ,body)))
+                 ;; FIXME: That's a bit strange: these values can NOT be #f!!!
+                 (if (or (%is-local-void? ,value) (not ,value)) ,missing ,value))))
+         (hook-add! %cached-kernel-values-hook ,proc)
+	 ,proc))))
 
 (define *entry-missing* "<Entry Missing>")
 
 (define-once/or local-connect-string *entry-missing*
   (and (check-kernel-server!)
        (let ((ip (allioideae-address)))
-         (if ip (set! ip (ipconnect-string ip 443)))
+         (if ip (set! ip (ipconnect-string ip (if (is-allioideae? ip) 443 (external-https-port)))))
 	 (if ip
 	     (set! myip ip)
 	     (set! ip myip))
@@ -469,30 +475,35 @@ NULL;
 	 "Find Address")
     action
     ,(lambda ()
-       (unless (have-local-connect?)
-	       (when (and (check-kernel-server!)
-			  (eq? (local-connect-string #t) *entry-missing*))
-		     (set! myip (let ((myip (host-ipaddr)))
-                                  (and myip (ipconnect-string myip (external-https-port))))))
-	     (if (procedure? postproc) (postproc)))
+       (cond
+        ((have-local-connect?) (chached-kernel-values-flush!))
+        (else
+         (when (and (check-kernel-server!)
+                    (eq? (local-connect-string #t) *entry-missing*))
+               (set! myip (let ((myip (host-ipaddr)))
+                            (and myip (ipconnect-string myip (external-https-port))))))))
+       (if (procedure? postproc) (postproc))
        #f)))
 
 (define-macro (define-cached-kernel-value name valid? convert . query)
   (let ((cache (gensym name))
+        (proc (gensym name))
 	(reload (gensym))
 	(tmp (gensym)))
     `(define ,name
-       (let ((,cache %local-void-value))
-	 (lambda (#!optional (,reload #f))
-	   (if (or ,reload (%is-local-void? ,cache))
-	       (if (check-kernel-server!)
-		   (let ((,tmp (call-kernel . ,query)))
-		     (if (procedure? ,convert) (set! ,tmp (,convert ,tmp)))
-		     (if (or (not ,valid?) (,valid? ,tmp))
-			 (set! ,cache ,tmp)))))
-	   (if (%is-local-void? ,cache)
-	       (if (procedure? ,convert) (,convert) ,convert)
-	       ,cache))))))
+       (let* ((,cache %local-void-value)
+              (,proc (lambda (#!optional (,reload #f))
+                       (if (or ,reload (%is-local-void? ,cache))
+                           (if (check-kernel-server!)
+                               (let ((,tmp (call-kernel . ,query)))
+                                 (if (procedure? ,convert) (set! ,tmp (,convert ,tmp)))
+                                 (if (or (not ,valid?) (,valid? ,tmp))
+                                     (set! ,cache ,tmp)))))
+                       (if (%is-local-void? ,cache)
+                           (if (procedure? ,convert) (,convert) ,convert)
+                           ,cache))))
+         (hook-add! %cached-kernel-values-hook ,proc)
+         ,proc))))
 
 (define-cached-kernel-value allioideae-address
   #f (lambda (#!optional (v #f)) (if (equal? v "") #f v))
@@ -1077,8 +1088,10 @@ Is the service not yet running?")))
       (spacer)
       (button text "Sign New Cert" action
               ,(lambda ()
+                 ;; ERROR "failed to add subject component" with .i2p:<portnumber>
                  (kernel-send-set-auth 'tofu (main-entry-name) (uiget 'password) (dbget 'CN))
-                 (allioideae-address #t)
+                 ;; ERROR: Does not refresh.
+                 (chached-kernel-values-flush!)
                  'identification))
       ;; end of "address" page
       )
