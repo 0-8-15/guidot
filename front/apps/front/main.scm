@@ -96,7 +96,8 @@ NULL;
          ($external-address ,cn))
        (begin
          ($external-port ,(documented-external-https-port))
-         ($https-use-socks4a #f))))
+         ($external-address ,(if (ipv6-address/port? cn) cn #f))
+         ($https-use-socks4a 'maybe))))
 
 (define (kernel-send-set-auth kind user password cn)
   (unless (call-kernel
@@ -515,9 +516,9 @@ NULL;
 
 (define-cached-kernel-value main-entry #f #f 'begin '(mesh-cert-o (tc-private-cert)))
 
-(define-cached-kernel-value https-server-port #f 7443 'begin '($https-server-port))
+(define-cached-kernel-value https-server-port #f (documented-external-https-port) 'begin '($https-server-port))
 
-(define-cached-kernel-value external-https-port #f 7443 'begin '($external-port))
+(define-cached-kernel-value external-https-port #f (documented-external-https-port) 'begin '($external-port))
 
 (define (satellite-port) 8443)
 
@@ -1157,7 +1158,7 @@ Is the service not yet running?")))
       (spacer)
       (label text ,(string-append "Data directory: " kernel-data-directory) wrap #t)
       (spacer)
-      ,@(if (or app:android?) '()
+      ,@(if (and app:android?) '()
             `(,(if (not-using-fork-alike)
                    '(label text "Exiting here will terminate the service!")
                    '(spacer))

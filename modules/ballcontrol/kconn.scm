@@ -60,7 +60,7 @@
 (define (kernel-send-idle0 restart)
   (if (eq? (with-exception-catcher
             (lambda (ex) (log-error "exn in idle talk " (exception-->printable ex))  #f)
-            (lambda () (call-kernel 'begin '(handle-idle-event!))))
+            (lambda () (call-kernel 'begin `(handle-idle-event! ,(log-ballcontrol)))))
            #t)
       #t
       (begin
