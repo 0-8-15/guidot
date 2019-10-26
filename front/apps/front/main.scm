@@ -613,6 +613,37 @@ NULL;
            (set! ln-satellite #f))
        ,(start-satellite-script (satellite-port) "satellite" (eq? satellite-protocol 'https))))))
 
+(define (reset-kernel-logging! #!key (on log:on) (to log:file))
+  (call-kernel
+   'begin
+   `(begin
+      (spool-db-exec "create table if not exists appstates (name text unique not null, val text)")
+      (spool-db-exec/prepared "insert or replace into appstates (name, val) values ('logging', ?1)" ,(if on "yes" "no"))
+      (spool-db-exec/prepared "insert or replace into appstates (name, val) values ('error log', ?1)" ,to)
+      (spool-db-exec/prepared "insert or replace into appstates (name, val) values ('default log', ?1)" ,to))))
+
+(define (reset-logging!)
+  (log-reset!)
+  (reset-kernel-logging!)
+  (call-kernel 'begin '(log-reset!)))
+
+(hook-add!
+ kernel-on-init
+ (lambda ()
+   (reset-kernel-logging!)
+   (kernel-on-start-add!
+    "define (log-reset!)"
+    '(define (log-reset!)
+       (if (equal? (sql-ref (spool-db-select "select val from appstates where name = 'logging'") 0 0) "yes")
+           (let ((le (sql-ref (spool-db-select "select val from appstates where name = 'error log'") 0 0))
+                 (lo (sql-ref (spool-db-select "select val from appstates where name = 'default log'") 0 0)))
+             (when (file-exists? le)
+               (set-log-output! 'error le)
+               (set-log-output! 'output lo))))
+       #t))))
+
+(hook-add! kernel-on-init (lambda () (kernel-on-start-add! "redirect log" '(log-reset!))))
+
 (define (public-oid-string)
   (let ((v (public-oid)))
     (if (symbol? v) (symbol->string v) "Public OID not found.\n
