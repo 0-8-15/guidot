@@ -28,13 +28,16 @@ NULL;
                    (mutex-unlock! mutex)
                    (if (string? s)
                        (call-with-input-string s
-                         (lambda (port)
-                           (let* ((key (read port))
-                                  (value (read port)))
-                             (case key
-                               ((D) value)
-                               ((E) (raise value))
-                               (else (error "jscheme-call: unexpected reply " s))))))
+                        (lambda (port)
+                          (let* ((key (read port))
+                                 (value
+                                  (with-exception-catcher
+                                   (lambda (exn) (raise (string-append "jscheme-call: unreadable result: " s)))
+                                   (lambda () (read port)))))
+                            (case key
+                              ((D) value)
+                              ((E) (raise value))
+                              (else (error "jscheme-call: unexpected reply " s))))))
                        (error "jscheme-call: unexpected reply " s)))))
         (cond
          ;; Numbers are always printed as inexacts by jscheme.
