@@ -23,22 +23,42 @@ public Object jschemeCallBasic(Object expr) {
     } else return null;
 }
 
+private Handler LNjSchemeHandler = new Handler();
+
 public String jschemeCall(String msg) {
     try {
         LNjScheme.InputPort in = new LNjScheme.InputPort(new java.io.ByteArrayInputStream(msg.getBytes(java.nio.charset.Charset.forName("UTF-8"))));
-        Object expr = in.read();
+        final Object expr = in.read();
         if(in.isEOF(expr)) return "E\n\"invalid input\"";
-        Object result = jschemeCallBasic(expr);
+        // Object result = jschemeCallBasic(expr);
+        java.util.concurrent.FutureTask<Object> job = new java.util.concurrent.FutureTask<Object>
+            (new java.util.concurrent.Callable<Object>() {
+                    @Override
+                    public Object call() throws Exception { ln_log("invocation of " + this + " evaluating."); return jschemeCallBasic(expr); }
+                });
+        ln_log("Sending to UI: " + job + " for: " + expr);
+        LNjSchemeHandler.post(job); // runOnUiThread(job);
+        ln_log("submitted, now waiting for result");
+        Object result = job.get();
+        ln_log("got result from UI");
         java.io.StringWriter buf = new java.io.StringWriter();
         java.io.PrintWriter port = new java.io.PrintWriter(buf);
         port.println("D");
         LNjScheme.SchemeUtils.write(result, port, true);
         return buf.toString();
-    } catch (Exception e) {
+    } catch (java.util.concurrent.ExecutionException e) {
+        ln_log("got error from call");
         java.io.StringWriter buf = new java.io.StringWriter();
         java.io.PrintWriter port = new java.io.PrintWriter(buf);
         port.println("E");
-        LNjScheme.SchemeUtils.write(("" + e).toCharArray(), port, true);
+        LNjScheme.SchemeUtils.write(("" + e.getCause()).toCharArray(), port, true);
+        return buf.toString();
+    } catch (Exception e) {
+        ln_log("got exception from call");
+        java.io.StringWriter buf = new java.io.StringWriter();
+        java.io.PrintWriter port = new java.io.PrintWriter(buf);
+        port.println("E");
+        LNjScheme.SchemeUtils.write(("LNjScheme unexpected exception: " + e).toCharArray(), port, true);
         return buf.toString();
     }
 }
