@@ -19,3 +19,34 @@ const char *jscheme_eval(const char *input)
   }
   return str;
 }
+
+void jscheme_eval_send(const char *input)
+{
+  JNIEnv *env = GetJNIEnv();
+  if (env&&globalObj){
+    jstring jin = (*env)->NewStringUTF(env,input);
+    jclass main_class = (*env)->FindClass(env, "@SYS_PACKAGE_SLASH@/@SYS_APPNAME@");
+    jmethodID method = main_class ? (*env)->GetMethodID(env, main_class, "LNjSchemeSend", "(Ljava/lang/String;)V") : NULL;
+    method ? (*env)->CallVoidMethod(env, globalObj, method, jin) : NULL;
+    // Is this required??? (*env)->ReleaseStringUTFChars(env, jin, NULL);
+  }
+}
+
+// There is likely a way to do this better using only a Java->C call
+// to deposit the result in a global variable.  I just don't know yet
+// how to do this.
+const char *jscheme_eval_receive_result()
+{
+  static const char *str = NULL;
+  static jstring jstr = NULL;
+  JNIEnv *env = GetJNIEnv();
+  if (env&&globalObj){
+    jclass main_class = (*env)->FindClass(env, "@SYS_PACKAGE_SLASH@/@SYS_APPNAME@");
+    jmethodID method = main_class ? (*env)->GetMethodID(env, main_class, "LNjSchemeResult", "()Ljava/lang/String;") : NULL;
+    if(jstr) { (*env)->ReleaseStringUTFChars(env, jstr, str); jstr = NULL; } // works?
+    jstr = (jstring) method ? (*env)->CallObjectMethod(env, globalObj, method) : NULL;
+    str  = jstr ? (*env)->GetStringUTFChars(env, jstr, 0) : NULL;
+    // (*env)->ReleaseStringUTFChars(env, jstr, NULL);  // we do it upon next call
+  }
+  return str;
+}
