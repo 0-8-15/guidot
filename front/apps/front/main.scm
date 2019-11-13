@@ -733,7 +733,7 @@ Is the service not yet running?")))
                   (let ((p0 (uiget 'browse-path)))
                     (and p0 (local-map-entry-name->oid p0 p0)))
                   "")))
-    (webview-launch!
+    (launch-url
      (string-append
       (ipconnect-string '#u8(127 0 0 1) (satellite-port) https: https)
        "/" path)))
