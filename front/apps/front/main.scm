@@ -726,12 +726,14 @@ Is the service not yet running?")))
   (let ((e (assoc name (entry-points))))
     (if e (symbol->string (cadr e)) default)))
 
+(include "webview.scm")
+
 (define (local-launchurl #!optional (path #f) #!key (https (eq? satellite-protocol 'https)))
   (let ((path (or path
                   (let ((p0 (uiget 'browse-path)))
                     (and p0 (local-map-entry-name->oid p0 p0)))
                   "")))
-    (launch-url
+    (webview-launch!
      (string-append
       (ipconnect-string '#u8(127 0 0 1) (satellite-port) https: https)
        "/" path)))
