@@ -625,6 +625,7 @@ NULL;
 (define (reset-logging!)
   (log-reset!)
   (reset-kernel-logging!)
+  (log-status "Log of " (public-oid) " " (allioideae-address))
   (call-kernel 'begin '(log-reset!)))
 
 (hook-add!
