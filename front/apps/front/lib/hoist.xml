@@ -1,5 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<xsl:stylesheet xmlns:ac="http://www.askemos.org/2000/CoreAPI#" xmlns:d="http://www.askemos.org/2005/NameSpaceDSSSL/" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xmlns:xsql="http://www.askemos.org/2006/XSQL/" xmlns:bail="http://www.askemos.org/2013/bail/" version="1.0" xml:space="default">
+<xsl:stylesheet
+    xmlns:ac="http://www.askemos.org/2000/CoreAPI#"
+    xmlns:d="http://www.askemos.org/2005/NameSpaceDSSSL/"
+    xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+    xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
+    xmlns:xsql="http://www.askemos.org/2006/XSQL/"
+    xmlns:meta="http://askemos.org/BALL/Meta/2012#"
+    xmlns:bail="http://www.askemos.org/2013/bail/"
+    version="1.0" xml:space="default">
   <!--
 
 WARNING -+- WARNING
@@ -57,7 +65,7 @@ Basic Request Dispatch
 -->
  <xsl:template match="ac:*" mode="read">
   <!-- Apply same view as inherited from basic object.  -->
-  <d:copy-of select="(metaview me msg)"/>
+  <meta:view/>
  </xsl:template>
  <xsl:template match="form" mode="read">
   <xsl:call-template name="read-default"/>
@@ -119,6 +127,10 @@ pre { max-width: 80em; overflow: auto; }
    </body>
   </html>
  </xsl:template>
+ <xsl:template match="ac:request[@type='write']">
+   <!-- FIXME geht nicht -->
+  <meta:control/>
+ </xsl:template>
  <xsl:template match="request[@type='write']">
   <ac:reply>
    <ac:update>create table if not exists messages (moment data, request text)</ac:update>
@@ -128,9 +140,9 @@ pre { max-width: 80em; overflow: auto; }
     <with-param><bail:copy-of>(xml-format (current-node))</bail:copy-of></with-param>
    </ac:update>
    <xsl:choose>
-    <d:when test="(service-level)">
+    <bail:when test="(service-level)">
      <xsl:call-template name="call-service"/>
-    </d:when>
+    </bail:when>
     <xsl:otherwise>
      <xsl:call-template name="call-client"/>
     </xsl:otherwise>
@@ -1145,7 +1157,7 @@ map exwrap '(id name description weight dim due)
 -->
    <d:copy-of select="sql-quote (data (form-field 'id (current-node)))"/>
   </xsl:param>
-  <d:output d:location="read-locator (format &quot;_v=attach&amp;id=~D&quot; (sql-ref '(select max(id + 1) from event)))"/>
+  <d:output d:location="read-locator (format &quot;_v=attach&amp;id=~D&quot; (sql-ref &quot;select coalesce(max(id + 1), 1) from event&quot;))"/>
   <ac:update parameterized="yes">
    <template>insert into event(issue,moment,author,comment) values(?1,?2,?3,?4)</template>
 <!--
@@ -1553,7 +1565,7 @@ define extract-oid(from)
 	root-link
 	(form-field 'delete (current-node)))
        new-translated)
-      (sxml `(id ,(literal (me root-link))))))
+      (sxml `(id ,(literal (or (link-ref root-link) ""))))))
    </bail:copy-of>
   </ac:link>
  </xsl:template>
