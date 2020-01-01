@@ -476,6 +476,12 @@ Braucht man nur einige, dann ist 'cons' entsprechend zu ersetzen.
  </xsl:template>
  <xsl:template match="request[@type=&quot;write&quot;]">
   <xsl:choose>
+   <d:when test=" (eq? &apos;grant (gi (children (current-node)))) ">
+    <mind:reply>
+     <xsl:copy-of select="grant/right"></xsl:copy-of>
+     <mind:output method="xml"></mind:output>
+    </mind:reply>
+   </d:when>
    <d:when test="(not (or (service-level (self-reference)) (error &quot;privat property&quot;)))"></d:when>
    <d:when test="(and-let*
  ((dst (message-destination msg))
@@ -484,12 +490,6 @@ Braucht man nur einige, dann ist 'cons' entsprechend zu ersetzen.
   (pair? (cdr dst))))
 ">
     <mind:forward></mind:forward>
-   </d:when>
-   <d:when test=" (eq? &apos;grant (gi (children (current-node)))) ">
-    <mind:reply>
-     <xsl:copy-of select="grant/right"></xsl:copy-of>
-     <mind:output method="xml"></mind:output>
-    </mind:reply>
    </d:when>
    <d:when test="(is-meta-form? msg)">
     <meta:control xmlns:meta="http://askemos.org/BALL/Meta/2012#"></meta:control>
