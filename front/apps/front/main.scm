@@ -863,6 +863,9 @@ Is the service not yet running?")))
     (uiset 'goto-location #f)
     (and e (cadr e))))
 
+(define (show-start-stop-buttons?)
+  (or (not app:android?) (not-using-fork-alike)))
+
 (define (uiform:pages again)
   (define upnrunning (check-kernel-server!))
   (define (again1 lst) (again (list->table lst)))
@@ -890,13 +893,14 @@ Is the service not yet running?")))
       ,@(cond
 	 ((rep-exists?)
 	  (if upnrunning
-	      `(,@(if (or app:android? (not-using-fork-alike)) '()
+	      `(,@(if (show-start-stop-buttons?)
 		      `((button h 75 size header #;(indent 0.05) rounded #f text "Stop" action
 				,(lambda ()
 				   (stop-kernel-server!)
 				   (uiform:pages again)
 				   'main))
-			(spacer)))
+			(spacer))
+                      '())
 		(dropdown indent 0.05 text "Go to" id browse-path location ui entries ,(interesting-pages))
 		(button h 75 size header #;(indent 0.05) rounded #f text "Start Browser" action ,local-launchurl)
 		(spacer)
@@ -910,11 +914,11 @@ Is the service not yet running?")))
                      (lambda ()
                        (thread-start! (make-thread start-kernel-server! 'starting))
                        'starting)))
-                (if app:android?
-                    `((redirect action ,kick-start))
+                (if (show-start-stop-buttons?)
                     `((button h 75 size header #;(indent 0.05) rounded #f text "Start" action ,kick-start)
                       (spacer)
-                      (button h 75 size header #;(indent 0.05) rounded #f text "Manage" action manage))))))
+                      (button h 75 size header #;(indent 0.05) rounded #f text "Manage" action manage))
+                    `((redirect action ,kick-start))))))
 	 (else
 	  `((button h 75 size header indent 0.05 rounded #t text "Initialize" action init)
             (spacer)
@@ -986,7 +990,7 @@ Is the service not yet running?")))
       ;; end of "initializing" page
       )
      (identification
-      "Idendify"
+      "Identify"
       ("Back" main)
       #f
       (spacer)
@@ -1045,7 +1049,7 @@ Is the service not yet running?")))
       )
      (channels
       "Channels"
-      ("Back" main)
+      ("Back" ,(lambda () (dbclear 'selected-channel) 'main))
       #f
       (spacer)
       (button h 50 #;(size header indent 0.05 rounded #t) text "Identify" action identification)
