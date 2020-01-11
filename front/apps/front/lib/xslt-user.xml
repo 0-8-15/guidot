@@ -624,6 +624,7 @@ fetch code body: #f
  <xsl:template match="form">
   <xsl:variable name="new-state">
    <state xmlns="urn:private">
+    <xsl:copy-of select="$state1/title"/>
     <d:apply-templates select="
       (make element
         gi: (data ((sxpath &apos;(action)) (current-node)))
