@@ -487,26 +487,25 @@ spool.db-journal
 (c-declare
  #<<end-of-c-declare
  #include <unistd.h>
+ #include <sys/types.h>
+ #include <sys/stat.h>
  static int fork_and_close_fds(int from)
  {
 #ifndef _WIN32
   pid_t pid = fork();
-  int fd ;
+  int i;
 
-  if(pid == -1) return -1;
-  if(pid == 0) {
-    fd = sysconf(_SC_OPEN_MAX) - 1;
-    while(fd >= from) close(fd--); /* ignoring errors */
-     return 0;
-  }
-  return pid;
+  if(pid != 0) return pid;
+  for(i=1;i<NSIG;++i) signal(SIGHUP,SIG_DFL);
+  i = sysconf(_SC_OPEN_MAX) - 1;
+  while(i >= from) close(i--); /* ignoring errors */
+  umask(0);
+  return 0;
 #else
   return -1;
 #endif
 }
 
- #include <sys/types.h>
- #include <sys/stat.h>
  #include <fcntl.h>
  #include <stdio.h>
  static int log_to_file(char *fn)
@@ -561,11 +560,29 @@ static void set_proc_name(const char* name) {
 #endif
 static void ballcontrol_deamonize()
 {
+ unsigned int i=0;
+ if(fork() != 0) _exit(0);
+ // https://chaoticlab.io/c/c++/unix/2018/10/01/daemonize.html
+ for(i=1;i<NSIG;++i) signal(SIGHUP,SIG_DFL);
+ i = sysconf(_SC_OPEN_MAX) - 1;
+ while(i >= 3) close(i--); /* ignoring errors */
+ umask(0);
  signal(SIGHUP,SIG_IGN);
  signal(SIGTERM,SIG_IGN);
  signal(SIGCHLD,SIG_IGN);
- if(fork() != 0) _exit(0);
+ signal(SIGINT,SIG_IGN);
+ // for(i=3;i<FD_SETSIZE;++i) close(i);
  if(setsid() == -1) fprintf(stderr, "ERROR: setsid: %s\n", strerror(errno));
+}
+static int ln_fork()
+{
+ unsigned int i=0;
+ pid_t pid = fork();
+ if(pid != 0) return pid;
+ for(i=1;i<NSIG;++i) signal(SIGHUP,SIG_DFL);
+ umask(0);
+ for(i=3;i<FD_SETSIZE;++i) close(i);
+ return 0;
 }
 end-of-c-declare
 )
@@ -575,35 +592,37 @@ end-of-c-declare
     (cond-expand
      ((or android #;linux) (c-lambda (char-string) void "set_proc_name"))
      (else (lambda (n) (debug 'set-process-name! 'ignored) #f))))
+  (define _exit (c-lambda (int) void "_exit"))
   (define (watchdog kind name proc args)
     (set-process-name! (string-append "watchdog:" name))
     (cond
      ((eq? kind 'deamon)
       ((c-lambda () void "ballcontrol_deamonize"))
       (log-status "Watchdog deamon running as PID " (getpid))))
-    (let ((pid ((c-lambda () int "fork"))))
+    (let ((pid ((c-lambda () int "ln_fork"))))
       (case pid
         ((-1) (log-error "fork failed") (exit 1)) ;; TODO: include errno
         ;; FIXME: establish signal handlers as with the original watchdog.
         ;; maybe simply use the latter here.
-        ((0) (set-process-name! name) (exit (proc args)))
+        ((0) (set-process-name! name) (_exit (proc args)))
         (else
          (log-status "Kernel running as PID " pid)
          (receive
           (sig success pid2) (process-wait pid #f)
-          (cond
+          (cond ;; be sure NOT to run at_exit hooks trying to take down lambdanative
            ((equal? pid pid2)
             (cond
              ((and (equal? sig 0) success)
               (log-status "Kernel PID " pid " terminated normally")
-              (exit 0))
+              ((if (not kind) exit _exit) 0))
              (else
+              (debug 'watchdog-restart-on-sig sig)
               (log-status "Kernel PID " pid " terminated " (if success "normally" "abnormal") " code " sig " restarting")
               (watchdog watchdog-style name proc args))))
            (else
             (log-error "Kernel PID " pid " process-wait returned signal " sig
                        " terminated " (if success "normally" "abnormal") " pid returned is " pid2)
-            (exit 1))))))))
+            (_exit 1))))))))
   (cond-expand
    ((or #;linux #;android)
     (if (eq? watchdog-style #t) (set! watchdog-style 'deamon)))

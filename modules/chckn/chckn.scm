@@ -9,7 +9,7 @@ static int the_initialized_flag = 0;
 
 static void notify_about_exit()
 {
-  fprintf(stderr, "exit in kernel process\n");
+  fprintf(stderr, "exit in kernel process %d\n", getpid());
 }
 
 static void exec_chicken_kernel(int argc, char **argv)
@@ -17,7 +17,7 @@ static void exec_chicken_kernel(int argc, char **argv)
   C_word heap, stack, symbols;
   CHICKEN_parse_command_line(argc, argv, &heap, &stack, &symbols);
   CHICKEN_initialize(heap, stack, symbols, C_toplevel);
-  atexit(notify_about_exit);
+//  atexit(notify_about_exit);
   CHICKEN_run(C_toplevel);
   fprintf(stderr, "Unexpected termination in BALL (CHICKEN) toplevel.\n");
   exit(EXIT_FAILURE);
