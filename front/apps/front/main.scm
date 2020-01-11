@@ -116,14 +116,16 @@ NULL;
     (cond
      ((not source) '(my-oid))
      ((string? source)
-      (if oid? `(string->oid ,source) `(entry-name->oid ,source)))
+      '(or `(string->oid ,source) `(entry-name->oid ,source)))
      (else source)))
   (define ff
     (if source
 	'`((,k ,v) . ,i)
 	'(if (equal? k "public") i `((,k ,v) . ,i))))
-  `(let ((links (fget (find-local-frame-by-id ,from 'gui-client) 'mind-links)))
-     (fold-links-sorted (lambda (k v i) ,ff) '() links)))
+  `(and-let* ((oid ,from)
+              (f (find-local-frame-by-id ,from 'gui-client))
+              (links (fget f 'mind-links)))
+             (fold-links-sorted (lambda (k v i) ,ff) '() links)))
 
 (define (kernel-initial-configuration cn logname)
   (call-kernel
