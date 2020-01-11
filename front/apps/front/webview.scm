@@ -15,7 +15,7 @@
 
 (set!
  launch-url
- (let ((launch-url orginal-launch-url))
+ (let ((orginal-launch-url launch-url))
    (define (android-webview-launch! url)
      (run-in-LNjScheme '(define (onBackPressed!) #f))
      (run-in-LNjScheme
