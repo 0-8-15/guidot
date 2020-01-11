@@ -1181,6 +1181,23 @@ Is the service not yet running?")))
                 (spacer)
                 (button text "Restore" action
                         ,(lambda () (and (kernel-restore!) (begin (update-pages!) 'main)))))))
+      (spacer)
+      (button text "Reset Logging" action ,(lambda () (reset-logging!) 'main))
+      (spacer)
+      ,(lambda ()
+         (if (not upnrunning)
+             `(button text "Remove SpoolDB" action
+                      ,(lambda ()
+                         (for-each
+                          (lambda (x)
+                            (let ((fn (make-pathname kernel-data-directory x)))
+                              (if (file-exists? fn) (delete-file fn))))
+                          '("spool.db" "spool.db-journal"))
+                         'main))
+             `(button text "Force Spool GC" action
+                      ,(lambda ()
+                         (call-kernel 'begin '(and (future (let ((store (spool-directory))) (fsm-enforce-restore! store) (fsm-run-now store))) #t))
+                         'main))))
       ;; end of "manage" page
       )
      (about
@@ -1212,9 +1229,11 @@ Is the service not yet running?")))
                       (terminate))
                       (terminate))))))
       (spacer)
-      ,(if (eq? (subprocess-style) 'fork)
-           `(button text "Kill Kernel Server" action ,(lambda () (kernel-server-kill!) (update-pages!)))
-           '(spacer))
+      ,@(if (eq? (subprocess-style) 'fork)
+            `((button text "Kill Kernel Server" action ,(lambda () (kernel-server-kill!) (update-pages!)))
+              (spacer)
+              (button text "Restart Kernel Server" action ,(lambda () (call-kernel 'begin '(exit 1)) (chached-kernel-values-flush!) (update-pages!))))
+            '((spacer)))
       #;,(lambda ()
 	 (if upnrunning
 	     `(button h 50 size header indent 0.05 rounded #t text "Debug" action ,(lambda () 'debug))
