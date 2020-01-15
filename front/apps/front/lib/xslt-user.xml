@@ -16,7 +16,7 @@
  <xsl:variable name="state1">
   <xsl:copy-of select="$here/state"/>
  </xsl:variable>
- <!-- Acient, a.k.a. "avanced" form state.  Maybe obsolete. -->
+ <!-- Acient, a.k.a. "advanced" form state.  Maybe obsolete. -->
  <xsl:variable name="state">
   <srcplace label="from">system/Edit15.xml</srcplace>
   <method label="Methode">system/bail-reflexive</method>
@@ -34,7 +34,7 @@
    <p>
     <input name="xmlns" type="hidden" value="http://www.askemos.org/2000/CoreAPI#"></input>
     <input name="action" type="hidden" value="toggle-replication-state"></input>
-    <input name="name" size="35" type="text"></input>
+    <input name="name" size="35" type="text" autocomplete="off"></input>
     <input type="submit" value="submit"></input>
     <input type="reset" value="C"></input>
    </p>
@@ -350,7 +350,7 @@ Grant
 user
 <input name="to" type="text" value="public"></input>
 the right meant by document
-<input name="right" type="text" value="public"></input>.<br></br><input type="submit" value="Yes"></input> I grant that right.
+<input name="right" type="text" value="public" autocomplete="off"></input>.<br></br><input type="submit" value="Yes"></input> I grant that right.
   </td>
           </tr>
          </table>
