@@ -59,8 +59,9 @@ in step 1):
     </rdf:RDF>
    </d:when>
    <d:when test="(not (service-level (self-reference)))">
-    <html>
+    <html xmlns="http://www.w3.org/1999/xhtml">
      <head>
+      <meta content="text/html; charset=UTF-8" http-equiv="Content-Type"></meta>
       <title>SMS senden</title>
      </head>
      <body>
