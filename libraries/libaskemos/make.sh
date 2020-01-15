@@ -1,6 +1,6 @@
 VERSION=0.9.5.9
 PKGURL=http://gitlab.com/askemos/ball-zero/askemos-$VERSION.tar.gz
-PKGHASH=56619d212e47293fd107f6da9022472a5e287768
+PKGHASH=5317228f4ba6f559e4c8ec654e65ec8d36633a98
 
 if [ ! -f testing ]; then
 
@@ -33,11 +33,10 @@ case $SYS_PLATFORM in
     win64) TARGET_FEATURES="-feature mingw64 -feature windows" ;;
     android) TARGET_FEATURES="-feature android" ;;
     linux) TARGET_FEATURES="-feature linux" ;;
-    # *) echo unkhandled SYS_PLATFORM $SYS_PLATFORM ; exit 1;
+    # *) echo unhandled SYS_PLATFORM $SYS_PLATFORM ; exit 1;
 esac
 
 EXTRA_FEATURES="-feature single-binary -feature never-fork"
-# EXTRA_FEATURES="-feature single-binary"
 
 if [ $SYS_PLATFORM != $SYS_HOSTPLATFORM ]; then
     CSC="$SYS_HOSTPREFIX/bin/$SYS_ARCH-csc$LIBASKEMOS_CHICKEN_VERSION"

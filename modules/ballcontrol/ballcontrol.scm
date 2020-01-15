@@ -489,6 +489,26 @@ spool.db-journal
  #include <unistd.h>
  #include <sys/types.h>
  #include <sys/stat.h>
+ #include <stdio.h>
+static void cutoff_unwind(int rc, void *ignored)
+{
+  _exit(rc);
+}
+static int deliver_payload_events = 1;
+void lambdanative_cutoff_unwind()
+{
+ if(deliver_payload_events) {
+  deliver_payload_events = 0;
+/* unifdef only for old android!
+  if(on_exit(cutoff_unwind, NULL)) {
+    fprintf(stderr, "lambdanative_cutoff_unwind failed to register cleanup procedure, exiting\n");
+    _exit(1);
+  }
+*/
+ }
+}
+
+// extern void lambdanative_cutoff_unwind();
  static int fork_and_close_fds(int from)
  {
 #ifndef _WIN32
