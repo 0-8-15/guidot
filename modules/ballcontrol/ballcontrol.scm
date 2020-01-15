@@ -516,7 +516,8 @@ void lambdanative_cutoff_unwind()
   int i;
 
   if(pid != 0) return pid;
-  for(i=1;i<NSIG;++i) signal(SIGHUP,SIG_DFL);
+  lambdanative_cutoff_unwind();
+  for(i=1;i<NSIG;++i) signal(i,SIG_DFL);
   i = sysconf(_SC_OPEN_MAX) - 1;
   while(i >= from) close(i--); /* ignoring errors */
   umask(0);
@@ -578,12 +579,14 @@ static void set_proc_name(const char* name) {
   // else fprintf(stderr, "PR_SET_NAME success: %s\n", buf);
 }
 #endif
+
 static void ballcontrol_deamonize()
 {
  unsigned int i=0;
- if(fork() != 0) _exit(0);
+ if(fork() != 0) exit(0);
+ lambdanative_cutoff_unwind();
  // https://chaoticlab.io/c/c++/unix/2018/10/01/daemonize.html
- for(i=1;i<NSIG;++i) signal(SIGHUP,SIG_DFL);
+ for(i=1;i<NSIG;++i) signal(i,SIG_DFL);
  i = sysconf(_SC_OPEN_MAX) - 1;
  while(i >= 3) close(i--); /* ignoring errors */
  umask(0);
@@ -599,7 +602,8 @@ static int ln_fork()
  unsigned int i=0;
  pid_t pid = fork();
  if(pid != 0) return pid;
- for(i=1;i<NSIG;++i) signal(SIGHUP,SIG_DFL);
+ lambdanative_cutoff_unwind();
+ for(i=1;i<NSIG;++i) signal(i,SIG_DFL);
  umask(0);
  for(i=3;i<FD_SETSIZE;++i) close(i);
  return 0;
