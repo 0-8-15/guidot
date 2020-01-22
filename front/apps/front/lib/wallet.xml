@@ -501,7 +501,7 @@ define ifield()
  SXML $ fieldset
   legend("Alien Payment Instrument")
   $$ ,instrument-a()
-  input {* @ \\ name "title" \\ type "text"
+  input {* @ \\ name "title" \\ type "text" \\ autocomplete "off"
 title "Title Required For Payment Instrument"
 value $ ,instrument-name
 *}
@@ -536,7 +536,7 @@ href ,sender-edit
   $$ ,and( sybil?( instrument income )  SXML(p("Not acceptable because 'sybil'.")) )
   label "for"
   input {* @
-name "comment"
+name "comment" \\ type "text" \\ autocomplete "off"
 title "Payment Reference Text (free form)"
 class "subject"
 value $$( ,sxpath('(head title *text*)) ,notice )
@@ -592,7 +592,7 @@ guard
   </xsl:for-each>
   <bail:form method="post">
    <xsl:copy-of select="$keeplogin"></xsl:copy-of>
-   <input name="action" readonly="readonly" title="action" type="text" value="close"></input>
+   <input name="action" readonly="readonly" title="action" type="text" autocomplete="off" value="close"></input>
    <bail:input name="receipt" readonly="readonly" title="receipt" type="text" xsl:value="$id"></bail:input>
    <input type="submit" value="Case Closed"></input>
   </bail:form>
@@ -650,7 +650,7 @@ attribute-string
      <tr class="asset">
       <th>Contract</th>
       <td title="OID, Ricardian Contract">
-       <bail:input name="instrument" readonly="readonly" size="30" type="text" xsl:value="$id"></bail:input>
+       <bail:input name="instrument" readonly="readonly" size="30" type="text" autocomplete="off" xsl:value="$id"></bail:input>
       </td>
       <td>
        <bail:copy-of>
@@ -678,7 +678,7 @@ target "_blank"
          </xsl:otherwise>
         </xsl:choose>
        </xsl:variable>
-       <bail:input name="comment" size="30" title="comment" type="text" xsl:value="$dflt"></bail:input>
+       <bail:input name="comment" size="30" title="comment" type="text" autocomplete="off" xsl:value="$dflt"></bail:input>
       </td>
      </tr>
      <tr class="terms">
@@ -717,7 +717,7 @@ type "checkbox"
        <xsl:choose>
         <xsl:when test="$name=&apos;&apos;">
          <td title="wallettitle">
-          <input name="wallettitle" size="30" type="text"></input>
+          <input name="wallettitle" size="30" type="text" autocomplete="off"></input>
          </td>
         </xsl:when>
         <xsl:otherwise>
@@ -774,7 +774,7 @@ class "intern"
    <xsl:copy-of select="$keeplogin"></xsl:copy-of>
    <div>
     <label>Accept account</label>
-    <bail:input name="contract" size="40" title="contract" type="text" xsl:value="$id"></bail:input>
+    <bail:input name="contract" size="40" title="contract" type="text" autocomplete="off" xsl:value="$id"></bail:input>
    </div>
    <div>
     <label>titled</label>
@@ -782,7 +782,7 @@ class "intern"
      <xsl:value-of select="$notice/head/title"></xsl:value-of>
     </span>
     <label>by the name of</label>
-    <bail:input name="title" title="title" type="text" xsl:value="$title"></bail:input>
+    <bail:input name="title" title="title" type="text" autocomplete="off" xsl:value="$title"></bail:input>
    </div>
    <input type="submit" value="Change Account"></input>
   </bail:form>
@@ -1033,7 +1033,7 @@ href ,read-locator( (cons income message-location(current-message())) )
        <p class="help">Drag URL or paste document identifier (OID) of incoming notice.</p>
        <bail:form method="get">
         <label for="satisfaction">Get</label>
-        <input name="satisfaction" size="60" title="satisfaction" type="text"></input>
+        <input name="satisfaction" size="60" title="satisfaction" type="text" autocomplete="off"></input>
         <xsl:copy-of select="$keeplogin"></xsl:copy-of>
         <input title="Check Message" type="submit" value="Go"></input>
         <input title="Clear Form" type="reset" value="C"></input>
@@ -1063,7 +1063,7 @@ to check and accept or reject the order.</p>
         <xsql:query id-attribute="value" id-attribute-column="contract" max-rows="300" row-element="option" rowset-element="">select contract, title as span from accounts</xsql:query>
        </select>
        <label>send</label>
-       <input class="amount" name="amount" size="5" title="amount" type="text" value="1"></input>
+       <input class="amount" name="amount" size="5" title="amount" type="text" autocomplete="off" value="1"></input>
        <label>from</label>
        <select class="asset" name="instrument" title="instrument">
         <xsql:query id-attribute="value" id-attribute-column="id" max-rows="300" row-element="option" rowset-element="">
@@ -1075,7 +1075,7 @@ to check and accept or reject the order.</p>
       </div>
       <div class="line">
        <label>Subject</label>
-       <input class="subject" name="title" size="35" title="title" type="text"></input>
+       <input class="subject" name="title" size="35" title="title" type="text" autocomplete="off"></input>
        <br></br>
        <input type="submit" value="Sign Order"></input>
       </div>
@@ -1091,7 +1091,7 @@ When <em>Accounting</em> is checked, a fresh wallet will be attached to the new 
      <bail:form method="post">
       <input name="action" readonly="readonly" title="action" type="text" value="issue"></input>
       <xsl:copy-of select="$keeplogin"></xsl:copy-of>
-      <p>Accept <input class="amount" name="amount" size="5" title="amount" type="text"></input> units under title <input class="subject" name="title" title="title" type="text"></input></p>
+      <p>Accept <input class="amount" name="amount" size="5" title="amount" type="text" autocomplete="off"></input> units under title <input class="subject" name="title" title="title" type="text" autocomplete="off"></input></p>
       <h4>Terms &amp; Conditions</h4>
       <textarea class="terms" cols="40" name="text" rows="6" title="text"></textarea>
       <br></br>
@@ -1263,7 +1263,7 @@ the  <a href="?reset"><code>?reset</code></a>-interface can not be captured by s
      <bail:form method="post">
       <xsl:copy-of select="$keeplogin"></xsl:copy-of>
       <label>Title</label>
-      <bail:input name="title" type="text" xsl:value="$here/head/title/text()"></bail:input>
+      <bail:input name="title" type="text" autocomplete="off" xsl:value="$here/head/title/text()"></bail:input>
       <p class="help">Terms for display on this account.
 Markdown formatting may be used as with <em>terms and conditions</em> elsewhere.
 The resulting html will be stripped from active content for safe inclusion.</p>
@@ -1317,7 +1317,7 @@ The resulting html will be stripped from active content for safe inclusion.</p>
      <legend>Commissioned Notaries</legend>
      <bail:form method="post">
       <input name="action" readonly="readonly" title="action" type="text" value="commission"></input>
-      <input name="name" size="35" title="name" type="text"></input>
+      <input name="name" size="35" title="name" type="text" autocomplete="off"></input>
       <input type="submit" value="submit"></input>
      </bail:form>
      <table>
@@ -1344,7 +1344,7 @@ action ,write-locator(message-location(current-message()))
      <legend>Protection</legend>
      <bail:form method="post">
       <input name="action" readonly="readonly" title="action" type="text" value="protect"></input>
-      <bail:input name="protect" size="60" title="protect" type="text" bail:value="right-&gt;string $ message-protection current-place()"></bail:input>
+      <bail:input name="protect" size="60" title="protect" type="text" autocomplete="off" bail:value="right-&gt;string $ message-protection current-place()"></bail:input>
       <input type="submit" value="submit"></input>
      </bail:form>
     </fieldset>
@@ -1380,7 +1380,7 @@ Pre Initialization.
         <p>Derived from <strong class="sender"><xsl:copy-of select="$here/head/title/text()"></xsl:copy-of></strong>.</p>
         <p>This could be your wallet. Push the <code>take</code> button to set accept the wallet.</p>
         <label>Title</label>
-        <input class="subject" name="title" size="38" title="title" type="text"></input>
+        <input class="subject" name="title" size="38" title="title" type="text" autocomplete="off"></input>
         <h4>Terms &amp; Conditions</h4>
         <xsl:copy-of select="$holderstatement"></xsl:copy-of>
         <h4>Access Code</h4>
