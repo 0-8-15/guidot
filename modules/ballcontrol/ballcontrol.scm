@@ -528,7 +528,6 @@ void lambdanative_cutoff_unwind()
 }
 
  #include <fcntl.h>
- #include <stdio.h>
  static int log_to_file(char *fn)
  {
   if(freopen(fn, "a", stdout) == NULL) return 1;
@@ -625,7 +624,7 @@ end-of-c-declare
       (log-status "Watchdog deamon running as PID " (getpid))))
     (let ((pid ((c-lambda () int "ln_fork"))))
       (case pid
-        ((-1) (log-error "fork failed") (exit 1)) ;; TODO: include errno
+        ((-1) (log-error "fork failed") (_exit 1)) ;; TODO: include errno
         ;; FIXME: establish signal handlers as with the original watchdog.
         ;; maybe simply use the latter here.
         ((0) (set-process-name! name) (_exit (proc args)))
@@ -638,7 +637,7 @@ end-of-c-declare
             (cond
              ((and (equal? sig 0) success)
               (log-status "Kernel PID " pid " terminated normally")
-              ((if (not kind) exit _exit) 0))
+              (_exit #;(if (not kind) exit _exit) 0)) ;; still seeing that SEGV - just to be sure.
              (else
               (debug 'watchdog-restart-on-sig sig)
               (log-status "Kernel PID " pid " terminated " (if success "normally" "abnormal") " code " sig " restarting")
@@ -662,7 +661,7 @@ end-of-c-declare
 	     ;; was : (exit ((cdr e) args))
 	     (if watchdog-style
                  (watchdog watchdog-style (car e) (cdr e) args)
-                 (exit ((cdr e) args))))
+                 (_exit ((cdr e) args))))
 	    (else
              (cond
               ((not watchdog-style)
