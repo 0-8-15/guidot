@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="UTF-8" ?>
 <xsl:stylesheet xmlns:d="http://www.askemos.org/2000/NameSpaceDSSSL" xmlns:d2="http://www.askemos.org/2013/bail/" xmlns:editor="urn:editor" xmlns:meta="http://askemos.org/BALL/Meta/2012#" xmlns:mind="http://www.askemos.org/2000/CoreAPI#" xmlns:xsl="http://www.w3.org/1999/XSL/Transform" version="1.0">
  <editor:state>
   <view></view>
@@ -14,7 +15,7 @@
   <h1>Message Editor</h1>
  </editor:headline>
  <xsl:variable name="state">
-  <d:copy-of select="((sxpath &apos;(state)) (grove-root (current-node)))"></d:copy-of>
+  <d2:copy-of>((sxpath '(state)) (grove-root (current-node)))</d2:copy-of>
  </xsl:variable>
  <xsl:variable name="state-schema">
   <view></view>
@@ -27,51 +28,48 @@
   <type></type>
  </xsl:variable>
  <xsl:variable name="body">
-  <d:copy-of select="
+  <d2:copy-of>
 ((or (mime-cast
-      &quot;text/xml&quot;
+      "text/xml"
       (data (node-list-first
-             ((sxpath &apos;(content-type)) (xsl-variable &quot;state&quot;))))
-     ) (lambda (x) (make element gi: &apos;output
+             ((sxpath '(content-type)) (xsl-variable "state"))))
+     ) (lambda (x) (make element gi: 'output
          attributes:
-         `((media-type ,(data ((sxpath &apos;(content-type))
-                               (xsl-variable &quot;state&quot;))))
-           (method &quot;text&quot;))
+         `((media-type ,(data ((sxpath '(content-type))
+                               (xsl-variable "state"))))
+           (method "text"))
          x)))
- (data ((sxpath &apos;(body)) (xsl-variable &quot;state&quot;))))
-"></d:copy-of>
+ (data ((sxpath '(body)) (xsl-variable "state"))))
+</d2:copy-of>
  </xsl:variable>
  <xsl:variable name="cursor">
 <!-- the place *to* send the message to -->
-  <d:copy-of select=" (node-list-first
-                       ((sxpath &apos;(to)) (xsl-variable &quot;state&quot;)))"></d:copy-of>
+  <d2:copy-of>(node-list-first ((sxpath '(to)) (xsl-variable "state")))</d2:copy-of>
  </xsl:variable>
- <xsl:variable name="action">
+ <xsl:variable name="action" select="$state/start-action/text()">
 <!-- the contract -->
-  <d:copy-of select="((sxpath &apos;(start-action *text*)) (xsl-variable &quot;state&quot;))"></d:copy-of>
  </xsl:variable>
  <xsl:variable name="component">
-  <d:copy-of select=" (node-list-first
-                       ((sxpath &apos;(component)) (xsl-variable &quot;state&quot;)))"></d:copy-of>
+  <d2:copy-of>(node-list-first ((sxpath '(component)) (xsl-variable "state")))</d2:copy-of>
  </xsl:variable>
  <xsl:variable name="write-cursor">
-  <d:copy-of select="
+  <d2:copy-of>
  (node-list-first
   (node-list
    (filter
     (lambda (x)
-      (not (member (data x) &apos;(&quot;&quot; &quot;None&quot;))))
-    (form-field &apos;to (current-node)))
-   ((sxpath  &apos;(to)) (xsl-variable &quot;state&quot;))))
-"></d:copy-of>
+      (not (member (data x) '("" "None"))))
+    (form-field 'to (current-node)))
+   ((sxpath  '(to)) (xsl-variable "state"))))
+  </d2:copy-of>
  </xsl:variable>
  <xsl:variable name="write-component">
-  <d:copy-of select="
+  <d2:copy-of>
  (node-list-first
   (node-list
-   (form-field &apos;component (current-node))
-   ((sxpath  &apos;(component)) (xsl-variable &quot;state&quot;))))
-"></d:copy-of>
+   (form-field 'component (current-node))
+   ((sxpath  '(component)) (xsl-variable "state"))))
+  </d2:copy-of>
  </xsl:variable>
  <xsl:variable name="evaluated">
   <d2:copy-of>
@@ -137,8 +135,8 @@ that you are not allowed to access this place.</p>
    </d:when>
    <d:when test="(not (service-level (self-reference)))">
     <xsl:choose>
-     <d:when test="(and (pair? (message-destination msg))
-        (not (equal? (car (message-destination msg)) &quot;&quot;)))">
+     <d:when test="(and (pair? (message-destination (current-message)))
+        (not (equal? (car (message-destination (current-message))) &quot;&quot;)))">
       <mind:forward></mind:forward>
      </d:when>
      <d:when test="(link-ref &quot;index.html&quot;)">
@@ -155,24 +153,24 @@ that you are not allowed to access this place.</p>
     </xsl:choose>
    </d:when>
    <d:when test="
-   (and (not (is-propfind-request? msg))
-    (let* ((dst (message-destination msg))
+   (and (not (is-propfind-request? (current-message)))
+    (let* ((dst (message-destination (current-message)))
            (tgt (and (not (null? dst)) (car dst))))
        (or (equal? tgt (data ((sxpath &apos;(to)) (xsl-variable &quot;state&quot;))))
            (equal? tgt (data ((sxpath &apos;(component)) (xsl-variable &quot;state&quot;)))))))">
     <xsl:choose>
      <d:when test="(pair? (cdr (message-destination msg)))">
       <xsl:call-template name="edit-document">
-       <d:copy-of select="
+       <d2:copy-of>
       `(*TOP*
-         (@ (@ (*NAMESPACES* (form &quot;http://www.askemos.org/2000/NameSpaceHTMLForm&quot;))))
+         (@ (@ (*NAMESPACES* (form "http://www.askemos.org/2000/NameSpaceHTMLForm"))))
          (form:form
-           (action &quot;accept&quot;)
-           (input . ,(if (equal? (data (xsl-variable &quot;cursor&quot;)) &quot;&quot;)
+           (action "accept")
+           (input . ,(if (equal? (data (xsl-variable "cursor")) "")
                          (grove-root (current-node))
-                         (fetch (data (xsl-variable &quot;cursor&quot;)))))
-           (edit-state &quot;no&quot;)))
-       "></d:copy-of>
+                         (fetch (data (xsl-variable "cursor")))))
+           (edit-state "no")))
+       </d2:copy-of>
       </xsl:call-template>
      </d:when>
      <xsl:otherwise>
@@ -180,12 +178,12 @@ that you are not allowed to access this place.</p>
      </xsl:otherwise>
     </xsl:choose>
    </d:when>
-   <d:when test="(and (pair? (message-destination msg))
-        (not (equal? (car (message-destination msg)) &quot;&quot;)))">
+   <d:when test="(and (pair? (message-destination (current-message)))
+        (not (equal? (car (message-destination (current-message))) &quot;&quot;)))">
     <mind:forward></mind:forward>
    </d:when>
-   <d:when test="(is-propfind-request? msg)">
-    <d:copy-of select="dav-propfind-reply me msg collection: #t"></d:copy-of>
+   <d:when test="(is-propfind-request? (current-message))">
+    <d:copy-of select="dav-propfind-reply (current-place) (current-message) collection: #t"></d:copy-of>
    </d:when>
    <d:when test="(is-meta-form? msg)">
     <meta:view xmlns:meta="http://askemos.org/BALL/Meta/2012#"></meta:view>
@@ -277,15 +275,15 @@ Braucht man nur einige, dann ist 'cons' entsprechend zu ersetzen.
            <tr>
             <td>None</td>
             <td>
-             <d:copy-of select="
+             <d2:copy-of>
 (let ((x `((value ,(data (current-node)))
-           (type &quot;radio&quot;) (name &quot;to&quot;))))
-(make element gi: &apos;input attributes:
+           (type "radio") (name "to"))))
+(make element gi: 'input attributes:
  (if (equal? (data (current-node))
-             (data (xsl-variable &quot;cursor&quot;)))
-     `((checked &quot;checked&quot;) . ,x)
+             (data (xsl-variable "cursor")))
+     `((checked "checked") . ,x)
       x)))
-"></d:copy-of>
+</d2:copy-of>
             </td>
             <td></td>
             <td>
@@ -301,26 +299,26 @@ Braucht man nur einige, dann ist 'cons' entsprechend zu ersetzen.
               </d:a>
              </td>
              <td>
-              <d:copy-of select="
+              <d2:copy-of>
 (let ((x `((value ,(data (current-node)))
-           (type &quot;radio&quot;) (name &quot;to&quot;))))
-(make element gi: &apos;input attributes:
+           (type "radio") (name "to"))))
+(make element gi: 'input attributes:
  (if (equal? (data (current-node))
-             (data (xsl-variable &quot;cursor&quot;)))
-     `((checked &quot;checked&quot;) . ,x)
+             (data (xsl-variable "cursor")))
+     `((checked "checked") . ,x)
       x)))
-"></d:copy-of>
+</d2:copy-of>
              </td>
              <td>
-              <d:copy-of select="
+              <d2:copy-of>
 (let* ((l (literal (link-ref (data (current-node)))))
        (x `((value ,l)
-           (type &quot;radio&quot;) (name &quot;start-action&quot;))))
-(make element gi: &apos;input attributes:
- (if (equal? l (data (xsl-variable &quot;action&quot;)))
-     `((checked &quot;checked&quot;) . ,x)
+           (type "radio") (name "start-action"))))
+(make element gi: 'input attributes:
+ (if (equal? l (data (xsl-variable "action")))
+     `((checked "checked") . ,x)
       x)))
-"></d:copy-of>
+</d2:copy-of>
              </td>
              <td>
               <small>
@@ -364,21 +362,18 @@ Braucht man nur einige, dann ist 'cons' entsprechend zu ersetzen.
               <d:copy-of select="(attribute-string &apos;name  (current-node))"></d:copy-of>
              </td>
              <td>
-              <d:copy-of select="
-(let ((x `((value ,(attribute-string &apos;name (current-node)))
-           (type &quot;radio&quot;) (name &quot;component&quot;))))
-(make element gi: &apos;input attributes:
- (if (equal? (attribute-string &apos;name (current-node))
-             (data  (xsl-variable &quot;component&quot;)))
-     `((checked &quot;checked&quot;) . ,x)
+              <d2:copy-of>
+(let ((x `((value ,(attribute-string 'name (current-node)))
+           (type "radio") (name "component"))))
+(make element gi: 'input attributes:
+ (if (equal? (attribute-string 'name (current-node))
+             (data  (xsl-variable "component")))
+     `((checked "checked") . ,x)
       x)))
-"></d:copy-of>
+</d2:copy-of>
              </td>
              <td>
-              <d:copy-of select="(map
- xml-comment-data
- ((sxpath &apos;((*comment* 1))) (current-node)))
-"></d:copy-of>
+              <d2:copy-of>(map xml-comment-data ((sxpath '((*comment* 1))) (current-node)))</d2:copy-of>
              </td>
              <td>
               <d:input name="delete" type="checkbox" d:value="(data (current-node))"></d:input>
@@ -389,10 +384,8 @@ Braucht man nur einige, dann ist 'cons' entsprechend zu ersetzen.
          </fieldset>
         </d:if>
         <d:if test="((pcre &quot;modify&quot;) ((sxpath &apos;(view)) (xsl-variable &quot;state&quot;)))">
-         <label>Content-Type<input name="content-type" size="30" type="text"><xsl:attribute name="value"><d:copy-of select="
- (data ((sxpath &apos;(content-type)) (xsl-variable &quot;state&quot;)))
-"></d:copy-of></xsl:attribute></input></label>
-         <label>Type<input name="type" size="30" type="text"><xsl:attribute name="value"><d:copy-of select="((sxpath &apos;(type)) (xsl-variable &quot;state&quot;))"></d:copy-of></xsl:attribute></input></label>
+         <label>Content-Type<input name="content-type" size="30" type="text"><xsl:attribute name="value"><xsl:copy-of select="$state/content-type"></xsl:copy-of></xsl:attribute></input></label>
+         <label>Type<input name="type" size="30" type="text"><xsl:attribute name="value"><xsl:copy-of select="$state/type"></xsl:copy-of></xsl:attribute></input></label>
         </d:if>
        </fieldset>
       </d:form>
@@ -430,9 +423,7 @@ Braucht man nur einige, dann ist 'cons' entsprechend zu ersetzen.
            <input name="action" type="submit" value="save"></input>
            <br></br>
            <textarea cols="72" name="body" rows="25">
-            <d:copy-of select="#CONTENT">
-    (literal (data ((sxpath '(body)) (xsl-variable "state"))))
-       </d:copy-of>
+            <xsl:copy-of select="$state/body/text()"></xsl:copy-of>
            </textarea>
           </xsl:otherwise>
          </xsl:choose>
@@ -455,16 +446,11 @@ Braucht man nur einige, dann ist 'cons' entsprechend zu ersetzen.
            <input name="action" type="submit" value="save"></input>
            <input name="action" type="submit" value="set-value"></input>
            <br></br>
-           <textarea cols="72" name="expression" rows="15">
-            <d:copy-of select="#CONTENT">
-    (literal
-   (data (children ((sxpath '(expression)) (xsl-variable "state")))))
-       </d:copy-of>
-           </textarea>
+           <textarea cols="72" name="expression" rows="15"><xsl:copy-of select="$state/expression/text()"/></textarea>
           </d:form>
           <h2>Result:</h2>
           <pre>
-           <d:copy-of select="(xsl-variable &quot;evaluated&quot;)"></d:copy-of>
+           <xsl:copy-of select="$evaluated"></xsl:copy-of>
           </pre>
          </fieldset>
         </d:when>
@@ -490,6 +476,12 @@ Braucht man nur einige, dann ist 'cons' entsprechend zu ersetzen.
  </xsl:template>
  <xsl:template match="request[@type=&quot;write&quot;]">
   <xsl:choose>
+   <d:when test=" (eq? &apos;grant (gi (children (current-node)))) ">
+    <mind:reply>
+     <xsl:copy-of select="grant/right"></xsl:copy-of>
+     <mind:output method="xml"></mind:output>
+    </mind:reply>
+   </d:when>
    <d:when test="(not (or (service-level (self-reference)) (error &quot;privat property&quot;)))"></d:when>
    <d:when test="(and-let*
  ((dst (message-destination msg))
@@ -499,137 +491,131 @@ Braucht man nur einige, dann ist 'cons' entsprechend zu ersetzen.
 ">
     <mind:forward></mind:forward>
    </d:when>
-   <d:when test=" (eq? &apos;grant (gi (children (current-node)))) ">
-    <mind:reply>
-     <d:copy-of select="((sxpath &apos;(grant right)) (current-node))"></d:copy-of>
-     <mind:output method="xml"></mind:output>
-    </mind:reply>
-   </d:when>
    <d:when test="(is-meta-form? msg)">
     <meta:control xmlns:meta="http://askemos.org/BALL/Meta/2012#"></meta:control>
    </d:when>
    <xsl:otherwise>
     <xsl:variable name="state">
      <editor:state>
-      <d:copy-of select="#CONTENT">
-     (let ((default
-        (lambda (node)
-           (let ((ff (form-field (gi node) (current-node))))
-             (cond
-              ((eq? (gi node) 'view)
-               (make element gi: 'view
-                 (if (equal? (data (form-field 'open (current-node))) "close")
-                     (empty-node-list)
-                     (node-list (form-field 'open (current-node)) (children node)))))
-              ((node-list-empty? ff) node)
-              ((eq? (gi node) 'body)
-               (make element gi: (gi node)
-                     attributes: (copy-attributes node)
-                     (children ff)))
-              ((eq? (gi node) 'to)
-               (make element gi: 'to
-                (data (node-list-first
-                       (filter (lambda (x)
-                                (not (member (data x) '("" "None"))))
-                               ff)))))
-              (else ff))))))
-      (node-list-map
-       (cond
-        ;; Direct write of the message body at "index.html".
-        ((equal? (let ((dst (message-destination msg)))
-2                   (and (not (null? dst)) (car dst)))
-                 "index.html")
-         (lambda (n)
-           (if (eq? (gi n) 'body)
-               (make element
-                 gi: (gi n) ns: (ns n) attributes: '((xml space "preserve"))
-                 (literal (message-body/plain msg)))
-               n)))
-        ;; set-value
-        ((equal? (data (form-field 'action (current-node)))
-                 "set-value")
-         (lambda (n)
-           (if (eq? (gi n) 'body)
-               (make element
-                 gi: (gi n) ns: (ns n) attributes: '((xml space "preserve"))
-                 (xsl-variable "evaluated"))
-               n)))
-        ;; The file upload box.
-        ((and (node-list-empty?
-               (form-field 'content-type (current-node)))
-              (not (node-list-empty?
-                    (form-field 'body (current-node)))))
-         (let* ((body (form-field 'body (current-node)))
-                (ct (and (match-element?
-                          'output (document-element (children body)))
-                         (attribute-string
-                          'media-type (document-element (children body)))
-                         )))
-           (lambda (n)
-             (case (gi n)
-               ((body) (make element gi: 'body attributes: '((xml space "preserve")) (data body)))
-               ((content-type)
-                (if ct
-                    (make element gi: (gi n) (literal ct))
-                    n))
-               (else n)))))
-        ;; crude approach to "load"
-        ((equal? (data (form-field 'action (current-node)))
-                 "load")
-         (let* ((from (data (xsl-variable "write-component")))
-                (wp (data (xsl-variable "write-cursor")))
-                (input (document-element (if (link-ref wp) (fetch wp) (grove-root (current-node)))))
-                (component ((sxpath `((* (@ (equal? (name ,from)))))) input))
-                (node (if (or (node-list-empty? component)
-                              (not ((pcre "components") ((sxpath '(view)) (xsl-variable "state"))))
-                              ) input component))
-                (ct (or (attribute-string 'media-type node)
-                        "text/xml")))
-           (lambda (n)
-             (case (gi n)
-               ((body)
-                (make
-                  element gi: (gi n)
-                  attributes: (copy-attributes n)
-                  (if ((pcre "xml") ct)
-                      (xml-format (make element
-                                     gi: (gi node)
-                                     ns: (ns node)
-                                     attributes:
-                                     (if (eq? component node)
-                                         (append (copy-attributes node)
-                                                 (copy-attributes (grove-root (current-node))) )
-                                          (copy-attributes node))
-                                     (children node)))
-                      ((or (mime-cast ct "text/xml") (lambda (x) x))
-                       (children node)))))
-               ((content-type)
-                (if ct
-                    (make element gi: (gi n) (literal ct))
-                    n))
-               (else (default n))))))
-        ;; All form fields
-        (else default))
-        (let ((state ((sxpath '(state)) (grove-root (current-node)))))
-          (node-list-map (lambda (schema)
-                           (let ((old ((sxpath (list (gi schema))) state)))
-                             (if (node-list-empty? old) schema old)))
-                         (xsl-variable "state-schema")))))
-      </d:copy-of>
+      <d2:copy-of>
+(let ((default
+   (lambda (node)
+      (let ((ff (form-field (gi node) (current-node))))
+        (cond
+         ((eq? (gi node) 'view)
+          (make element gi: 'view
+            (if (equal? (data (form-field 'open (current-node))) "close")
+                (empty-node-list)
+                (node-list (form-field 'open (current-node)) (children node)))))
+         ((node-list-empty? ff) node)
+         ((eq? (gi node) 'body)
+          (make element gi: (gi node)
+                attributes: (copy-attributes node)
+                (children ff)))
+         ((eq? (gi node) 'to)
+          (make element gi: 'to
+           (data (node-list-first
+                  (filter (lambda (x)
+                           (not (member (data x) '("" "None"))))
+                          ff)))))
+         (else ff))))))
+ (node-list-map
+  (cond
+   ;; Direct write of the message body at "index.html".
+   ((equal? (let ((dst (message-destination msg)))
+              (and (not (null? dst)) (car dst)))
+            "index.html")
+    (lambda (n)
+      (if (eq? (gi n) 'body)
+          (make element
+            gi: (gi n) ns: (ns n) attributes: '((xml space "preserve"))
+            (literal (message-body/plain msg)))
+          n)))
+   ;; set-value
+   ((equal? (data (form-field 'action (current-node)))
+            "set-value")
+    (lambda (n)
+      (if (eq? (gi n) 'body)
+          (make element
+            gi: (gi n) ns: (ns n) attributes: '((xml space "preserve"))
+            (xsl-variable "evaluated"))
+          n)))
+   ;; The file upload box.
+   ((and (node-list-empty?
+          (form-field 'content-type (current-node)))
+         (not (node-list-empty?
+               (form-field 'body (current-node)))))
+    (let* ((body (form-field 'body (current-node)))
+           (ct (and (match-element?
+                     'output (document-element (children body)))
+                    (attribute-string
+                     'media-type (document-element (children body)))
+                    )))
+      (lambda (n)
+        (case (gi n)
+          ((body) (make element gi: 'body attributes: '((xml space "preserve")) (data body)))
+          ((content-type)
+           (if ct
+               (make element gi: (gi n) (literal ct))
+               n))
+          (else n)))))
+   ;; crude approach to "load"
+   ((equal? (data (form-field 'action (current-node)))
+            "load")
+    (let* ((from (data (xsl-variable "write-component")))
+           (wp (data (xsl-variable "write-cursor")))
+           (input (document-element (if (link-ref wp) (fetch wp) (grove-root (current-node)))))
+           (component ((sxpath `((* (@ (equal? (name ,from)))))) input))
+           (node (if (or (node-list-empty? component)
+                         (not ((pcre "components") ((sxpath '(view)) (xsl-variable "state"))))
+                         ) input component))
+           (ct (or (attribute-string 'media-type node)
+                   "text/xml")))
+      (lambda (n)
+        (case (gi n)
+          ((body)
+           (make
+             element gi: (gi n)
+             attributes: (copy-attributes n)
+             (if ((pcre "xml") ct)
+                 (xml-format (make element
+                                gi: (gi node)
+                                ns: (ns node)
+                                attributes:
+                                (if (eq? component node)
+                                    (append (copy-attributes node)
+                                            (copy-attributes (grove-root (current-node))) )
+                                     (copy-attributes node))
+                                (children node)))
+                 ((or (mime-cast ct "text/xml") (lambda (x) x))
+                  (children node)))))
+          ((content-type)
+           (if ct
+               (make element gi: (gi n) (literal ct))
+               n))
+          (else (default n))))))
+   ;; All form fields
+   (else default))
+   (let ((state ((sxpath '(state)) (grove-root (current-node)))))
+     (node-list-map (lambda (schema)
+                      (let ((old ((sxpath (list (gi schema))) state)))
+                        (if (node-list-empty? old) schema old)))
+                    (xsl-variable "state-schema")))))
+      </d2:copy-of>
      </editor:state>
     </xsl:variable>
     <xsl:variable name="result-document">
      <xsl:call-template name="edit-document">
-      <d:copy-of select="
+      <d:copy-of select="#CONTENT">
       `(*TOP*
-         (@ (@ (*NAMESPACES* (form &quot;http://www.askemos.org/2000/NameSpaceHTMLForm&quot;))))
+         (@ (@ (*NAMESPACES* (form "http://www.askemos.org/2000/NameSpaceHTMLForm"))))
          (form:form
-           (action &quot;accept&quot;)
-           (input . ,(if (equal? (data (xsl-variable &quot;cursor&quot;)) &quot;&quot;)
+           (action "accept")
+           (input . ,(if (equal? (data (xsl-variable "cursor")) "")
                          (grove-root (current-node))
-                         (document-element (fetch (data (xsl-variable &quot;cursor&quot;))))))
-           (edit-state &quot;no&quot;)))
-      "></d:copy-of>
+                         (document-element (fetch (data (xsl-variable "cursor"))))))
+           (edit-state "no")))
+      </d:copy-of>
      </xsl:call-template>
     </xsl:variable>
     <mind:reply>
@@ -664,73 +650,68 @@ Braucht man nur einige, dann ist 'cons' entsprechend zu ersetzen.
                        (make element gi: (data (form-field 'gi (current-node)))
                                      ns: 'http://www.w3.org/1999/XSL/Transform
                                      attributes: `((name ,(data (form-field 'name (current-node)))))))
-            new))))
-   </d:copy-of>
+            new))))</d:copy-of>
      </mind:become>
-     <d:if test="(equal? (data (form-field &quot;action&quot; (current-node))) &quot;send&quot;)">
+     <xsl:if test="form/action=&quot;send&quot;)">
       <mind:send type="write">
-       <d:copy-of select="(xsl-variable &quot;cursor&quot;)"></d:copy-of>
+       <xsl:copy-of select="$cursor"></xsl:copy-of>
        <Body>
-        <d:copy-of select="(xsl-variable &quot;result-document&quot;)"></d:copy-of>
+        <xsl:copy-of select="$result-document"></xsl:copy-of>
        </Body>
       </mind:send>
-     </d:if>
-     <d:if test="(equal? (data (form-field &quot;action&quot; (current-node))) &quot;start&quot;)">
+     </xsl:if>
+     <xsl:if test="form/action=&apos;start&apos;">
       <mind:link name="last">
        <mind:new>
         <xsl:attribute name="action">
          <xsl:copy-of select="$action"></xsl:copy-of>
         </xsl:attribute>
         <xsl:attribute name="protection">
-         <d:copy-of select="(right-&gt;string (message-protection me))"></d:copy-of>
+         <d:copy-of select="(right-&gt;string (message-protection (current-place)))"></d:copy-of>
         </xsl:attribute>
 <!--
         <xsl:attribute name="initialize">true</xsl:attribute>-->
-        <d:copy-of select="(xsl-variable &quot;result-document&quot;)"></d:copy-of>
+        <xsl:copy-of select="$result-document"></xsl:copy-of>
        </mind:new>
       </mind:link>
-     </d:if>
-     <d:if test="(equal? (data (form-field &quot;action&quot; (current-node))) &quot;file&quot;)">
+     </xsl:if>
+     <xsl:if test="form/action=&quot;file&quot;">
 <!-- action="public/private" -->
       <mind:link name="last">
        <mind:new action="public/private">
         <xsl:attribute name="protection">
          <d:copy-of select="
-(right-&gt;string (append (message-protection me) (list (public-oid))))
+(right-&gt;string (append (message-protection (current-place)) (list (public-oid))))
 "></d:copy-of>
         </xsl:attribute>
-        <d:copy-of select="(xsl-variable &quot;result-document&quot;)"></d:copy-of>
+        <xsl:copy-of select="$result-document"></xsl:copy-of>
        </mind:new>
       </mind:link>
-     </d:if>
-     <d:if test="(equal? (data (form-field &quot;action&quot; (current-node))) &quot;publish&quot;)">
+     </xsl:if>
+     <xsl:if test="form/action=&quot;publish&quot;)">
 <!-- action="public/private" -->
       <mind:link name="last">
        <mind:new action="public">
         <xsl:attribute name="protection">
          <d:copy-of select="
-(right-&gt;string (append (message-protection me) (list (public-oid))))
+(right-&gt;string (append (message-protection (current-place)) (list (public-oid))))
 "></d:copy-of>
         </xsl:attribute>
-        <d:copy-of select="(xsl-variable &quot;result-document&quot;)"></d:copy-of>
+        <xsl:copy-of select="$result-document"></xsl:copy-of>
        </mind:new>
       </mind:link>
-     </d:if>
-     <d:if test="(equal? (data (form-field &quot;action&quot; (current-node))) &quot;rename&quot;)">
+     </xsl:if>
+     <xsl:if test="form/action=&quot;rename&quot;)">
 <!-- action="public/private" -->
-      <d:link d:name="(data (xsl-variable &quot;write-cursor&quot;))">
+      <d:link xsl:name="$write-cursor">
        <mind:id>
-        <d:copy-of select="(literal (link-ref &quot;last&quot;))"></d:copy-of>
+        <d2:copy-of>(literal (link-ref "last"))</d2:copy-of>
        </mind:id>
       </d:link>
-     </d:if>
-     <d:for-each select="(form-field &apos;delete (current-node))">
-      <mind:link>
-       <xsl:attribute name="name">
-        <d:copy-of select="(data (current-node))"></d:copy-of>
-       </xsl:attribute>
-      </mind:link>
-     </d:for-each>
+     </xsl:if>
+     <xsl:for-each select="form/delete">
+      <d2:link xsl:name="."></d2:link>
+     </xsl:for-each>
     </mind:reply>
    </xsl:otherwise>
   </xsl:choose>

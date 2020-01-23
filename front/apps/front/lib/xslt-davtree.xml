@@ -25,7 +25,7 @@
   (cons (attribute-string &apos;resource (current-node))
         (reverse (message-destination msg)))
   (message-location msg)))">
-       <b:copy-of>attribute-string 'resource (current-node)</b:copy-of>
+       <xsl:copy-of select="@resource"/>
       </d:a>
      </xsl:otherwise>
     </xsl:choose>
@@ -65,12 +65,12 @@
    <td title="OID">
     <small>
      <code>
-      <b:copy-of>attribute-string 'href current-node()</b:copy-of>
+      <xsl:copy-of select="@href" />
      </code>
     </small>
    </td>
    <td>
-    <d:input name="delete" type="checkbox" d:value="(attribute-string &apos;resource (current-node))"></d:input>
+    <d:input name="delete" type="checkbox" xsl:value="@resource"></d:input>
    </td>
   </tr>
   <tr class="propln">
@@ -131,10 +131,7 @@ or
           (if (and (pair? d) (string-null? (car d))) '() d)))
    )</b:copy-of>
     </xsl:variable>
-    <xsl:variable name="childs">
-     <d:copy-of select="((sxpath &apos;(* links Bag li))
-  (xsl-variable &quot;metainfo&quot;))"></d:copy-of>
-    </xsl:variable>
+    <xsl:variable name="childs" select="$metainfo/*/links/Bag/li"/>
     <xsl:variable name="obj">
      <d:copy-of select="fetch identity (cons &quot;objects&quot;
    (let ((d (message-destination msg) ))
@@ -148,7 +145,7 @@ or
   ((sxpath &apos;(* properties prop resourcetype collection))
    (xsl-variable &quot;metainfo&quot;))
 ">
-      <d:copy-of select="xsl-variable &quot;obj&quot;"></d:copy-of>
+      <xsl:copy-of select="$obj"></xsl:copy-of>
      </d:when>
      <xsl:otherwise>
       <html xmlns="http://www.w3.org/1999/xhtml">

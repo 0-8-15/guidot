@@ -30,11 +30,12 @@ catch (Exception e) {
     e.printStackTrace(System.err);
 }
 */
-idle_tmScheduleRate = 100;
+idle_tmScheduleRate = 50;
 
-if (!OrbotHelper.get(this).init()) {
-    OrbotHelper.get(this).installOrbot(this);
+/* Optional
+if(!checkOrRequestPermission(android.Manifest.permission.INTERNET)) {
+    ln_log("Failed to get permission \"" + android.Manifest.permission.INTERNET + "\"");
+} else {
+    ln_log("with permission \"" + android.Manifest.permission.INTERNET + "\"");
 }
-
-ensureOrbotRunning();
-
+// Optional End */

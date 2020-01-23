@@ -37,7 +37,7 @@ in step 1):
    <d:form method="post" d:action="(write-locator (list (self-reference)))">
     <legend>Kurznachricht senden</legend>
     <input name="action" type="hidden" value="sms"></input>
-    <input maxlength="160" name="sms" size="65" type="text"></input>
+    <input maxlength="160" name="sms" size="65" type="text" autocomplete="off"></input>
     <input type="submit" value="send"></input>
    </d:form>
   </fieldset>
@@ -59,8 +59,9 @@ in step 1):
     </rdf:RDF>
    </d:when>
    <d:when test="(not (service-level (self-reference)))">
-    <html>
+    <html xmlns="http://www.w3.org/1999/xhtml">
      <head>
+      <meta content="text/html; charset=UTF-8" http-equiv="Content-Type"></meta>
       <title>SMS senden</title>
      </head>
      <body>
@@ -104,13 +105,13 @@ in step 1):
 </style>
       </head>
       <body bgcolor="white">
-       <d:copy-of select="((sxpath &apos;(headline)) (grove-root (current-node)))"></d:copy-of>
+       <d:copy-of select="((sxpath &apos;(headline *)) (grove-root (current-node)))"></d:copy-of>
        <div>
         <d:form method="post">
          <fieldset>
           <legend>selbst Kurznachricht senden</legend>
           <input name="action" type="hidden" value="sms"></input>
-          <input maxlength="160" name="sms" size="75" type="text"></input>
+          <input maxlength="160" name="sms" size="75" type="text" autocomplete="off"></input>
          </fieldset>
         </d:form>
         <p align="right"><d:a d:href='read-locator body: "xmlns=a"'>meta</d:a></p>

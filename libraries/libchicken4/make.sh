@@ -74,12 +74,14 @@ EXTRACONF="PROGRAM_SUFFIX=$PROGRAM_SUFFIX"
 
 if [ "$SYS_PLATFORM" != "$SYS_HOSTPLATFORM" ]; then
 
+  vecho "Bulding cross compiler from ${SYS_HOST_PLATFORM} to ${SYS_PLATFORM}"
+
   # package_download $PKGURL $PKGHASH
   # package_patch
 
   make PLATFORM=`C_PLATFORM $SYS_PLATFORM` confclean
 
-  EXTRACONF="$EXTRACONF TARGET_C_COMPILER=$lncc TARGET_CXX_COMPILER{$lncc}++"
+  EXTRACONF="$EXTRACONF TARGET_C_COMPILER=$lncc TARGET_CXX_COMPILER=${lncc}++"
 
   EXTRACONF="$EXTRACONF TARGETSYSTEM=$SYS_ARCH PROGRAM_PREFIX=$SYS_ARCH- PREFIX=$SYS_HOSTPREFIX TARGET_PREFIX=$SYS_PREFIX TARGET_RUN_PREFIX=$SYS_PREFIX"
 
@@ -88,7 +90,11 @@ if [ "$SYS_PLATFORM" != "$SYS_HOSTPLATFORM" ]; then
 
   # echo waiting in `pwd` after building the target libraries ; bash || exit 1
 
+else
+  vecho "No cross compiler since '${SYS_HOST_PLATFORM}' matches '${SYS_PLATFORM}'"
 fi
+
+# echo waiting in `pwd` after building CHICKEN ; bash || exit 1
 
 unset PROGRAM_SUFFIX
 unset EXTRACONF

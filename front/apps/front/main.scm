@@ -2,13 +2,16 @@
 
 (set!
  thread-sleep!
- (let ((thread-sleep! thread-sleep!))
+ (let ((thread-sleep! thread-sleep!)
+       (short-time (cond-expand
+                    (android 0.3)
+                    (else 0.01))))
    (lambda (t)
      (let ((t0 (current-second)))
        (thread-sleep! t)
        (let* ((t1 (current-second))
               (delta (- t1 t0)))
-         (if (> (abs (- t delta)) (* 0.3 t))
+         (if (> (abs (- t delta)) (max short-time (* 0.3 t)))
              (log-error "Error in thread sleep, sleeping for " t " took " delta)))))))
 
 (cond-expand
@@ -21,31 +24,25 @@
  (else))
 
 (define (android-directory-files)
-  ((c-lambda () char-string "___result=
+  ((c-lambda () char-string "
 #ifdef ANDROID
-android_get_getFilesDir();
+extern char *android_getFilesDir();
+#endif
+___result=
+#ifdef ANDROID
+android_getFilesDir();
 #else
 NULL;
 #endif
 ")))
 
+(include "jscheme.scm")
+
 (cond-expand
  (android
   (let ((ot terminate)) (set! terminate (lambda () (log-error "No terminate on Android!") #f)))
-  (define (orbot-running?)
-    (let ((v ((c-lambda () int "___result=orbot_is_running();"))))
-      (case v
-        ((0) #f)
-        ((1) #t)
-        ((-1)
-         (log-error "orbot_is_running failed to locate Java part")
-         #f)
-        (else (log-error "orbot_is_running returned unhandled code" v)))))
-  (define orbot-running! (c-lambda () void "orbot_ensure_running();"))
   )
  (else
-  (define (orbot-running?) #f)
-  (define (orbot-running!) #f)
   ))
 
 (define (migrate-data-to-protected-space!)
@@ -58,15 +55,12 @@ NULL;
         (run/boolean 'mv source target)
         #t)))
 
-(define (kernel-start-custom-services!)
-  (hook-run kernel-on-start))
-
 (define (kernel-send-idle)
-  (cond-expand
+  #;(cond-expand
    (android
     (unless (orbot-running?)
             (log-error "Orbot not running")
-            #;(orbot-running!)))
+            (orbot-running!)))
    (else))
   (kernel-control-send! 'idle))
 
@@ -81,7 +75,29 @@ NULL;
   (unless (call-kernel "support" from name remote)
 	  (error "failed to support" from name remote)))
 
+(define (is-garlic? name) (and name (string-suffix? ".i2p" name)))
 (define (is-onion? name) (string-suffix? ".onion" name))
+
+(define (is-allioideae? name) (or (is-onion? name) (is-garlic? name)))
+
+;; `documented-external-https-port` is actually a constant and maybe
+;; should be(come) a macro.
+;;
+;; We need this because so far we can't make Android I2P use a
+;; different external port than the one we forward to.
+(define (documented-external-https-port) 7443)
+
+(define (kernel-config-socks-script cn)
+  `(if ,(is-allioideae? cn)
+       (begin
+         ($https-use-socks4a #t)
+         ($https-socks4a-server ,(if (is-garlic? cn) "127.0.0.1:9051" "127.0.0.1"))
+         ($external-port 443)
+         ($external-address ,cn))
+       (begin
+         ($external-port ,(documented-external-https-port))
+         ($external-address ,(if (ipv6-address/port? cn) cn #f))
+         ($https-use-socks4a 'maybe))))
 
 (define (kernel-send-set-auth kind user password cn)
   (unless (call-kernel
@@ -90,11 +106,7 @@ NULL;
                  (begin
                    ;; not exported ($tc-tofu ,(equal? kind 'tofu))
                    (local-id ,cn)
-                   (if ,(is-onion? cn)
-                       (begin
-                         ($https-socks4a-server "127.0.0.1")
-                         ($external-port 443)
-                         ($external-address ,cn)))
+                   ,(kernel-config-socks-script cn)
                    (ball-save-config)
                    #t)))
 	  (error "failed to set auth" kind user cn)))
@@ -104,14 +116,16 @@ NULL;
     (cond
      ((not source) '(my-oid))
      ((string? source)
-      (if oid? `(string->oid ,source) `(entry-name->oid ,source)))
+      '(or `(string->oid ,source) `(entry-name->oid ,source)))
      (else source)))
   (define ff
     (if source
 	'`((,k ,v) . ,i)
 	'(if (equal? k "public") i `((,k ,v) . ,i))))
-  `(let ((links (fget (find-local-frame-by-id ,from 'gui-client) 'mind-links)))
-     (fold-links-sorted (lambda (k v i) ,ff) '() links)))
+  `(and-let* ((oid ,from)
+              (f (find-local-frame-by-id ,from 'gui-client))
+              (links (fget f 'mind-links)))
+             (fold-links-sorted (lambda (k v i) ,ff) '() links)))
 
 (define (kernel-initial-configuration cn logname)
   (call-kernel
@@ -127,12 +141,7 @@ NULL;
      ($http-client-connections-maximum 10)
      (respond-timeout-interval 20)
      ($broadcast-timeout 8)
-     (if ,(is-onion? cn)
-         (begin
-           ($https-use-socks4a #t)
-           ($https-socks4a-server "127.0.0.1")
-           ($external-port 443)
-           ($external-address ,cn)))
+     ,(kernel-config-socks-script cn)
      (ball-save-config)
      #; (logerr "Fixing protection on \"system\" to be usable by \"~a\"\n" ,logname)
      (let* ((sid (entry-name->oid "system"))
@@ -325,7 +334,7 @@ NULL;
 		   ($$ ,xml-parse ,(filedata ,sysinf))))
 		 )))))
 	(kernel-server
-	 fork-process
+	 fork-process #f ;; no watchdog
 	 "ball"
 	 "-init" kernel-data-directory rules
 	 "load" "-o" sysctrl syssetup
@@ -338,7 +347,12 @@ NULL;
              (begin (if large? (delete-file user-app)) #t)
              (kernel-initial-configuration CN logname)
              (kernel-additional-configuration logname large?)
-             (kernel-start-custom-services!)))))))
+             (begin
+               (hook-run kernel-on-init)
+               ;; Stop to be restarted as usual.
+               (kernel-server-kill!)
+               (kernel-server #t) ;; wait for it
+               #t)))))))
 
 (define in-initialization #f)
 
@@ -423,24 +437,30 @@ NULL;
 (define %local-void-value (list #!eof))
 (define (%is-local-void? value)
   (eq? value %local-void-value))
+(define %cached-kernel-values-hook (make-hook 1))
+(define (chached-kernel-values-flush!) (hook-run %cached-kernel-values-hook #t) #f)
 (define-macro (define-once/or name missing . body)
   (let ((refresh (gensym 'refresh))
-	(value (gensym name)))
+        (value (gensym name))
+        (proc (gensym name)))
     `(define ,name
-       (let ((,value %local-void-value))
-	 (lambda (#!optional (,refresh #f))
-	   (if ,refresh (set! ,value %local-void-value))
-	   (if (and (or (not ,value) (%is-local-void? ,value)) (not (eq? ,refresh 'void)))
-               (set! ,value (begin . ,body)))
-           ;; FIXME: That's a bit strange: these values can NOT be #f!!!
-	   (if (or (%is-local-void? ,value) (not ,value)) ,missing ,value))))))
+       (let* ((,value %local-void-value)
+              (,proc
+               (lambda (#!optional (,refresh #f))
+                 (if ,refresh (set! ,value %local-void-value))
+                 (if (and (or (not ,value) (%is-local-void? ,value)) (not (eq? ,refresh 'void)))
+                     (set! ,value (begin . ,body)))
+                 ;; FIXME: That's a bit strange: these values can NOT be #f!!!
+                 (if (or (%is-local-void? ,value) (not ,value)) ,missing ,value))))
+         (hook-add! %cached-kernel-values-hook ,proc)
+	 ,proc))))
 
 (define *entry-missing* "<Entry Missing>")
 
 (define-once/or local-connect-string *entry-missing*
   (and (check-kernel-server!)
-       (let ((ip (onion-address)))
-         (if ip (set! ip (ipconnect-string ip 443)))
+       (let ((ip (allioideae-address)))
+         (if ip (set! ip (ipconnect-string ip (if (is-allioideae? ip) 443 (external-https-port)))))
 	 (if ip
 	     (set! myip ip)
 	     (set! ip myip))
@@ -458,32 +478,37 @@ NULL;
 	 "Find Address")
     action
     ,(lambda ()
-       (unless (have-local-connect?)
-	       (when (and (check-kernel-server!)
-			  (eq? (local-connect-string #t) *entry-missing*))
-		     (set! myip (let ((myip (host-ipaddr)))
-                                  (and myip (ipconnect-string myip (external-https-port))))))
-	     (if (procedure? postproc) (postproc)))
+       (cond
+        ((have-local-connect?) (chached-kernel-values-flush!))
+        (else
+         (when (and (check-kernel-server!)
+                    (eq? (local-connect-string #t) *entry-missing*))
+               (set! myip (let ((myip (host-ipaddr)))
+                            (and myip (ipconnect-string myip (external-https-port))))))))
+       (if (procedure? postproc) (postproc))
        #f)))
 
 (define-macro (define-cached-kernel-value name valid? convert . query)
   (let ((cache (gensym name))
+        (proc (gensym name))
 	(reload (gensym))
 	(tmp (gensym)))
     `(define ,name
-       (let ((,cache %local-void-value))
-	 (lambda (#!optional (,reload #f))
-	   (if (or ,reload (%is-local-void? ,cache))
-	       (if (check-kernel-server!)
-		   (let ((,tmp (call-kernel . ,query)))
-		     (if (procedure? ,convert) (set! ,tmp (,convert ,tmp)))
-		     (if (or (not ,valid?) (,valid? ,tmp))
-			 (set! ,cache ,tmp)))))
-	   (if (%is-local-void? ,cache)
-	       (if (procedure? ,convert) (,convert) ,convert)
-	       ,cache))))))
+       (let* ((,cache %local-void-value)
+              (,proc (lambda (#!optional (,reload #f))
+                       (if (or ,reload (%is-local-void? ,cache))
+                           (if (check-kernel-server!)
+                               (let ((,tmp (call-kernel . ,query)))
+                                 (if (procedure? ,convert) (set! ,tmp (,convert ,tmp)))
+                                 (if (or (not ,valid?) (,valid? ,tmp))
+                                     (set! ,cache ,tmp)))))
+                       (if (%is-local-void? ,cache)
+                           (if (procedure? ,convert) (,convert) ,convert)
+                           ,cache))))
+         (hook-add! %cached-kernel-values-hook ,proc)
+         ,proc))))
 
-(define-cached-kernel-value onion-address
+(define-cached-kernel-value allioideae-address
   #f (lambda (#!optional (v #f)) (if (equal? v "") #f v))
   'begin '($external-address))
 
@@ -493,9 +518,9 @@ NULL;
 
 (define-cached-kernel-value main-entry #f #f 'begin '(mesh-cert-o (tc-private-cert)))
 
-(define-cached-kernel-value https-server-port #f 7443 'begin '($https-server-port))
+(define-cached-kernel-value https-server-port #f (documented-external-https-port) 'begin '($https-server-port))
 
-(define-cached-kernel-value external-https-port #f 7443 'begin '($external-port))
+(define-cached-kernel-value external-https-port #f (documented-external-https-port) 'begin '($external-port))
 
 (define (satellite-port) 8443)
 
@@ -551,9 +576,7 @@ NULL;
   `(begin
      (if ln-satellite
          (logerr "ln-satellite in ~a is already ~a\n" (current-process-id) ln-satellite)
-         (begin
-           (set! ln-satellite ,(start-satellite-script0 port name ssl))
-           (debug 'SatelliteIsNow ln-satellite)))
+         (set! ln-satellite ,(start-satellite-script0 port name ssl)))
      ,(add-guard-fail
        "overiding meta-interface failed"
        (override-meta-interface-script))
@@ -570,7 +593,7 @@ NULL;
 
 (define satellite-protocol #;'https 'http)
 
-(define (kernel-start-satellite!)
+(define (kernel-start-satellite!) ;; FIXME obsolete, remove
   (if (kernel-satellite-variable-exits)
       (log-error "kernel-start-satellite!: ln-satellite already defined")
       (call-kernel 'begin '(begin (define ln-satellite #f) #t)))
@@ -578,7 +601,51 @@ NULL;
    ;; unconditionally returning success here, is this corect?
    #t)
 
-(hook-add! kernel-on-start kernel-start-satellite!)
+(hook-add!
+ kernel-on-init
+ (lambda ()
+   (kernel-on-start-add!
+    "satellite"
+    `(begin
+       (if (not (guard
+                 (ex (else #f))
+                 ln-satellite ;; raises exception if not existing
+                 (logerr "ln-satellite already defined as ~a in process ~a\n" ln-satellite (current-process-id))
+                 #t))
+           (set! ln-satellite #f))
+       ,(start-satellite-script (satellite-port) "satellite" (eq? satellite-protocol 'https))))))
+
+(define (reset-kernel-logging! #!key (on log:on) (to log:file))
+  (call-kernel
+   'begin
+   `(begin
+      (spool-db-exec "create table if not exists appstates (name text unique not null, val text)")
+      (spool-db-exec/prepared "insert or replace into appstates (name, val) values ('logging', ?1)" ,(if on "yes" "no"))
+      (spool-db-exec/prepared "insert or replace into appstates (name, val) values ('error log', ?1)" ,to)
+      (spool-db-exec/prepared "insert or replace into appstates (name, val) values ('default log', ?1)" ,to))))
+
+(define (reset-logging!)
+  (log-reset!)
+  (reset-kernel-logging!)
+  (log-status "Log of " (public-oid) " " (allioideae-address))
+  (call-kernel 'begin '(log-reset!)))
+
+(hook-add!
+ kernel-on-init
+ (lambda ()
+   (reset-kernel-logging!)
+   (kernel-on-start-add!
+    "define (log-reset!)"
+    '(define (log-reset!)
+       (if (equal? (sql-ref (spool-db-select "select val from appstates where name = 'logging'") 0 0) "yes")
+           (let ((le (sql-ref (spool-db-select "select val from appstates where name = 'error log'") 0 0))
+                 (lo (sql-ref (spool-db-select "select val from appstates where name = 'default log'") 0 0)))
+             (when (file-exists? le)
+               (set-log-output! 'error le)
+               (set-log-output! 'output lo))))
+       #t))))
+
+(hook-add! kernel-on-init (lambda () (kernel-on-start-add! "redirect log" '(log-reset!))))
 
 (define (public-oid-string)
   (let ((v (public-oid)))
@@ -635,25 +702,34 @@ Is the service not yet running?")))
   (with-output-to-string
     (lambda ()
       (display (if https "https://" "http://"))
-      (cond
-       ((u8vector? ip)
-	(display (ipaddr->string ip))
-	#;(begin  ;; This works only for IPv4
+      (let ((ps (if (if https
+                        (= port 443)
+                        (= port 80))
+                    #f
+                    (lambda () (display ":") (display port)))))
+        (cond
+         ((u8vector? ip)
+          (display (ipaddr->string ip))
+          #;(begin  ;; This works only for IPv4
 	  (display (u8vector-ref ip 0))
 	  (do ((i 1 (+ 1 i)))
-	      ((= i 4))
-	    (display ".")
-	    (display (u8vector-ref ip i)))))
-       ((string? ip) (display ip)))
-      (unless (if https
-                  (= port 443)
-                  (= port 80))
-              (display ":")
-              (display port)))))
+          ((= i 4))
+          (display ".")
+          (display (u8vector-ref ip i)))))
+         ((string? ip)
+          (if (and ps (ipv6-address? ip))
+              (begin
+                (display #\[)
+                (display ip)
+                (display #\]))
+              (display ip))))
+        (if ps (ps))))))
 
 (define (local-map-entry-name->oid name default)
   (let ((e (assoc name (entry-points))))
     (if e (symbol->string (cadr e)) default)))
+
+(include "webview.scm")
 
 (define (local-launchurl #!optional (path #f) #!key (https (eq? satellite-protocol 'https)))
   (let ((path (or path
@@ -695,23 +771,24 @@ Is the service not yet running?")))
   ;; `file://` scheme with `file//` and prepends `http://`.
   (string-append "file://" (embedded-file '("lib" "help") page)))
 
-(define (copy-onion-address-to-db)
-  (when (and (onion-address)
+(define (copy-allioideae-address-to-db)
+  (when (and (allioideae-address)
              (not (member (dbget (dbget 'CN) #f) '(#f "localhost"))))
-        (dbset 'CN (onion-address))))
+        (dbset 'CN (allioideae-address))))
 
 (define (CN-entry-form-section)
   `((button text "Help on CN setup" action
             ,(lambda ()
-               (launch-url (help-url "onion-setup.html"))
+               (launch-url (help-url "allioideae-setup.html"))
                #f))
     (textentry id CN text "CN:")
     ,(lambda ()
-       (copy-onion-address-to-db)
+       (copy-allioideae-address-to-db)
        (if (clipboard-hascontent)
            `(button text "Paste From Clipboard" action
                     ,(lambda () (dbset 'CN (clipboard-paste)) #f))
-           '(label text "nothing to paste in clipboard")))))
+           '(label text "nothing to paste in clipboard")))
+    ))
 
 (define pages-again-hook #f)
 
@@ -776,7 +853,7 @@ Is the service not yet running?")))
 (define *other-pages*
   '(("Connections" connections)
     ("Status" status)
-    ("Onion" address)
+    ("Allioideae" address)
     ("Manage" manage)
     ("Debug" debug)
     ))
@@ -785,6 +862,9 @@ Is the service not yet running?")))
   (let ((e (assoc (uiget 'goto-location #f) *other-pages*)))
     (uiset 'goto-location #f)
     (and e (cadr e))))
+
+(define (show-start-stop-buttons?)
+  (or (not app:android?) (not-using-fork-alike)))
 
 (define (uiform:pages again)
   (define upnrunning (check-kernel-server!))
@@ -813,13 +893,14 @@ Is the service not yet running?")))
       ,@(cond
 	 ((rep-exists?)
 	  (if upnrunning
-	      `(,@(if (or app:android? (not-using-fork-alike)) '()
+	      `(,@(if (show-start-stop-buttons?)
 		      `((button h 75 size header #;(indent 0.05) rounded #f text "Stop" action
 				,(lambda ()
 				   (stop-kernel-server!)
 				   (uiform:pages again)
 				   'main))
-			(spacer)))
+			(spacer))
+                      '())
 		(dropdown indent 0.05 text "Go to" id browse-path location ui entries ,(interesting-pages))
 		(button h 75 size header #;(indent 0.05) rounded #f text "Start Browser" action ,local-launchurl)
 		(spacer)
@@ -833,11 +914,11 @@ Is the service not yet running?")))
                      (lambda ()
                        (thread-start! (make-thread start-kernel-server! 'starting))
                        'starting)))
-                (if app:android?
-                    `((redirect action ,kick-start))
+                (if (show-start-stop-buttons?)
                     `((button h 75 size header #;(indent 0.05) rounded #f text "Start" action ,kick-start)
                       (spacer)
-                      (button h 75 size header #;(indent 0.05) rounded #f text "Manage" action manage))))))
+                      (button h 75 size header #;(indent 0.05) rounded #f text "Manage" action manage))
+                    `((redirect action ,kick-start))))))
 	 (else
 	  `((button h 75 size header indent 0.05 rounded #t text "Initialize" action init)
             (spacer)
@@ -856,7 +937,7 @@ Is the service not yet running?")))
                    (and (wait-for-kernel-server 1)
                         (begin
                           ;; (thread-sleep! 0.1)
-                          (kernel-start-custom-services!)
+                          (hook-run kernel-on-init) ;; FIXME: disable/remove once old installes are updated.
                           (public-oid #t)
                           (uiform:pages again)
                           'main))))
@@ -909,7 +990,7 @@ Is the service not yet running?")))
       ;; end of "initializing" page
       )
      (identification
-      "Idendify"
+      "Identify"
       ("Back" main)
       #f
       (spacer)
@@ -942,7 +1023,7 @@ Is the service not yet running?")))
       (spacer)
       (label text ,(if (symbol? (public-oid)) (public-oid-string) "Error retrieving public OID."))
       (spacer)
-      ,@(if (and (have-local-connect?) (onion-address))
+      ,@(if (and (have-local-connect?) (allioideae-address))
             `((dmencode text ,(local-connect-string)))
             `(,(my-ip-address-display update-pages!)
               (dmencode text ,(local-connect-string))))
@@ -968,7 +1049,7 @@ Is the service not yet running?")))
       )
      (channels
       "Channels"
-      ("Back" main)
+      ("Back" ,(lambda () (dbclear 'selected-channel) 'main))
       #f
       (spacer)
       (button h 50 #;(size header indent 0.05 rounded #t) text "Identify" action identification)
@@ -1048,8 +1129,10 @@ Is the service not yet running?")))
       (spacer)
       (button text "Sign New Cert" action
               ,(lambda ()
+                 ;; ERROR "failed to add subject component" with .i2p:<portnumber>
                  (kernel-send-set-auth 'tofu (main-entry-name) (uiget 'password) (dbget 'CN))
-                 (onion-address #t)
+                 ;; ERROR: Does not refresh.
+                 (chached-kernel-values-flush!)
                  'identification))
       ;; end of "address" page
       )
@@ -1069,12 +1152,17 @@ Is the service not yet running?")))
 		 (kernel-connections #t)
                  (update-pages!)
 		 #f))
-      (label text "")
       (spacer)
       (list id remote-host entries ,(kernel-connections))
       (spacer)
       ,(my-ip-address-display update-pages!)
       (spacer)
+      #;,(lambda ()
+         (cond
+          ((not app:android?) '(label text "No Orbot control on this platform"))
+          ((not (orbot-running?))
+           `(button text "Orbot not detected" action ,(lambda () (orbot-running!) 'main)))
+          (else '(label text "Orbot should be running"))))
       #;,(lambda () `(label align left text ,kernel-connections))
       ;; end of "status" page
       )
@@ -1093,6 +1181,23 @@ Is the service not yet running?")))
                 (spacer)
                 (button text "Restore" action
                         ,(lambda () (and (kernel-restore!) (begin (update-pages!) 'main)))))))
+      (spacer)
+      (button text "Reset Logging" action ,(lambda () (reset-logging!) 'main))
+      (spacer)
+      ,(lambda ()
+         (if (not upnrunning)
+             `(button text "Remove SpoolDB" action
+                      ,(lambda ()
+                         (for-each
+                          (lambda (x)
+                            (let ((fn (make-pathname kernel-data-directory x)))
+                              (if (file-exists? fn) (delete-file fn))))
+                          '("spool.db" "spool.db-journal"))
+                         'main))
+             `(button text "Force Spool GC" action
+                      ,(lambda ()
+                         (call-kernel 'begin '(and (future (let ((store (spool-directory))) (fsm-enforce-restore! store) (fsm-run-now store))) #t))
+                         'main))))
       ;; end of "manage" page
       )
      (about
@@ -1100,7 +1205,9 @@ Is the service not yet running?")))
       ("Back" ,pop-page)
       #f
       (spacer height 50)
-      (label text "This is a first draft of the control app for Askemos/BALL. See also:")
+      (label text ,(string-append "Version: " (system-appversion)))
+      (spacer)
+      (label text "This is a second draft of the control app for Askemos/BALL. See also:")
       (button h 50 size normal indent 0.05 rounded #t text "askemos.org" action
               ,(lambda () (launch-url "http://ball.askemos.org") #f))
       (spacer)
@@ -1108,7 +1215,7 @@ Is the service not yet running?")))
       (spacer)
       (label text ,(string-append "Data directory: " kernel-data-directory) wrap #t)
       (spacer)
-      ,@(if (or app:android?) '()
+      ,@(if (and app:android?) '()
             `(,(if (not-using-fork-alike)
                    '(label text "Exiting here will terminate the service!")
                    '(spacer))
@@ -1122,9 +1229,11 @@ Is the service not yet running?")))
                       (terminate))
                       (terminate))))))
       (spacer)
-      ,(if (eq? (subprocess-style) 'fork)
-           `(button text "Kill Kernel Server" action ,(lambda () (kernel-server-kill!) (update-pages!)))
-           '(spacer))
+      ,@(if (eq? (subprocess-style) 'fork)
+            `((button text "Kill Kernel Server" action ,(lambda () (kernel-server-kill!) (update-pages!)))
+              (spacer)
+              (button text "Restart Kernel Server" action ,(lambda () (call-kernel 'begin '(exit 1)) (chached-kernel-values-flush!) (update-pages!))))
+            '((spacer)))
       #;,(lambda ()
 	 (if upnrunning
 	     `(button h 50 size header indent 0.05 rounded #t text "Debug" action ,(lambda () 'debug))

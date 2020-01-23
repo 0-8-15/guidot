@@ -1,0 +1,5 @@
+/* -*- java-*-
+ * Providing a custom <code>FileProvider</code> prevents manifest
+ * <code>&lt;provider&gt;</code> name collisions.
+ */
+public class LambdanativeCameraFileProvider extends android.support.v4.content.FileProvider {}
