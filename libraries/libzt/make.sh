@@ -2,6 +2,9 @@ VERSION=20200115
 PKGURL=scp://pluto.softeyes.net/libzt-$VERSION-source.tar.gz
 PKGHASH=abd6db483f197dcac2dbb46efd6c9eac70b3c720
 
+#LIBZT_BUILD=release
+LIBZT_BUILD=debug
+
 if [ ! -f testing ]; then
 
   package_download $PKGURL $PKGHASH
@@ -89,17 +92,16 @@ libzt_build() # Essentially a copy from libzt/dist.sh function host()`
     # mv $BUILD_DIR/lib/* $LIB_OUTPUT_DIR
 }
 
-#( libzt_build release `pwd` ) || exit 1
-( libzt_build debug `pwd` ) || exit 1
+( libzt_build ${LIBZT_BUILD} `pwd` ) || exit 1
 
 # install
 
-if [ -f tmp/*-${SYS_ARCH}-release/libzt.a ]; then
-    cp tmp/*-${SYS_ARCH}-release/libzt.a $SYS_PREFIX/lib
-    cp tmp/*-${SYS_ARCH}-release/libztcore.a $SYS_PREFIX/lib
+if [ -f tmp/*-${SYS_ARCH}-${LIBZT_BUILD}/libzt.a ]; then
+    cp tmp/*-${SYS_ARCH}-${LIBZT_BUILD}/libzt.a $SYS_PREFIX/lib
+    cp tmp/*-${SYS_ARCH}-${LIBZT_BUILD}/libztcore.a $SYS_PREFIX/lib
 else
-    cp tmp/*-${SYS_ARCH}-release/lib/libzt.a $SYS_PREFIX/lib
-    cp tmp/*-${SYS_ARCH}-release/lib/libztcore.a $SYS_PREFIX/lib
+    cp tmp/*-${SYS_ARCH}-${LIBZT_BUILD}/lib/libzt.a $SYS_PREFIX/lib
+    cp tmp/*-${SYS_ARCH}-${LIBZT_BUILD}/lib/libztcore.a $SYS_PREFIX/lib
 fi
 cp include/ZeroTier*.h $SYS_PREFIX/include
 
