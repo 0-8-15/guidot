@@ -128,6 +128,36 @@ EOF
 
 (define (ip-address/port? x) (or (ipv6-address/port? x) (ipv4-address/port? x)))
 
+;;  (ip-address->string '#u8(127 0 0 1))
+
+(define (ip-address->string u8)
+  (case (u8vector-length u8)
+    ((4)
+     ((c-lambda
+       (scheme-object) char-string "
+char buf[80];
+___result = (char*) inet_ntop(AF_INET, ___CAST(struct in_addr *,___BODY_AS(___arg1,___tSUBTYPED)), buf, INET_ADDRSTRLEN);")
+      u8))
+    ((16)
+     ((c-lambda
+       (scheme-object) char-string "
+char buf[80];
+___result = (char*) inet_ntop(AF_INET6, ___CAST(void *,___BODY_AS(___arg1,___tSUBTYPED)), buf, INET6_ADDRSTRLEN);")
+      u8))
+    (else (error "illegal inet addr" u8))))
+
+(define (socket-address->string sa)
+  (cond
+   ((internet6-socket-address? sa)
+    (receive
+     (ip6-addr port flowinfo scope-id) (socket-address->internet6-address sa)
+     (ip-address->string ip6-addr)))
+   ((internet-socket-address? sa)
+    (receive
+     (ip-addr portno) (socket-address->internet-address sa)
+     (ip-address->string ip-addr)))
+   (else "unknown socket address family")))
+
 (include "gamsock-constants.scm")
 
 ; This is the definition of the socket type. It should be treated as opaque.
@@ -304,8 +334,8 @@ ___result_voidstar = (void *)sa_un;
 static socklen_t set_socket_name(struct sockaddr_un *socket_name, const char *filename)
 {
   size_t fn_length = strlen(filename), off=1;
-  const char prefix[] = "FIXMEaskemosSHOULDbechanged";
-  const char suffix[] = "FIXMEaskemosSHOULDbechanged";
+  const char prefix[] = "FIXchange";
+  const char suffix[] = "FIXMESHOULDbechanged";
   size_t total = sizeof(socket_name->sun_path)-1;
   memset(socket_name->sun_path, (42 + 23), sizeof(socket_name->sun_path));
   socket_name->sun_path[0] = '\0';
