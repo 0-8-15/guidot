@@ -101,8 +101,6 @@ END
 
 (define-custom zt-event #f) ;; EXPORT HOOK - network events
 
-(define-custom zt-recv #f) ;; EXPORT HOOK - user messages
-
 (c-define
  (zt-event-cb node userptr thr event payload)
  (zt-node void* void* int void*)
@@ -116,26 +114,38 @@ END
       ((eqv? ZT_EVENT_DOWN e) 'DOWN)
       ((eqv? ZT_EVENT_FATAL_ERROR_IDENTITY_COLLISION e) 'FATAL_ERROR_IDENTITY_COLLISION)
       ((eqv? ZT_EVENT_TRACE e) 'TRACE)
-      ((eqv? ZT_EVENT_USER_MESSAGE e) 'USER_MESSAGE)
       ((eqv? ZT_EVENT_REMOTE_TRACE e) 'REMOTE_TRACE)
       (else 'ZT_EVENT_UNKNOWN)))
    (cond
-    ((and (eqv? ZT_EVENT_USER_MESSAGE event) (procedure? (zt-recv)))
-     (let ((size ((c-lambda (zt-message) size_t "___result = ___arg1->length;") payload))
-           (from ((c-lambda (zt-message) size_t "___result = ___arg1->origin;") payload))
-           (type ((c-lambda (zt-message) size_t "___result = ___arg1->typeId;") payload)))
-       (let ((data (make-u8vector size)))
-         ((c-lambda
-           (scheme-object zt-message) void
-           "memcpy(___CAST(void *,___BODY_AS(___arg1,___tSUBTYPED)), ___arg2->data, ___arg2->length);")
-          data payload)
-         (%%checked zt-recv ((zt-recv) from type data) #t))))
     ((procedure? (zt-event)) (%%checked zt-event ((zt-event) node userptr thr (onevt event) payload) #f)))))
+
+(define-custom zt-recv #f) ;; EXPORT HOOK - user messages
+
+(c-define
+ (zt_recv node userptr thr payload)
+ (zt-node void* void* zt-message)
+ void "scm_zt_recv" "static"
+ (cond
+  ((procedure? (zt-recv))
+   (let ((size ((c-lambda (zt-message) size_t "___result = ___arg1->length;") payload))
+         (from ((c-lambda (zt-message) size_t "___result = ___arg1->origin;") payload))
+         (type ((c-lambda (zt-message) size_t "___result = ___arg1->typeId;") payload)))
+     (let ((data (make-u8vector size)))
+       ((c-lambda
+         (scheme-object zt-message) void
+         "memcpy(___CAST(void *,___BODY_AS(___arg1,___tSUBTYPED)), ___arg2->data, ___arg2->length);")
+        data payload)
+       (%%checked zt-recv ((zt-recv) from type data) #t))))))
 
 (c-declare #<<c-declare-end
 static void
 zt_event_cb(ZT_Node *node, void *userptr, void *thr, enum ZT_Event event, const void *payload)
-{ scm_zt_event_cb(node, userptr, thr, event, (void *) payload); }
+{
+ switch(event) {
+  case ZT_EVENT_USER_MESSAGE: scm_zt_recv(node, userptr, thr, (ZT_UserMessage*)payload); break;
+  default: scm_zt_event_cb(node, userptr, thr, event, (void *) payload);
+ }
+}
 c-declare-end
 )
 
