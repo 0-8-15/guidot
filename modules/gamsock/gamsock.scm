@@ -863,7 +863,9 @@ C-END
                  (list sock vec start end flags addr))
                 (raise-socket-exception-if-error
                  (lambda ()
-                   (##wait-output-port (macro-socket-port sock))
+                   ;; FIXME This may be an input port, e.g. when created as UDP socket.
+                   (let ((port (macro-socket-port sock)))
+                     (if (output-port? port) (##wait-output-port port)))
                    (c-sendto (macro-socket-fd sock) svec flags addr))
                  send-message))))))
 
