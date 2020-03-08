@@ -235,47 +235,20 @@ c-declare-end
 
 ;; Maybe we should not make this reachable outside this module.
 ;; Standard use is from the packet receiving thread.
-(define (zt-wire-packet-process from packet)
+(define (zt-wire-packet-process packet from)
   (define doit
     (c-lambda
-     ;; 1     lsock fam addr          port u8vec data   7
-     (zt-node int64 int scheme-object int scheme-object size_t) bool #<<END
-     // ;; Horror: we create a sockaddr_storage from a scm object created from a sockaddr_storage!
-     struct sockaddr_storage sa;
-     memset(&sa, 0, sizeof(sa));
-     struct sockaddr_in *sin;
-     struct sockaddr_in6 *sin6;
-     switch(___arg3) {
-       case /*AF_INET*/ 1:
-        sin=(struct sockaddr_in *)&sa;
-        sin->sin_family=AF_INET;
-        memcpy(&sin->sin_addr, ___BODY_AS(___arg4,___tSUBTYPED), sizeof(struct in_addr));
-        sin->sin_port=___arg5;
-        break;
-       case /*AF_INET6*/ 2:
-        sin6=(struct sockaddr_in6 *)&sa;
-        sin6->sin6_family=AF_INET6;
-        memcpy(&sin6->sin6_addr, ___BODY_AS(___arg4,___tSUBTYPED), sizeof(struct in6_addr));
-        sin6->sin6_port=___arg5;
-        break;
-     }
+     ;; 1     lsock addr           data   7
+     (zt-node int64 socket-address scheme-object size_t) bool #<<END
      int rc = -1;
-     rc = ZT_Node_processWirePacket(___arg1, NULL, zt_now(), ___arg2, (void *) &sa,
-             ___CAST(void *,___BODY_AS(___arg6,___tSUBTYPED)), ___arg7, &nextBackgroundTaskDeadline);
+     rc = ZT_Node_processWirePacket(___arg1, NULL, zt_now(), ___arg2, (void *) ___arg3,
+             ___CAST(void *,___BODY_AS(___arg4,___tSUBTYPED)), ___arg5, &nextBackgroundTaskDeadline);
      ___result = rc == ZT_RESULT_OK;
 END
 ))
   (and
    (zt-up?)
-   (or (receive
-        (family address port)
-        (cond
-         ((socket-info? from)
-          (values (socket-info-family from) (socket-info-address from) (socket-info-port-number from)))
-         (else (error "zt-wire-packet-process: unhandled source type" from)))
-        (doit (zt-prm-zt %%zt-prm) 0
-              (case family ((INET) 1) ((INET6) 2) (else (error "zt-wire-packet-process: can't handle PF" family)))
-              address port packet (u8vector-length packet)))
+   (or (doit (zt-prm-zt %%zt-prm) 0 from packet (u8vector-length packet))
        (error "zt-wire-packet-process: failed"))))
 
 ;;*** ZT Network Wire Outgoing
@@ -459,7 +432,7 @@ c-declare-end
 
 (define-structure zt-prm zt udp incoming-thread)
 (define %%zt-prm #f) ;; keep a scheme pointer to auxillary stuff
-(define (zt-node-init! #!key (port #f) (now (zt-now)) (background-period 5))
+(define (zt-node-init! udp #!key (now (zt-now)) (background-period 5))
   (define (init zt now)
     ((c-lambda
       (scheme-object (pointer void) int64) zt-node #<<END
@@ -477,10 +450,7 @@ END
             (with-exception-catcher
              exn-catcher
              (lambda ()
-               (let* ((udp (zt-prm-udp prm))
-                      (packet (read udp))
-                      (from (udp-source-socket-info udp)))
-                 (if from (zt-wire-packet-process from packet)))))
+               (call-with-values (lambda () (receive-message (zt-prm-udp prm) 3000)) zt-wire-packet-process)))
             (recv-loop))))
   (define (maintainance)
     ((c-lambda
@@ -496,9 +466,8 @@ END
     (when (zt-up?) (%%checked maintainance (and (zt-pre-maintainance %%zt-prm) (maintainance)) #f) (maintainance-loop)))
   ;; Should we lock?  No: Better document single-threadyness!
   (if (zt-up?) (error "ZT already running"))
-  (let* ((udp (if (port? port) port (open-udp port)))
-         (prm (make-zt-prm #f udp (make-thread recv-loop 'zt-receiver)))
-         (nd (init #f now)))
+  (let ((prm (make-zt-prm #f udp (make-thread recv-loop 'zt-receiver)))
+        (nd (init #f now)))
     (if nd
         (begin
           (zt-prm-zt-set! prm nd) ;; let rec
@@ -508,7 +477,7 @@ END
           (thread-start! (make-thread maintainance-loop 'zt-maintainance))
           #t)
         (begin
-          (close-port (zt-prm-udp %%zt-prm))
+          (close-socket (zt-prm-udp %%zt-prm))
           #f))))
 
 (define (zt-node-destroy!)
@@ -517,7 +486,7 @@ END
             (zt (zt-prm-zt %%zt-prm)))
         (set! %%zt-prm #f)
         ((c-lambda (zt-node) void "ZT_Node_delete(___arg1);") zt)
-        (close-port udp))))
+        (close-socket udp))))
 
 (define (zt-up?) (and %%zt-prm #t))
 
