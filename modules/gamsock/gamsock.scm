@@ -622,24 +622,24 @@ if(___result == 0) {
 C-END
 ))
 (define c-send
-  (c-lambda (int scheme-object int) int #<<C-END
+  (c-lambda (int scheme-object size_t size_t int) int #<<C-END
 int soc = ___arg1;
-void *buf = ___CAST(void *,___BODY_AS(___arg2,___tSUBTYPED));
-size_t bufsiz = ___CAST(size_t,___INT(___U8VECTORLENGTH(___arg2)));
-int fl = ___CAST(int,___INT(___arg3));
-___result = send(soc,buf,bufsiz,fl);
+uint8_t *buf = ___CAST(void *,___BODY_AS(___arg2,___tSUBTYPED));
+size_t bufsiz = ___arg4 - ___arg3;
+int fl = ___CAST(int,___INT(___arg5));
+___result = send(soc,(void*)(buf+___arg3),bufsiz,fl);
 C-END
 ))
 (define c-sendto
-  (c-lambda (int scheme-object int socket-address) int #<<C-END
-struct sockaddr_storage *sa = ___arg4;
+  (c-lambda (int scheme-object size_t size_t int socket-address) int #<<C-END
+struct sockaddr_storage *sa = ___arg6;
 int sa_size;
 int soc = ___arg1;
-void *buf = ___CAST(void *,___BODY_AS(___arg2,___tSUBTYPED));
-size_t bufsiz = ___CAST(size_t,___INT(___U8VECTORLENGTH(___arg2)));
+uint8_t *buf = ___CAST(void *,___BODY_AS(___arg2,___tSUBTYPED));
+size_t bufsiz = ___arg4 - ___arg3;
 int fl = ___CAST(int,___INT(___arg3));
 sa_size = c_sockaddr_size((struct sockaddr_storage *)sa);
-___result = sendto(soc,buf,bufsiz,fl,(struct sockaddr *)sa,sa_size);
+___result = sendto(soc, (void*)(buf+___arg3), bufsiz, fl, (struct sockaddr *)sa,sa_size);
 C-END
 ))
 
@@ -841,11 +841,7 @@ C-END
 
 (define (send-message sock vec #!optional (start 0) (end #f) (flags 0)
 		      (addr #f))
-  (let ((svec (if (and (= start 0) (not end)) vec
-		   (subu8vector vec
-				start
-				(if (not end) (u8vector-length vec) end)))))
-
+  (let ((end (min (or end (u8vector-length vec) end))))
     (if (not (socket? sock))
 	(##raise-type-exception 0 'socket send-message (list sock vec start end flags addr)))
     (if (not (u8vector? vec))
@@ -855,7 +851,7 @@ C-END
             (raise-socket-exception-if-error
              (lambda ()
                (##wait-output-port (macro-socket-port sock))
-               (c-send (macro-socket-fd sock) svec flags))
+               (c-send (macro-socket-fd sock) vec start end flags))
              send-message)
             (if (not (socket-address? addr))
                 (##raise-type-exception
@@ -866,19 +862,19 @@ C-END
                    ;; FIXME This may be an input port, e.g. when created as UDP socket.
                    (let ((port (macro-socket-port sock)))
                      (if (output-port? port) (##wait-output-port port)))
-                   (c-sendto (macro-socket-fd sock) svec flags addr))
+                   (c-sendto (macro-socket-fd sock) vec start end flags addr))
                  send-message))))))
 
 ; Receives a message from a socket of a given length and returns it as a
 ; u8vector. Optional flags may be specified. This procedure actually returns
 ; two values: the received message and the source address.
 
-(define (receive-message sock len #!optional (flags 0))
+(define (receive-message sock mtu #!optional (flags 0))
   (let ((addr (make-unspecified-socket-address))
-	(vec (make-u8vector len 0)))
+	(vec (make-u8vector mtu 0)))
     (if (not (socket? sock))
 	(##raise-type-exception
-	 0 'socket receive-message (list sock len flags)))
+	 0 'socket receive-message (list sock mtu flags)))
     ;; (log-debug "waiting for message" 1)
     (let* ((size-actually-recvd
 	    (raise-socket-exception-if-error
@@ -894,14 +890,14 @@ C-END
 
 ;; Same as receive-message, but returns #f as second value and does
 ;; not ask for address.
-(define (recv-message sock len #!optional (flags 0))
+(define (recv-message sock mtu #!optional (flags 0))
   (if (not (socket? sock))
       (##raise-type-exception
-       0 'socket recv-message (list sock len flags)))
+       0 'socket recv-message (list sock mtu flags)))
   (let ((fd (macro-socket-fd sock)))
     (if (< fd 0)
         (values #f #f)
-        (let ((vec (make-u8vector len 0)))
+        (let ((vec (make-u8vector mtu 0)))
           ;; (log-debug "waiting for message" 1)
           (let* ((size-actually-recvd
                   (raise-socket-exception-if-error
