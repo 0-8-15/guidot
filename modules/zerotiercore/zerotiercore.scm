@@ -878,7 +878,7 @@ c-declare-end
      (lambda (home id) (string-append home "identity.secret"))
      (lambda (home id) (string-append home "planet"))
      (lambda (home id) (string-append home "moons.d/" (hexstr id 16) ".moon"))
-     (lambda (home id) (string-append home "peers.d/" (hexstr id 10)))
+     (lambda (home id) (string-append home "peers.d/" (hexstr id 10) ".peer"))
      (lambda (home id) (string-append home "networks.d/" (hexstr id 16) ".conf"))
      (lambda (home id) (string-append home "networks.d/" (hexstr id 16)".local.conf"))
      ))
