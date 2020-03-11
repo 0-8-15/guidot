@@ -440,6 +440,8 @@ static struct ZT_Node_Callbacks zt_callbacks = {
 c-declare-end
 )
 
+(define zt-background-period/lower-limit (make-parameter 0.60))
+
 (define-structure zt-prm zt udp incoming-thread)
 (define %%zt-prm #f) ;; keep a scheme pointer to auxillary stuff
 (define (zt-node-init! udp #!key (now (zt-now)) (background-period 5))
@@ -472,7 +474,7 @@ END
 END
 ) (zt-prm-zt %%zt-prm)))
   (define (maintainance-loop)
-    (thread-sleep! background-period)
+    (thread-sleep! (max background-period (zt-background-period/lower-limit)))
     (when (zt-up?) (%%checked maintainance (and (zt-pre-maintainance %%zt-prm) (maintainance)) #f) (maintainance-loop)))
   ;; Should we lock?  No: Better document single-threadyness!
   (if (zt-up?) (error "ZT already running"))
