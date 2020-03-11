@@ -391,14 +391,14 @@ c-declare-end
 (c-define
  (zt_path_check node userptr thr nodeid socket sa)
  (zt-node void* void* unsigned-int64 int socket-address)
- int "scm_zt_path_check" "static"
+ bool "scm_zt_path_check" "static"
  (if (procedure? (zt-path-check))
      (%%checked
       zt_path_check
       ((zt-path-check) node userptr thr nodeid socket sa)
-      1)
+      #f)
      ;; otherwise use it
-     1))
+     #t))
 
 (define-custom zt-path-lookup #f)
 
