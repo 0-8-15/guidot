@@ -1,5 +1,6 @@
 ;; Helpers (maybe to be moved elsewhere)
 
+(include "dynamic-extent.scm")
 (include "hook.scm")
 
 (define getpid (c-lambda () int "getpid"))
