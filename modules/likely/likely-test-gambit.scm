@@ -1,0 +1,7 @@
+(include "0001-dynamic-extent.scm")
+(include "0010-debug.scm")
+(include "0011-stm-imports.scm")
+(include "0020-stm-impl.scm")
+(include "0100-observable.scm")
+;;(include "1000-library.scm")
+(include "2000-tests.scm")
