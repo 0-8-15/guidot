@@ -40,6 +40,8 @@
 
 (define-macro (stm-current-global-clock) `(vector-ref stm-current-global-clock-value 0))
 
+(define (exported-stm-current-global-clock) (stm-current-global-clock))
+
 (define (stm-clock-tick-penealty!)
   ;; conflict penealty
   (thread-yield!))
