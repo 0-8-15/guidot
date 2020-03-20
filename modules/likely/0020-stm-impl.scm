@@ -54,6 +54,8 @@
           (stm-clock-tick-penealty!)
           (stm-clock-tick!)))))
 
+(define-macro (%%outdated transaction source-tag) `(< (%stmtnx-id ,transaction) ,source-tag))
+
 (define-macro (new-transaction-identifier) `(stm-current-global-clock))
 
 (define-type stmtnx
@@ -161,6 +163,8 @@
     (let* ((tag (##unchecked-structure-ref source slot 'any 'make-cell))
            (cell (%make-stmref source slot tag (##unchecked-structure-ref source (add1 slot) 'any 'make-cell) #;transaction)))
       (transaction-extend! transaction cell)
+      (when (%%outdated transaction tag) ;; FIXME: handle this case
+          (stm-warning "creating already outdated reference" source cell))
       cell))
   (ensure %stmtnx? transaction)
   (if (fx>= slot (##structure-length source)) (stm-error "slot not within structure" source slot))
@@ -260,7 +264,7 @@ nonono: (raise 'stm-conflict)))
                           ;; hopefully style
                           ;;
                           ;; (%update! source slot (next-version (%stmref-tag x)) (%stmref-val x))
-                          (let ((slot-clock (add1 clock)))
+                          (let ((slot-clock (sub1 clock)))
                             (%update! source slot slot-clock (%stmref-val x)))
                           (%stmref-source-set! x #f)))
                       dirty))

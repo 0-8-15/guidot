@@ -12,7 +12,7 @@
   `(or (%observable? ,obj) (error "not an observable" ,where ,obj)))
 
 (define (make-observable v #!optional pred filter name)
-  (%make-observable 2 v '() name pred filter))
+  (%make-observable 0 v '() name pred filter))
 
 (define (observable-deps var) (%observable-deps var))
 (define (observable-name var) (%observable-name var))

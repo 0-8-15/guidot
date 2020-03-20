@@ -16,8 +16,8 @@
      (lambda ()
        (display "Test ") (display ,msg) (display ": ")
        (with-exception-catcher
-        (lambda (exn) (display exn) (display "\nFAIL\n"))
-        (lambda () (if ,expr (display "\nPASS\n") (display "\nFAIL\n"))))))))
+        (lambda (exn) (display exn) (display "\n  FAIL\n"))
+        (lambda () (if ,expr (display "\n  PASS\n") (display "\n  FAIL\n"))))))))
 
 (define-macro (test-error msg expr)
   `(eval
@@ -25,7 +25,7 @@
      (lambda ()
        (display "Test ") (display ,msg) (display ": ")
        (with-exception-catcher
-        (lambda (exn) (display exn) (display "\nPASS\n"))
-        (lambda () (display ,expr) (display "\nFAIL\n")))))))
+        (lambda (exn) (display exn) (display "\n  PASS\n"))
+        (lambda () (display ,expr) (display "\n  FAIL\n")))))))
 
 (include "2001-basic.scm")
