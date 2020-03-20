@@ -164,7 +164,7 @@
            (cell (%make-stmref source slot tag (##unchecked-structure-ref source (add1 slot) 'any 'make-cell) #;transaction)))
       (transaction-extend! transaction cell)
       (when (%%outdated transaction tag) ;; FIXME: handle this case
-          (stm-warning "creating already outdated reference" source (list 'TID (%stmtnx-id transaction) 'CELL cell)))
+          (stm-warning "creating already outdated reference" source (list 'TID (%stmtnx-id transaction) 'TAG tag 'CELL cell)))
       cell))
   (ensure %stmtnx? transaction)
   (if (fx>= slot (##structure-length source)) (stm-error "slot not within structure" source slot))
@@ -333,7 +333,7 @@ nonono: (raise 'stm-conflict)))
                    (let ((,limit ($stm-retry-limit)))
                      (if (or (not ,limit) (< ,loop-counter ,limit))
                          (loop)
-                         (stm-error "retry limit reached!" ',retry)))))
+                         (stm-error "retry limit reached!" ,loop-counter ',retry)))))
                 (loop (lambda () . ,body)))
          (loop)))))
 #|
