@@ -90,6 +90,26 @@
           (observable-alter! res (add-and-set-conflict res 7) 23))))
       30))
 
+(define (with-triggers-no-retry thunk)
+  (parameterize
+   ((current-trigger-handler observable-triggers)
+    ($stm-retry-limit 0))
+   ;; before ..??
+   (with-current-transaction thunk)))
+
+(test-assert
+ "TBD: triggers AND set! works"
+ (let ()
+   (define (with-triggers-no-retry thunk)
+     (parameterize
+      ((current-trigger-handler observable-triggers)
+       ($stm-retry-limit 0))
+      ;; before ..??
+      (with-current-transaction thunk)))
+   (with-triggers-no-retry (lambda () (observable-set! x 42)))
+   (= (observable-deref x) 42)))
+
+
 ;; ($implicit-current-transactions #f)
 
 ;;(run-tests)
