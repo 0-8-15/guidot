@@ -27,7 +27,7 @@
 (define dynamic
   (let ((current-dynamic-extent current-dynamic-extent)
         (call-with-values call-with-values))
-    (define (dynamic f #!optional (single-value-return #f))
-      (let ((fixed (current-dynamic-extent (not single-value-return))))
+    (define (dynamic f #!optional (dynamic-extent #f) (single-value-return #f))
+      (let ((fixed (if dynamic-extent dynamic-extent (current-dynamic-extent (not single-value-return)))))
         (lambda args (fixed (lambda () (apply f args))))))
     dynamic))
