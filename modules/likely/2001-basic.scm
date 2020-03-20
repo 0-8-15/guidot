@@ -31,13 +31,13 @@
 
 (test-assert "observable-alter!" (eq? (with-current-transaction (lambda () (observable-alter! res + 10))) 1900))
 
-(define observe-conflict-set!
+(define toplevel-observable-set!
   (dynamic
    (lambda (r v)
      (parameterize (($implicit-current-transactions #t)) (observable-set! r v)))))
 
 (define (add-and-set-conflict ref overwrite)
-  (lambda (a b) (observe-conflict-set! ref overwrite) (+ a b)))
+  (lambda (a b) (toplevel-observable-set! ref overwrite) (+ a b)))
 
 (test-assert
  "observable-alter! with conflict (retries)"
@@ -61,10 +61,10 @@
  "Outdated reference (currently only reported)"
  (eq? (parameterize
        (($stm-retry-limit 3))
-       (observe-conflict-set! res 42)
+       (toplevel-observable-set! res 42)
        (with-current-transaction
         (lambda ()
-          (observe-conflict-set! res 7)
+          (toplevel-observable-set! res 7)
           (observable-alter! res + #;(add-and-set-conflict res 7) 23))))
       30))
 
@@ -72,10 +72,10 @@
  "Outdated reference and conflict with zero $stm-retry-limit fails."
  (eq? (parameterize
        (($stm-retry-limit 0))
-       (observe-conflict-set! res 42)
+       (toplevel-observable-set! res 42)
        (with-current-transaction
         (lambda ()
-          (observe-conflict-set! res 11)
+          (toplevel-observable-set! res 11)
           (observable-alter! res (add-and-set-conflict res 7) 23))))
       30))
 
@@ -83,10 +83,10 @@
  "Retry limit effective"
  (eq? (parameterize
        (($stm-retry-limit 10))
-       (observe-conflict-set! res 42)
+       (toplevel-observable-set! res 42)
        (with-current-transaction
         (lambda ()
-          (observe-conflict-set! res 11)
+          (toplevel-observable-set! res 11)
           (observable-alter! res (add-and-set-conflict res 7) 23))))
       30))
 
