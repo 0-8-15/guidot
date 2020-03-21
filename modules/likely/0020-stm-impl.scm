@@ -232,7 +232,6 @@ nonono: (raise 'stm-conflict)))
   (when (eq? (mutex-state *hope*) (current-thread))
         (stm-consistency-error "attempt to commit during commit" *hope* transaction))
   (let ((lock-tag (%stmtnx-id transaction)))
-    (mutex-lock! *hope*)
     (let loop ((refs (%stmtnx-refs transaction))
                (dirty '()))
       (if (null? refs)
@@ -260,26 +259,34 @@ nonono: (raise 'stm-conflict)))
                                                 dirty))))
                         #t)))
                  (begin
-                   ;; (mutex-lock! *hope*) move it here once we re-check dirty after taking the lock
-                   (let ((clock (stm-clock-tick!)))
-                     (for-each
-                      (lambda (x)
-                        (let ((source (%stmref-source x)) (slot (%stmref-slot x)))
-                          ;; hopefully style
-                          ;;
-                          ;; (%update! source slot (next-version (%stmref-tag x)) (%stmref-val x))
-                          (let ((slot-clock (add1 clock)))
-                            (%update! source slot slot-clock (%stmref-val x)))
-                          (%stmref-source-set! x #f)))
-                      dirty))
-                   (transaction-close! transaction)
-                   ;;(mutex-unlock! *hope*) here in case of re-check
-                   ))
-                (transaction-close! transaction)
-                (unlock-and-return
-                 (if found
-                     (cons (trigger-handler-done trigger-handler) found)
-                     transaction))))
+                   (mutex-lock! *hope*)
+                   ;; once we took the global lock we re-check dirty for conflicts
+                   (if (any (lambda (x)
+                               (let ((source (%stmref-source x)) (slot (%stmref-slot x)))
+                                 (let ((tag (##unchecked-structure-ref source slot 'any 're-check)))
+                                   (%%outdated transaction (%stmref-tag x)))))
+                             dirty)
+                       (begin
+                         ;; clean up and hope for restart
+                         (undo-dirty-tagging! dirty)
+                         (transaction-close! transaction)
+                         (unlock-and-return #f))
+                       (let ((clock (stm-clock-tick!)))
+                         (for-each
+                          (lambda (x)
+                            (let ((source (%stmref-source x)) (slot (%stmref-slot x)))
+                              ;; hopefully style
+                              ;;
+                              ;; (%update! source slot (next-version (%stmref-tag x)) (%stmref-val x))
+                              (let ((slot-clock (add1 clock)))
+                                (%update! source slot slot-clock (%stmref-val x)))
+                              (%stmref-source-set! x #f)))
+                          dirty)
+                         (transaction-close! transaction)
+                         (unlock-and-return
+                          (if found
+                              (cons (trigger-handler-done trigger-handler) found)
+                              transaction))))))))
           (let ((x (car refs)))
             (let ((source (%stmref-source x)) (slot (%stmref-slot x)))
               (let ((tag (and source (##unchecked-structure-ref source slot 'any 'transaction-commit!))))

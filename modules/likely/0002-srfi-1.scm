@@ -14,6 +14,8 @@
              (pred head)		; Last PRED app is tail call.
              (or (pred head) (lp (car tail) (cdr tail)))))))
 
+(define any any1)
+
 (define (lset-union = . lists)
   ;(check-arg procedure? = lset-union)
   (reduce (lambda (lis ans)		; Compute ANS + LIS.

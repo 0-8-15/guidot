@@ -186,7 +186,7 @@
    (lambda (thunk)
      ;; Assert that the stm critial mutex is held.
      (unless (thread? (mutex-state *hope*))
-             'stm-critical-region-not-locked)
+             (raise 'stm-critical-region-not-locked))
      (parameterize
       (($implicit-current-transactions #f))
       (with-exception-catcher
