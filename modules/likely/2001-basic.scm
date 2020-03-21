@@ -142,6 +142,22 @@
    (thread-yield!)
    (= (observable-deref report-counter) 1)))
 
+(test-assert
+ "trail with critical procedure works (expect report)"
+ (let ((ob (make-observable 23 #f #f 'reported))
+       (success #f))
+   (with-current-transaction
+    (lambda ()
+      (connect-dependent-value!
+       (lambda thunk-results (lambda () (set! success #t) (debug 'stm-critical (current-transaction))))
+       (lambda () #f)
+       '() ;; sig
+       (list ob))))
+   (run-observed!
+    (lambda () (observable-set! ob 42)))
+   (thread-yield!)
+   success))
+
 ;; ($implicit-current-transactions #f)
 
 ;;(run-tests)

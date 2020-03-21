@@ -181,6 +181,18 @@
      ;; (trail-complete! *default-trail*)
      )))
 
+(define stm-critical-execute!
+  (dynamic
+   (lambda (thunk)
+     ;; Assert that the stm critial mutex is held.
+     (unless (thread? (mutex-state *hope*))
+             'stm-critical-region-not-locked)
+     (parameterize
+      (($implicit-current-transactions #f))
+      (with-exception-catcher
+       (lambda (ex) (stm-consistency-error "toplevel-execute!" ex))
+       thunk)))))
+
 #|
 (: connect-dependent-value!
    ((or string false)
@@ -188,10 +200,27 @@
     &rest (struct control-variable)
     -> *))
 |#
-(define (connect-dependent-value! key thunk sig params)
+(define (connect-dependent-value! value thunk sig params)
   (let ((action (cond
-                 ((string? key) (lambda (tnx) (call-with-overwrite key thunk sig)))
-		 ((not key) (lambda (tnx) (thunk) (lambda () sig)))
-		 (else (error "connect-dependent-value! unhandled key" key)))))
+		 ((not value) (lambda (tnx) (thunk) (lambda () sig)))
+                 ((procedure? value)
+                  (or (procedure? thunk) (error "value needs constructor"))
+                  (lambda (tnx)
+                    ;; exception will abort here
+                    (let ((prepared (call-with-values thunk value)))
+                      (lambda ()
+                        ;; STM critical part
+                        (if (procedure? prepared)
+                            (let ((additional (stm-critical-execute! prepared)))
+                              (cond
+                               ((procedure? additional)
+                                (cond
+                                 ((pair? sig) (cons additional sig))
+                                 ((procedure? sig) (list additional sig))
+                                 (else additional)))
+                               (else sig)))
+                            sig)))))
+                 ((string? value) (lambda (tnx) (call-with-overwrite value thunk sig)))
+		 (else (error "connect-dependent-value! unhandled value" value)))))
     (with-current-transaction
      (lambda () (for-each (lambda (p) (observable-regref! p action)) params)))))
