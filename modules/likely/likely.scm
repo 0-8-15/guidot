@@ -1,3 +1,5 @@
+;; (define-cond-expand-feature no-dirty-tagging)
+
 (cond-expand
  (gambit
   (cond-expand

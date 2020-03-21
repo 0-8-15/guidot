@@ -2,7 +2,8 @@
   macros: prefix: %
   (tag unprintable: equality-skip:)
   value
-  (deps unprintable: equality-skip:) ;; maybe turn it into an STM slot too
+  (deps-tag unprintable: equality-skip:)
+  (deps unprintable: equality-skip:)
   name
   pred
   filter
@@ -12,7 +13,7 @@
   `(or (%observable? ,obj) (error "not an observable" ,where ,obj)))
 
 (define (make-observable v #!optional pred filter name)
-  (%make-observable 0 v '() name pred filter))
+  (%make-observable 0 v 0 '() name pred filter))
 
 (define (observable? var) (%observable? var))
 (define (observable-deps var) (%observable-deps var))
@@ -90,26 +91,37 @@
        new))
    '()))
 
+(define (observable-deps-reference var transaction)
+  (%check-observable! var 'observable-deps-reference)
+  (make-tslot-ref transaction var 3))
+
+(define (observable-deps-alter! obj f . args)
+  ;; (%check-observable! var 'observable-deps-alter!)
+  (with-implied-current-transaction
+   (lambda ()
+     (let* ((ref (make-tslot-ref (current-transaction) var 3))
+            (old (%cell-ref ref))
+            (new (apply f old args)))
+       (or (eq? old new) (%alter! ref new))))
+   observable-deps-alter!))
+
 (define (observable-regref! var trigger)
   (%check-observable! var 'observable-regref!)
   (or (procedure? trigger) (error "not a procedure" 'observable-regref! trigger))
-  (*synch*
-   (lambda ()
-     (if (not (memq trigger (%observable-deps var))) (%observable-deps-set! var (cons trigger (%observable-deps var)))))))
+  (or (memq? trigger deps) ;; short cut
+      (let ((insert (lambda (deps trigger) (if (memq? trigger deps) deps (cons trigger deps)))))
+        (observable-deps-alter! var insert trigger))))
 
 (define (observable-unref! var trigger)
+  (define (del regs trigger)
+    (if (memq trigger regs)
+        (let loop ((regs regs))
+          (if (eq? (car regs) trigger)
+              (cdr regs)
+              (cons (car regs) (loop (cdr regs)))))
+        regs))
   (%check-observable! var 'observable-regref!)
-  (or (procedure? trigger) (error "not a procedure" 'observable-regref! trigger))
-  (*synch*
-   (lambda ()
-     (let ((regs (%observable-deps var)))
-       (if (memq trigger regs)
-           (%observable-deps-set!
-            var
-            (let loop ((regs regs))
-              (if (eq? (car regs) trigger)
-                  (cdr regs)
-                  (cons (car regs) (loop (cdr regs)))))))))))
+  (observable-deps-alter! var del trigger))
 
 (define ($debug-trace-triggers) #f)
 
@@ -152,3 +164,18 @@
      (for-each (lambda (thunk) (thunk)) l)
      ;; (trail-complete! *default-trail*)
      )))
+
+#|
+(: connect-dependent-value!
+   ((or string false)
+    (procedure () (or string false)) (or :connsig: (list-of :connsig:))
+    &rest (struct control-variable)
+    -> *))
+|#
+(define (connect-dependent-value! key thunk sig . params)
+  (let ((action (cond
+		 ((not key) (lambda () (thunk) (lambda () sig)))
+		 (else (lambda () (call-with-overwrite key thunk sig))))))
+    (with-implied-current-transaction
+     (lambda () (for-each (lambda (p) (observable-regref! p action)) params))
+     'connect-dependent-value!)))

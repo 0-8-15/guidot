@@ -32,8 +32,6 @@
 
 (define *hope* (make-mutex '*hope*))
 
-(define *synch* (lambda (thunk) (mutex-lock! *hope*) (thunk) (mutex-unlock! *hope*)))
-
 ;;;** algorithm
 
 (define stm-current-global-clock-value '#(1))
@@ -215,8 +213,11 @@ nonono: (raise 'stm-conflict)))
   (define (undo-dirty-tagging! dirty)
     (for-each
      (lambda (x)
-       (##unchecked-structure-set!
-        (%stmref-source x) (%stmref-tag x) (%stmref-slot x) 'any 'transaction-commit)
+       (cond-expand
+        (no-dirty-tagging #t)
+        (else
+         (##unchecked-structure-set!
+          (%stmref-source x) (%stmref-tag x) (%stmref-slot x) 'any 'transaction-commit)))
        (%break-reference! x))
      dirty))
   (define (unlock-and-return result)
@@ -286,14 +287,14 @@ nonono: (raise 'stm-conflict)))
                   ;; Referenced in this transaction later (list is
                   ;; reverse access order).  Ignore prior ref.
                   (cond-expand
-                   ((and (not debug) no-dirty-tagging))
+                   ((and (not debug) no-dirty-tagging) #t)
                    (else
                     (stm-consistency-error "Warning: 'hopefully' conflict free transaction ran into double reference\n")))
                   (loop (cdr refs) dirty))
                  ((not (eq? tag (%stmref-tag x)))
                   ;; Conflict. Undo dirty tagging.
                   (cond-expand
-                   ((and (not debug) no-dirty-tagging))
+                   ((and (not debug) no-dirty-tagging) #t)
                    (else
                     (undo-dirty-tagging! dirty)))
                   (transaction-close! transaction) ;; or should this be done elsewhere?
@@ -387,6 +388,7 @@ nonono: (raise 'stm-conflict)))
                     (transaction-reopen! tnx)
                     (with-current-transaction-loop)))
                     (let ((post-triggers (transaction-commit! tnx)))
+                      #;(when (eq? (mutex-state *hope*) (current-thread)) (stm-consistency-error "mutex left locked" *hope* tnx))
                       (if post-triggers
                           (cons results post-triggers)
                           (begin
