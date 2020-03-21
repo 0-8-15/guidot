@@ -3,29 +3,54 @@
 (define (add-test! thunk) ;; unsused
   (set! test-hook (cons thunk test-hook)))
 
-(define (run-tests)
+(define test-results '#(0 0 0))
+
+(define (test-stats+! idx) (vector-set! test-results idx (add1 (vector-ref test-results idx))))
+
+(define (tests-end)
+  (define (X idx) (vector-ref test-results idx))
   (let ((tbd (reverse test-hook)))
     (set! test-hook '())
-    (for-each (lambda (t) (t)) tbd)))
+    (for-each (lambda (t) (t)) tbd))
+  (for-each display (list "TOTAL " (X 0) " PASS " (X 1) " FAIL " (X 2) "\n")))
 
 (define (add-test! thunk) (thunk))  ;; and overwritten
 
+(define (test-report-begin msg)
+  (test-stats+! 0)
+  (display "Test ") (display msg) (display ": "))
+
+(define (test-report-pass)
+  (test-stats+! 1)
+  (display "\n  PASS\n") )
+
+(define (test-report-expected-condition result)
+  (display result) (test-report-pass))
+
+(define (test-report-fail result)
+  (test-stats+! 2)
+  (display result) (display "\n  FAIL\n"))
+
 (define-macro (test-assert msg expr)
-  `(eval
-    (add-test!
-     (lambda ()
-       (display "Test ") (display ,msg) (display ": ")
-       (with-exception-catcher
-        (lambda (exn) (display exn) (display "\n  FAIL\n"))
-        (lambda () (if ,expr (display "\n  PASS\n") (display "\n  FAIL\n"))))))))
+  (let ((tmp (gensym 'expr)))
+    `(eval
+      (add-test!
+       (lambda ()
+         (test-report-begin ,msg)
+         (with-exception-catcher
+          test-report-fail
+          (lambda ()
+            (let ((,tmp ,expr))
+              (if ,tmp (test-report-pass) (test-report-fail ,tmp))))))))))
 
 (define-macro (test-error msg expr)
-  `(eval
-    (add-test!
-     (lambda ()
-       (display "Test ") (display ,msg) (display ": ")
-       (with-exception-catcher
-        (lambda (exn) (display exn) (display "\n  PASS\n"))
-        (lambda () (display ,expr) (display "\n  FAIL\n")))))))
+  (let ((tmp (gensym 'expr)))
+    `(eval
+      (add-test!
+       (lambda ()
+         (test-report-begin ,msg)
+         (with-exception-catcher
+          test-report-expected-condition
+          (lambda () (test-report-fail ,expr))))))))
 
 (include "2001-basic.scm")

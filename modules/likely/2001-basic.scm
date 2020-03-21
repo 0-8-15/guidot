@@ -160,4 +160,4 @@
 
 ;; ($implicit-current-transactions #f)
 
-;;(run-tests)
+(tests-end)
