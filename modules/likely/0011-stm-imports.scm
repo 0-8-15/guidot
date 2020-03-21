@@ -16,30 +16,40 @@
 (define overwrite-in-toplevel
   ;; This may better use stm-consistency-error?
   (dynamic
-   (lambda (directory file display-content content)
-     (if directory (create-directory directory #t))
+   (lambda (file display-content content)
      (if content
          (call-with-output-file key (lambda (port) (display-content content port)))
          (if (file-exists? key) (delete-file key))))))
 
-(define (call-with-overwrite key thunk sig)
+(define (call-with-overwrite file thunk sig)
   (define (display-content content port)
     (cond
      ((blob? content)
       (write-u8vector (blob->u8vector/shared content) port))
      (else (display content port))))
-  ;; TBD: create temp file, change owner and permissions to match
-  ;; target OR PARAMETERS TO BE ADDED, write temp file, return thunk
-  ;; which links temp file to target file.
   (let ((content (thunk))
         (directory #f))
+    ;; Assert preconditions for a fast, simple and *abortable external*
+    ;; commit are met: start external transactions
     (if content
-	(receive (d f e) (decompose-pathname key) (set! directory d)))
-    ;; Here we SHALL prepare a temporary file, adjust owner and
-    ;; permissions and then fill with the content.
+	(receive (d f e) (decompose-pathname file) (set! directory d)))
     (lambda ()
-      ;; Once that's done we will use "link" respectively "unlink"
-      ;; here to update the target location from the temporary file.
+      ;; Here we SHALL prepare a temporary file, adjust owner and
+      ;; permissions and then fill with the content.
+
+      ;; TBD: create temp file, change owner and permissions to match
+      ;; target file OR PARAMETERS TO BE ADDED, write temp file, pass
+      ;; reference to new content
+      (create-directory directory #t)
+      ;; TBD: Once we have temporary files use "link" respectively
+      ;; "unlink" here to update the target location from the
+      ;; temporary file.
+      ;;
       ;; For now we simply overwrite.
-      (overwrite-in-toplevel directory key display-content content)
+      (overwrite-in-toplevel file display-content content)
+      ;; TBD: merge `sig` with "link/unlink" operations and commit
+      ;; external transactions (e.g., external database transactions
+      ;; opened in the outer part).
+      ;;
+      ;; For now we only pass back `sig.
       sig)))
