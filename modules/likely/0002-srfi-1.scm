@@ -1,5 +1,7 @@
 ;; From SRFI-1
 
+(define-macro (null-list? x) `(null? ,x))
+
 (define (reduce f ridentity lis)
   ;;(check-arg procedure? f reduce)
   (if (null-list? lis) ridentity

@@ -14,9 +14,11 @@
 (define (make-observable v #!optional pred filter name)
   (%make-observable 0 v '() name pred filter))
 
+(define (observable? var) (%observable? var))
 (define (observable-deps var) (%observable-deps var))
 (define (observable-name var) (%observable-name var))
 (define (observable-pred var) (%observable-pred var))
+(define (observable-filter var) (%observable-filter var))
 
 (define (observable-deref var)
   (cond
@@ -109,7 +111,7 @@
                   (cdr regs)
                   (cons (car regs) (loop (cdr regs)))))))))))
 
-(define (debug-trace) #t)
+(define ($debug-trace-triggers) #f)
 
 (define observable-triggers
   (make-trigger-handler
@@ -121,11 +123,11 @@
    ;; values let alone cause side effects.  They may fail, aborting
    ;; the commit.
    (lambda (t s n i)
-     (if (and (observable? s) (= n 2))
-	 (begin
-	   (if (debug-trace)
-	       (debug  "Transaction name deps" (list t (observable-name s) (observable-deps s))))
-	   (lset-union eq? i (observable-deps s)))
+     (if (and (%observable? s) (= n 1))
+	 (let ((deps (observable-deps s)))
+	   (if ($debug-trace-triggers)
+	       (debug  "Transaction name deps" (list t (observable-name s) deps)))
+	   (lset-union eq? i deps))
 	 i))
    ;; Sync function receives a list of thunks which MUST NOT fail to
    ;; complete the commit.  Still within the commit protocol: MUST NOT
@@ -134,7 +136,7 @@
    (lambda (l)
      (fold (lambda (thunk init)
 	     (let ((next (thunk)))
-	       (if (debug-trace)
+	       (if ($debug-trace-triggers)
 		   (debug "Phase I trigger returns" (list thunk next)))
 	       (lset-union eq? init (if (or (pair? next) (null? next)) next (list next)))))
 	   (list (lambda () "The elephant in Cairo for the sake of `lset-union`."))
@@ -145,7 +147,7 @@
    ;; Better send asynchronous operations to pre-created threads than
    ;; forking threads from within.
    (lambda (l)
-     (if (debug-trace)
+     (if ($debug-trace-triggers)
 	 (debug "Post transaction triggers" l))
      (for-each (lambda (thunk) (thunk)) l)
      ;; (trail-complete! *default-trail*)

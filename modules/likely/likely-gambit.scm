@@ -42,7 +42,8 @@
   observable?
   observable-deps
   observable-name
-  observable-pred
+  ;; observable-pred
+  ;; observable-filter
   observable-deref
   observable-reference
   observable-set!
@@ -53,6 +54,7 @@
   $stm-retry-limit ;; parameter
   $implicit-current-transactions
   (stm-current-global-clock exported-stm-current-global-clock)
+  $debug-trace-triggers
   ))
 
 (let ()
