@@ -52,6 +52,7 @@
   observable-regref!
   observable-unref!
   $stm-retry-limit ;; parameter
+  $stm-conflict-peanalty
   $implicit-current-transactions
   (stm-current-global-clock exported-stm-current-global-clock)
   $debug-trace-triggers

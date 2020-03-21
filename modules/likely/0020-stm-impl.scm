@@ -320,6 +320,8 @@ nonono: (raise 'stm-conflict)))
 
 (define $stm-retry-limit (make-parameter 100))
 
+(define $stm-conflict-peanalty (make-parameter thread-yield!))
+
 (define-macro (%conflict-loop retry . body)
   (let ((loop-counter (gensym 'loop-counter))
         (loop (gensym 'loop))
@@ -331,7 +333,7 @@ nonono: (raise 'stm-conflict)))
                    ;; other means to possibly update
                    ;; ($stm-retry-limit) and only afterwards test
                    ;; against the loop counter.
-                   (thread-yield!) ;; conflict penealty
+                   (($stm-conflict-peanalty)) ;; conflict penealty
                    (set! ,loop-counter (add1 ,loop-counter))
                    (let ((,limit ($stm-retry-limit)))
                      (if (or (not ,limit) (< ,loop-counter ,limit))
