@@ -62,7 +62,7 @@
       10))
 
 (test-assert
- "Outdated reference (currently only reported)"
+ "Outdated reference (might be reported)"
  (eq? (parameterize
        (($stm-retry-limit 3))
        (toplevel-observable-set! res 42)

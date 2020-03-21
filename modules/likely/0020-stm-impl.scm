@@ -155,6 +155,8 @@
   macros: prefix: %
   source slot tag val #;transaction)
 
+(define %%report-outdated-referenced #f) ;; FIXME: handle this case
+
 (define (make-tslot-ref transaction source slot) ;; oddly named internal unsafe
   ;; (ensure fixnum? slot)
   (define (make-cell)
@@ -163,8 +165,9 @@
     (let* ((tag (##unchecked-structure-ref source slot 'any 'make-cell))
            (cell (%make-stmref source slot tag (##unchecked-structure-ref source (add1 slot) 'any 'make-cell) #;transaction)))
       (transaction-extend! transaction cell)
-      (when (%%outdated transaction tag) ;; FIXME: handle this case
-          (stm-warning "creating already outdated reference" source (list 'TID (%stmtnx-id transaction) 'TAG tag 'CELL cell)))
+      (if (%%outdated transaction tag) ;; FIXME: handle this case
+          (if %%report-outdated-referenced
+              (stm-warning "creating already outdated reference" source (list 'TID (%stmtnx-id transaction) 'TAG tag 'CELL cell))))
       cell))
   (ensure %stmtnx? transaction)
   (if (fx>= slot (##structure-length source)) (stm-error "slot not within structure" source slot))
