@@ -39,6 +39,7 @@
  (current-trigger-handler
   with-current-transaction
   make-observable
+  observable?
   observable-deps
   observable-name
   observable-pred

@@ -247,7 +247,7 @@ nonono: (raise 'stm-conflict)))
                       ex (begin	;; Conflict. Undo dirty tagging.
                            (undo-dirty-tagging! dirty)
                            (transaction-close! transaction) ;; or should this be done elsewhere?
-                           (raise ex)
+                           (raise (unlock-and-return ex))
                            #f)
                       (set! found ((trigger-handler-sync trigger-handler)
                                    (map (lambda (proc) (proc transaction))
