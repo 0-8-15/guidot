@@ -22,6 +22,10 @@
 (define res (make-observable 'undefined))
 
 (test-assert
+ "observable-apply"
+ (= (with-current-transaction (lambda () (observable-apply + (list x y)))) 87))
+
+(test-assert
  "observable-invoke!"
  (parameterize
   (($implicit-current-transactions #t))
@@ -98,7 +102,7 @@
    (with-current-transaction thunk)))
 
 (test-assert
- "TBD: triggers AND set! works"
+ "triggers AND set! works"
  (let ()
    (define (with-triggers-no-retry thunk)
      (parameterize
@@ -108,7 +112,6 @@
       (with-current-transaction thunk)))
    (with-triggers-no-retry (lambda () (observable-set! x 42)))
    (= (observable-deref x) 42)))
-
 
 ;; ($implicit-current-transactions #f)
 

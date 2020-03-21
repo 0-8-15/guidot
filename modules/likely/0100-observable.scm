@@ -55,6 +55,23 @@
          (lambda () (%observable-invoke! (%current-transaction) proc vars))
          'observable-invoke!))))
 
+(define (%observable-apply transaction proc vars)
+  (define (references transaction vars)
+    (map
+     (lambda (var)
+       (%check-observable! var 'observable-apply)
+       (%cell-ref (make-tslot-ref transaction var 1)))
+     vars))
+  (apply proc (references transaction vars)))
+
+(define (observable-apply proc vars)
+  (let ((transaction (current-transaction)))
+    (if (%stmtnx? transaction)
+        (%observable-apply transaction proc vars)
+        (with-implied-current-transaction
+         (lambda () (%observable-apply (%current-transaction) proc vars))
+         'observable-apply))))
+
 (define-macro (%filter target ref old val rcv)
   (let ((pred (gensym 'pred))
         (filter (gensym 'filter))
@@ -172,10 +189,11 @@
     &rest (struct control-variable)
     -> *))
 |#
-(define (connect-dependent-value! key thunk sig . params)
+(define (connect-dependent-value! key thunk sig params)
   (let ((action (cond
+                 ((string? key) (lambda () (call-with-overwrite key thunk sig)))
 		 ((not key) (lambda () (thunk) (lambda () sig)))
-		 (else (lambda () (call-with-overwrite key thunk sig))))))
+		 (else (error "connect-dependent-value! unhandled key" key)))))
     (with-implied-current-transaction
      (lambda () (for-each (lambda (p) (observable-regref! p action)) params))
      'connect-dependent-value!)))

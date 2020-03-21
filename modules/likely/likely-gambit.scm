@@ -47,6 +47,7 @@
   observable-deref
   observable-reference
   observable-set!
+  observable-apply
   observable-alter! ;; like clojure API
   observable-invoke!
   observable-regref!
