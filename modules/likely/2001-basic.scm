@@ -149,7 +149,7 @@
    (with-current-transaction
     (lambda ()
       (connect-dependent-value!
-       (lambda thunk-results (lambda () (set! success #t) (debug 'stm-critical (current-transaction))))
+       (lambda thunk-results (lambda () (set! success (not (current-transaction))) (debug 'stm-critical (current-transaction))))
        (lambda () #f)
        '() ;; sig
        (list ob))))
