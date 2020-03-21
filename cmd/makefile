@@ -3,9 +3,9 @@
 ## HINTS
 # - always distribute `Makefile` while `makefile` is personal
 
-fire:	# instructional template
-	@echo "don't know how to make fire"
-	@echo 'try `make help`'
+fire:	# compile and run test
+	make -f Makefile all
+	# /home/u/.cache/lambdanative/linux/cmd/cmd
 
 #fresh:	$FILE
 #$FILE:

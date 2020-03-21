@@ -1,111 +1,90 @@
-#;(define call-with-current-dynamic-extent
-  (let ()
-    (define (current-dynamic-extent)
-      (call-with-current-continuation
-       (lambda (return)
-         (call-with-values
-             (lambda ()
+;;; (C) 2020 JFW
+
+;; Note: the default value for `multiple-value-return` being false was
+;; choosen for compatibility with scheme versions which do not support
+;; multiple value.  Implementations, which do not support multiple
+;; value returns MUST report an error when called with a #t SHOULD
+;; better only provide a base version which does not accept the
+;; optional argument.
+(define (current-dynamic-extent #!optional (multiple-value-return #f))
+  (let ((yield (lambda (d) (lambda () d))))
+    (if multiple-value-return ;; This might be faster, would it be?
+        ((call-with-current-continuation
+          (lambda (unit)
+            (yield
+             (lambda (thunk)
                (call-with-current-continuation
-                (lambda (c)
-                  (return
-                   (lambda (thunk)
-                     (call-with-current-continuation
-                      (lambda (k)
-                        (c k thunk))))))))
-           (lambda (k thunk)
-             (call-with-values thunk k))))))
-    (lambda (d) (d (current-dynamic-extent)))))
+                (lambda (k)
+                  (unit (lambda () (k (thunk)))))))))))
+        ((call-with-current-continuation
+          (lambda (unit)
+            (yield
+             (lambda (thunk)
+               (call-with-current-continuation
+                (lambda (k)
+                  (unit (lambda () (call-with-values thunk k)))))))))))))
 
-(define (call-with-current-dynamic-extent thunk)
-  (thunk
-   (call-with-current-continuation
-    (lambda (return)
-      (call-with-values
-          (lambda ()
-            (call-with-current-continuation
-             (lambda (c)
-               (return
-                (lambda (thunk)
-                  (call-with-current-continuation
-                   (lambda (k)
-                     (c k thunk))))))))
-        (lambda (k thunk)
-          (call-with-values thunk k)))))))
-
-(define (dynamic f)
-  (call-with-current-dynamic-extent
-   (lambda (dynamic-extent)
-     (lambda args
-       (dynamic-extent
-        (lambda () (apply f args)))))))
+(define dynamic
+  (let ((current-dynamic-extent current-dynamic-extent)
+        (call-with-values call-with-values))
+    (define (dynamic f #!optional (dynamic-extent #f) (single-value-return #f))
+      (let ((fixed (if dynamic-extent dynamic-extent (current-dynamic-extent (not single-value-return)))))
+        (lambda args (fixed (lambda () (apply f args))))))
+    dynamic))
 
 #|
+
+(define (current-dynamic-extent #!optional (call-with-values call-with-values))
+  (let ((yield (lambda (d) (lambda () d))))
+    ((call-with-current-continuation
+      (lambda (unit)
+        (yield
+         (lambda (thunk)
+           (call-with-current-continuation
+            (lambda (k)
+              (unit (lambda () (call-with-values thunk k))))))))))))
+
+(define (call-with-current-dynamic-extent proc #!optional (call-with-values call-with-values))
+  (proc (current-dynamic-extent call-with-values)))
+
+(define (fix f)
+  (call-with-current-dynamic-extent
+   (lambda (fixed) (lambda args (fixed (lambda () (apply f args)))))))
+
+(define-macro (handle-exceptions exn handler . body)
+  (let ((oh (gensym 'oh)))
+    `(let ((,oh (current-exception-handler)))
+       (with-exception-handler
+        (lambda (,exn) (with-exception-handler ,oh (lambda () ,handler)))
+        (lambda () . ,body)))))
+
 (define-macro (exh exn handler . body)
-  `(with-exception-handler (dynamic (lambda (,exn) ,handler)) (lambda () . ,body)))
+  `(with-exception-handler (fix (lambda (,exn) ,handler)) (lambda () . ,body)))
 
 (exh x (cons 'caught x) ((current-exception-handler) 42))
 
-(define x (dynamic (lambda () (error "Fehler 42"))))
+(define x (fix (lambda () (error "Fehler 42"))))
 |#
 
-(define horrible-internal-error-debugger
-  (dynamic
-   (lambda (mux before after)
-     (let ((msg "Someone broke our synchronisation\n"))
-       (display msg (current-error-port))
-       (error msg))
-     (exit 1))))
-
-#;(define make-protected-resource
-  ;; returns a procedure with internal, mutex-protexted state, which
-  ;; takes a procedure to be applied to the state which shall return
-  ;; the new state.
-  (lambda ()
-    (let ((mux (make-mutex 'mux)))
-      (lambda (access)
-        (dynamic-wind
-            (lambda () (mutex-lock! mux))
-            (lambda ()
-              (let* ((before (mutex-specific mux))
-                     (after (access before)))
-                ;; sanity check, we know this section is protected by the mux.
-                ;; Sure the following exception will never be raised:
-                (unless (eq? before (mutex-specific mux)) (horrible-internal-error-debugger mux before after))
-                (mutex-specific-set! mux after)
-                after))
-            (lambda () (mutex-unlock! mux)))))))
-
 (define make-protected-resource
-  ;; returns a procedure with internal, mutex-protexted state, which
-  ;; takes a procedure to be applied to the state which shall return
-  ;; the new state.
-  (lambda ()
-    (let ((mux (make-mutex 'mux)))
-      (case-lambda
-       (()
-        (dynamic-wind
-            (lambda () (mutex-lock! mux))
+  ;; returns a procedure with internal, mutex-protected state
+  (lambda (initial)
+    (let ((mutex (make-mutex 'mutex)))
+      (mutex-specific-set! mutex initial)
+      (lambda (#!optional get mutate)
+        (mutex-lock! mutex)
+        (call-with-values
             (lambda ()
-              (let* ((before (mutex-specific mux))
-                     (after (access before)))
-                ;; sanity check, we know this section is protected by the mux.
-                ;; Sure the following exception will never be raised:
-                (unless (eq? before (mutex-specific mux)) (horrible-internal-error-debugger mux before after))
-                (mutex-specific-set! mux after)
-                after))
-            (lambda () (mutex-unlock! mux))))
-       ((access)
-        (dynamic-wind
-            (lambda () (mutex-lock! mux))
-            (lambda ()
-              (let* ((before (mutex-specific mux))
-                     (after (access before)))
-                ;; sanity check, we know this section is protected by the mux.
-                ;; Sure the following exception will never be raised:
-                (unless (eq? before (mutex-specific mux)) (horrible-internal-error-debugger mux before after))
-                (mutex-specific-set! mux after)
-                after))
-            (lambda () (mutex-unlock! mux))))))))
+              (if mutate
+                  (let* ((before (mutex-specific mutex))
+                         (after (mutate before)))
+                    (mutex-specific-set! mutex after)
+                    (if get (get before after) after))
+                  (get (mutex-specific mutex))))
+          (lambda results
+            (mutex-unlock! mutex)
+            (apply values results)))))))
+
 #|
 (define (store-set! store value) (store (lambda (old) value)))
 (define (store-get store) (let ((now #f)) (store (lambda (old) (set! now old) old)) now))
