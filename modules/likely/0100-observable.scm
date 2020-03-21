@@ -112,21 +112,20 @@
   (%check-observable! var 'observable-deps-reference)
   (make-tslot-ref transaction var 3))
 
-(define (observable-deps-alter! obj f . args)
+(define (observable-deps-alter! var f . args)
   ;; (%check-observable! var 'observable-deps-alter!)
-  (with-implied-current-transaction
+  (with-current-transaction
    (lambda ()
      (let* ((ref (make-tslot-ref (current-transaction) var 3))
             (old (%cell-ref ref))
             (new (apply f old args)))
-       (or (eq? old new) (%alter! ref new))))
-   observable-deps-alter!))
+       (or (eq? old new) (%alter! ref new))))))
 
 (define (observable-regref! var trigger)
   (%check-observable! var 'observable-regref!)
   (or (procedure? trigger) (error "not a procedure" 'observable-regref! trigger))
-  (or (memq? trigger deps) ;; short cut
-      (let ((insert (lambda (deps trigger) (if (memq? trigger deps) deps (cons trigger deps)))))
+  (or (memq trigger (%observable-deps var)) ;; short cut
+      (let ((insert (lambda (deps trigger) (if (memq trigger deps) deps (cons trigger deps)))))
         (observable-deps-alter! var insert trigger))))
 
 (define (observable-unref! var trigger)
@@ -140,7 +139,7 @@
   (%check-observable! var 'observable-regref!)
   (observable-deps-alter! var del trigger))
 
-(define ($debug-trace-triggers) #f)
+(define $debug-trace-triggers (make-parameter #f))
 
 (define observable-triggers
   (make-trigger-handler
@@ -155,7 +154,7 @@
      (if (and (%observable? s) (= n 1))
 	 (let ((deps (observable-deps s)))
 	   (if ($debug-trace-triggers)
-	       (debug  "Transaction name deps" (list t (observable-name s) deps)))
+	       (debug "Transaction name deps" (list t (observable-name s) deps)))
 	   (lset-union eq? i deps))
 	 i))
    ;; Sync function receives a list of thunks which MUST NOT fail to
@@ -191,9 +190,8 @@
 |#
 (define (connect-dependent-value! key thunk sig params)
   (let ((action (cond
-                 ((string? key) (lambda () (call-with-overwrite key thunk sig)))
-		 ((not key) (lambda () (thunk) (lambda () sig)))
+                 ((string? key) (lambda (tnx) (call-with-overwrite key thunk sig)))
+		 ((not key) (lambda (tnx) (thunk) (lambda () sig)))
 		 (else (error "connect-dependent-value! unhandled key" key)))))
-    (with-implied-current-transaction
-     (lambda () (for-each (lambda (p) (observable-regref! p action)) params))
-     'connect-dependent-value!)))
+    (with-current-transaction
+     (lambda () (for-each (lambda (p) (observable-regref! p action)) params)))))

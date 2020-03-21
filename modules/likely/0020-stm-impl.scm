@@ -244,20 +244,21 @@ nonono: (raise 'stm-conflict)))
                     (found (the (or boolean pair) #f)))
                 (if
                  (or (not trigger-handler)
-                     (handle-exceptions
-                      ex (begin	;; Conflict. Undo dirty tagging.
-                           (undo-dirty-tagging! dirty)
-                           (transaction-close! transaction) ;; or should this be done elsewhere?
-                           (raise (unlock-and-return ex))
-                           #f)
-                      (set! found ((trigger-handler-sync trigger-handler)
-                                   (map (lambda (proc) (proc transaction))
-                                        (fold (let ((merge (trigger-handler-merge trigger-handler)))
-                                                (lambda (x i)
-                                                  (merge lock-tag (%stmref-source x) (%stmref-slot x) i)))
-                                              ((trigger-handler-new trigger-handler))
-                                              dirty))))
-                      #t))
+                     (with-exception-catcher
+                      (lambda (ex)	;; Conflict. Undo dirty tagging.
+                        (undo-dirty-tagging! dirty)
+                        (transaction-close! transaction) ;; or should this be done elsewhere?
+                        (raise (unlock-and-return ex))
+                        #f)
+                      (lambda ()
+                        (set! found ((trigger-handler-sync trigger-handler)
+                                     (map (lambda (proc) (proc transaction))
+                                          (fold (let ((merge (trigger-handler-merge trigger-handler)))
+                                                  (lambda (x i)
+                                                    (merge lock-tag (%stmref-source x) (%stmref-slot x) i)))
+                                                ((trigger-handler-new trigger-handler))
+                                                dirty))))
+                        #t)))
                  (begin
                    ;; (mutex-lock! *hope*) move it here once we re-check dirty after taking the lock
                    (let ((clock (stm-clock-tick!)))

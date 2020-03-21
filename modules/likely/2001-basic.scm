@@ -113,6 +113,35 @@
    (with-triggers-no-retry (lambda () (observable-set! x 42)))
    (= (observable-deref x) 42)))
 
+
+(define reported (make-observable 23 #f #f 'reported))
+(define report-counter (make-observable 0 #f #f 'reports))
+(define (report-call)
+  (debug 'report reported)
+  (with-current-transaction
+    (lambda () (observable-alter! report-counter + 1))))
+
+(define (run-observed! thunk)
+  (parameterize
+   ((current-trigger-handler observable-triggers)
+    #;($stm-retry-limit 0)
+    #;($debug-trace-triggers #t)
+    )
+   ;; before ..??
+   (with-current-transaction thunk)))
+
+(test-assert
+ "trail"
+ (let ()
+   (with-current-transaction
+    (lambda ()
+      (connect-dependent-value! #f (lambda () #f) report-call (list reported))))
+   (debug 'expect 'report)
+   (run-observed!
+    (lambda () (observable-set! reported 42)))
+   (thread-yield!)
+   (= (observable-deref report-counter) 1)))
+
 ;; ($implicit-current-transactions #f)
 
 ;;(run-tests)
