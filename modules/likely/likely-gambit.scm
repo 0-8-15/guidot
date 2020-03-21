@@ -1,4 +1,5 @@
 (include "0001-dynamic-extent.scm")
+(include "0002-srfi-1.scm")
 (include "0010-debug.scm")
 
 (define-macro (define-values names . body)
