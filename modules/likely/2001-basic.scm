@@ -94,6 +94,32 @@
           (observable-alter! res (add-and-set-conflict res 7) 23))))
       30))
 
+(test-error
+ "predicate works"
+ (equal? (let ((a (make-observable 42 number? #f 'a)))
+           (with-current-transaction
+            (lambda ()
+              (observable-alter! a number->string))))
+         "42"))
+
+(test-error
+ "default predicate for observables"
+ (equal? (let ((a (make-observable 42)))
+           (with-current-transaction
+            (lambda ()
+              (observable-alter! a (lambda (v) a)))))
+         "42"))
+
+(test-assert
+ "filter"
+ (equal? (let ((a (make-observable
+                   42 number?
+                   (lambda (o n) (inexact->exact (floor n))))))
+           (with-current-transaction
+            (lambda ()
+              (observable-alter! a (lambda (o) 23.5)))))
+         23))
+
 (define (with-triggers-no-retry thunk)
   (parameterize
    ((current-trigger-handler observable-triggers)

@@ -75,21 +75,27 @@
 (define-macro (%filter target ref old val rcv)
   (let ((pred (gensym 'pred))
         (filter (gensym 'filter))
-        (new (gensym 'new)))
+        (new (gensym 'new))
+        (check-pred
+         (lambda (target pred val)
+           `(or (not (or ,pred
+                         (and (%observable? ,val) ;; likely an error
+                              (raise "observables may only be used with test predicate"))))
+                (,pred ,val) ;; but pass if there is a predicate saying so
+                (error "value did not pass guard predicate" ,target ,val)))))
     `(let ((,pred (%observable-pred ,target)))
-       (or (not ,pred) (,pred ,val)
-           (error "value did not pass guard predicate" ,target ,val))
        (let ((,filter (%observable-filter ,target)))
          (case ,filter
-           ((#f) (,rcv ,ref ,val))
+           ((#f) ,(check-pred target pred val) (,rcv ,ref ,val))
            ((#t)
-            (unless (eqv? ,old ,val) (,rcv ,ref ,val)))
-           (else (,rcv ,ref (,filter ,old ,val))))))))
+            (unless (eqv? ,old ,val) ,(check-pred target pred val) (,rcv ,ref ,val)))
+           (else (,rcv ,ref (let ((,new (,filter ,old ,val)))
+                              ,(check-pred target pred new) ,new))))))))
 
 (define (observable-set! var val)
   (cond
    ;; preconditions
-   ((%observable? val) (error "use mvar-set!" val))
+   ((%stmref? val) (raise "observable-set! reference escaped"))
    ;; alternatives
    ((and (%stmref? var)
          (let ((source (%stmref-source var))) (and (%observable? source) source)))
@@ -105,7 +111,8 @@
      (let* ((ref (observable-reference ref))
             (new (apply f (observable-deref ref) args)))
        (observable-set! ref new)
-       new))
+       ;; re-read as filters could have changed the value
+       (%cell-ref ref)))
    '()))
 
 (define (observable-deps-reference var transaction)
