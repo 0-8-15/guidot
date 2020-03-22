@@ -223,16 +223,20 @@
                     (let ((prepared (call-with-values thunk value)))
                       (lambda ()
                         ;; STM critical part
-                        (if (procedure? prepared)
-                            (let ((additional (stm-critical-execute! prepared)))
-                              (cond
-                               ((procedure? additional)
+                        (let ((immediate (procedure? prepared)))
+                          (if (or immediate (box? prepared))
+                              (let ((additional
+                                     (if immediate
+                                         (prepared)
+                                         (stm-critical-execute! (unbox prepared)))))
                                 (cond
-                                 ((pair? sig) (cons additional sig))
-                                 ((procedure? sig) (list additional sig))
-                                 (else additional)))
-                               (else sig)))
-                            sig)))))
+                                 ((procedure? additional)
+                                  (cond
+                                   ((pair? sig) (cons additional sig))
+                                   ((procedure? sig) (list additional sig))
+                                   (else additional)))
+                                 (else sig)))
+                              sig))))))
                  ((string? value) (lambda (tnx) (call-with-overwrite value thunk sig)))
 		 (else (error "connect-dependent-value! unhandled value" value)))))
     (with-current-transaction
@@ -277,10 +281,15 @@
                  (if (procedure? critical)
                      (lambda args
                        (let ((final (post-changes)))
-                         ;; FIXME: don't forget 'critical's return, if any
-                         (lambda () (apply critical args) final)))
+                         (box
+                          (lambda ()
+                            (let ((crit (apply critical args)))
+                              (cond
+                               ((procedure? crit) (list crit final))
+                               ((pair? crit) (cons final crit))
+                               (else final)))))))
                      (lambda args (post-changes))))
                 ((procedure? critical)
-                 (lambda args (lambda () (apply critical args))))
+                 (lambda args (box (lambda () (apply critical args)))))
                 (else #f))))
     (connect-dependent-value! recv thunk post params)))
