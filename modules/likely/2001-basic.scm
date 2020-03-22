@@ -1,8 +1,16 @@
 (define x (make-observable 23 #f #f 'X))
 
-(test-error
+(define (error-exception-message-equal? x expected #!optional (= equal?))
+  (and
+   (error-exception? x)
+   (let ((msg (error-exception-message x)))
+     (= msg expected))))
+
+(test-condition
  "no current transaction"
- (observable-set! x 42))
+ (observable-set! x 42)
+ (lambda (exn)
+   (error-exception-message-equal? exn "no current transaction")))
 
 (test-assert
  "set! works"
@@ -94,21 +102,23 @@
           (observable-alter! res (add-and-set-conflict res 7) 23))))
       30))
 
-(test-error
+(test-condition
  "predicate works"
  (equal? (let ((a (make-observable 42 number? #f 'a)))
            (with-current-transaction
             (lambda ()
               (observable-alter! a number->string))))
-         "42"))
+         "42")
+ (lambda (exn) (error-exception-message-equal? exn "value did not pass guard predicate")))
 
-(test-error
+(test-condition
  "default predicate for observables"
  (equal? (let ((a (make-observable 42)))
            (with-current-transaction
             (lambda ()
               (observable-alter! a (lambda (v) a)))))
-         "42"))
+         "42")
+ (lambda (exn) (equal? exn "observables may only be used with test predicate")))
 
 (test-assert
  "filter"
@@ -184,24 +194,26 @@
    (thread-yield!)
    success))
 
-(test-error
- "trail with failing post condition aborts"
- (let ((ob (make-observable 23 #f #f 'ob))
-       (success #f))
-   (with-current-transaction
-    (lambda ()
-      (connect-dependent-value!
-       ;; This pase is never reached.
-       (lambda thunk-results
-         (lambda () (set! success (not (current-transaction))) (debug 'stm-critical (current-transaction))))
-       (lambda () (raise "post condition check failed"))
-       '() ;; sig
-       (list ob))))
-   (run-observed!
-    (lambda () (observable-set! ob 42)))
-   (unless (= (observable-deref ob) 23) (raise "FAIL FAIL FAIL"))
-   (thread-yield!)
-   success))
+(let ((this-is-the-error "post condition check failed"))
+  (test-condition
+   "trail with failing post condition aborts"
+   (let ((ob (make-observable 23 #f #f 'ob))
+         (success #f))
+     (with-current-transaction
+      (lambda ()
+        (connect-dependent-value!
+         ;; This pase is never reached.
+         (lambda thunk-results
+           (lambda () (set! success (not (current-transaction))) (debug 'stm-critical (current-transaction))))
+         (lambda () (raise this-is-the-error))
+         '() ;; sig
+         (list ob))))
+     (run-observed!
+      (lambda () (observable-set! ob 42)))
+     (unless (= (observable-deref ob) 23) (raise "FAIL FAIL FAIL"))
+     (thread-yield!)
+     success)
+   (lambda (exn) (equal? exn this-is-the-error))))
 
 #;(observable-connect!
        (list ob)
@@ -210,27 +222,29 @@
        check:
        post:)
 
-(test-error
- "trail v2 failing post condition"
- (let ((ob (make-observable 23 #f #f 'ob))
-       (success #f))
-   (with-current-transaction
-    (lambda ()
-      (observable-connect!
-       (list ob)
-       critical:
-       (lambda thunk-results
-         ;; This pase is never reached.
-         (set! success (not (current-transaction))) (debug 'stm-critical (current-transaction)))
-       extern: #f
-       ;; check: (lambda () (display "Check\n") #t)
-       check: (lambda () (raise "post condition check failed"))
-       post: (lambda () (display "Done\n")))))
-   (run-observed!
-    (lambda () (observable-set! ob 42)))
-   (unless (= (observable-deref ob) 23) (raise "FAIL FAIL FAIL"))
-   (thread-yield!)
-   success))
+(let ((this-is-the-error "post condition check failed"))
+  (test-error
+   "trail v2 failing post condition"
+   (let ((ob (make-observable 23 #f #f 'ob))
+         (success #f))
+     (with-current-transaction
+      (lambda ()
+        (observable-connect!
+         (list ob)
+         critical:
+         (lambda thunk-results
+           ;; This pase is never reached.
+           (set! success (not (current-transaction))) (debug 'stm-critical (current-transaction)))
+         extern: #f
+         ;; check: (lambda () (display "Check\n") #t)
+         check: (lambda () (raise "post condition check failed"))
+         post: (lambda () (display "Done\n")))))
+     (run-observed!
+      (lambda () (observable-set! ob 42)))
+     (unless (= (observable-deref ob) 23) (raise "FAIL FAIL FAIL"))
+     (thread-yield!)
+     success))
+  (lambda (exn) (equal? exn this-is-the-error)))
 
 (test-assert
  "trail v2 passing (with traces)"

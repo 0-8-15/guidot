@@ -53,4 +53,16 @@
           test-report-expected-condition
           (lambda () (test-report-fail ,expr))))))))
 
+(define-macro (test-condition msg expr pred)
+  (let ((tmp (gensym 'expr))
+        (exn (gensym 'exn)))
+    `(eval
+      (add-test!
+       (lambda ()
+         (test-report-begin ,msg)
+         (with-exception-catcher
+          (lambda (,exn)
+            (if (,pred ,exn) (test-report-pass) (test-report-fail ,exn)))
+          (lambda () (test-report-fail ,expr))))))))
+
 (include "2001-basic.scm")
