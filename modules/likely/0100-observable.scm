@@ -240,17 +240,30 @@
                  ((string? value) (lambda (tnx) (call-with-overwrite value thunk sig)))
 		 (else (error "connect-dependent-value! unhandled value" value)))))
     (with-current-transaction
-     (lambda () (for-each (lambda (p) (observable-regref! p action)) params)))))
+     (lambda () (for-each (lambda (p) (observable-regref! p action)) params)))
+    action))
+
+(define (exported-connect-dependent-value! value thunk sig params)
+  (connect-dependent-value! value thunk sig params)
+  #!void)
 
 (define (observable-connect!
          params #!key
          (critical #f)
          (extern #f)
          (check #f)
-         ;; (check-changes #f) ;; NO impossible
+         (check-values #f)
          (post-changes #f)
-         (post #f))
-  (let* ((all-checks (and check))
+         (post #f)
+         (switchable #f))
+  (let* ((all-checks
+          (cond
+           ((procedure? check-values)
+            (let ((vc (lambda ()
+                        (or (apply check-values (map observable-deref params))
+                            (error "check-values failed" check-values)))))
+              (if (procedure? check) (lambda () (vc) (check)) vc)))
+           (else check)))
          (checks
           (lambda (extern)
             (if (procedure? extern)
@@ -266,7 +279,7 @@
                  (let ((ov (map (lambda (v) (%observable-value v)) params)) ;; out
                        (nv (map observable-deref params)))
                    (lambda ()
-                     ;; defer over critical phase
+                     ;; defer over critical phase - not boxed => in dyn scope
                      (lambda ()
                        ;; defer to post phase
                        (apply (apply post-changes ov) nv)))))))
@@ -292,4 +305,26 @@
                 ((procedure? critical)
                  (lambda args (box (lambda () (apply critical args)))))
                 (else #f))))
-    (connect-dependent-value! recv thunk post params)))
+    (let ((trigger (connect-dependent-value! recv thunk (or post '()) params)))
+      ;; Hm.  Maybe this should be critical too.
+      (and
+       switchable ;; return a procedure to toggle or switch on/off
+       (let ((on (lambda ()
+                   (connect-dependent-value! recv thunk post params)))
+             (off (lambda ()
+                    (for-each
+                     (lambda (var) (observable-unref! var trigger))
+                     params))))
+         (let ((alt off))
+           (lambda opt
+             (let ((then
+                    (cond
+                     ((null? opt) alt)
+                     ((car opt) on)
+                     (else off))))
+               (if (eq? then alt)
+                   (begin
+                     (set! alt (if (eq? then off) on off))
+                     (then)
+                     #t)
+                   #f)))))))))

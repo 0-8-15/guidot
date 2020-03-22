@@ -293,6 +293,42 @@
    (thread-yield!)
    (equal? '(23 42) success)))
 
+(test-assert
+ "toggle connections ...\n"
+ (let ((x (make-observable 23 #f #f 'x))
+       (y (make-observable 42 #f #f 'y))
+       (success #f))
+   (let ((switch
+          (with-current-transaction
+           (lambda ()
+             #f
+             (observable-connect!
+              (list x y)
+              switchable: #t
+              check-values: (lambda (x y) (= (+ x y) 65))
+              )))))
+     (test-error
+      "invalid change rejected when check is switched on"
+      (run-observed!
+       (lambda () (observable-set! x 13) (observable-set! y 42) #t)))
+     (test-assert
+      "valid change passes"
+      (run-observed!
+       (lambda () (observable-set! x 42) (observable-set! y 23) #t)))
+     (switch #f)
+     (test-assert
+      "invalid change passes while check switch is off"
+      (run-observed!
+       (lambda () (observable-set! x 42) (observable-set! y 13) #t)))
+     (switch #t)
+     (test-error
+      "invalid change rejected when check is switched on"
+      (run-observed!
+       (lambda () (observable-set! x 25) (observable-set! y 42) #t)))
+     )
+   (equal? '(42 23) (with-current-transaction (lambda () (observable-apply list (list x y)))))
+   #t))
+
 ;; ($implicit-current-transactions #f)
 
 (test-assert

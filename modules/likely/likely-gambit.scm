@@ -51,7 +51,7 @@
   observable-alter! ;; like clojure API
   observable-invoke!
   observable-connect!
-  connect-dependent-value! ;; better not export these?
+  (connect-dependent-value! exported-connect-dependent-value!) ;; better not export these?
   observable-regref!
   observable-unref!
   $stm-retry-limit ;; parameter
