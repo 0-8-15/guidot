@@ -191,10 +191,10 @@
    (with-current-transaction
     (lambda ()
       (connect-dependent-value!
+       ;; This pase is never reached.
        (lambda thunk-results
-         (raise "post condition check failed")
          (lambda () (set! success (not (current-transaction))) (debug 'stm-critical (current-transaction))))
-       (lambda () #f)
+       (lambda () (raise "post condition check failed"))
        '() ;; sig
        (list ob))))
    (run-observed!
