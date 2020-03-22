@@ -13,7 +13,10 @@
   `(or (%observable? ,obj) (error "not an observable" ,where ,obj)))
 
 (define (make-observable v #!optional pred filter name)
-  (%make-observable 0 v 0 '() name pred filter))
+  (let ((v (if filter (filter v v) v)))
+    (if (and pred (not (pred v)))
+        (error "value did not pass guard predicate" pred v))
+    (%make-observable 0 v 0 '() name pred filter)))
 
 (define (observable? var) (%observable? var))
 (define (observable-deps var) (%observable-deps var))
