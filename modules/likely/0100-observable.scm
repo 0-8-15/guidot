@@ -212,7 +212,10 @@
 |#
 (define (connect-dependent-value! value thunk sig params)
   (let ((action (cond
-		 ((not value) (lambda (tnx) (thunk) (lambda () sig)))
+		 ((not value)
+                  (if (procedure? thunk)
+                      (lambda (tnx) (thunk) (lambda () sig))
+                      (lambda (tnx) (lambda () sig))))
                  ((procedure? value)
                   (or (procedure? thunk) (error "value needs constructor"))
                   (lambda (tnx)
@@ -234,3 +237,17 @@
 		 (else (error "connect-dependent-value! unhandled value" value)))))
     (with-current-transaction
      (lambda () (for-each (lambda (p) (observable-regref! p action)) params)))))
+
+(define (observable-connect! params #!key (critical #f) (extern #f) (check #f) (post #f))
+  (let* ((thunk (if (procedure? extern)
+                    (if (procedure? check)
+                        (lambda () (check) (extern))
+                        extern)
+                    (if (procedure? check)
+                        (lambda () (check) #f)
+                        (if (procedure? critical)
+                            (lambda () #f)
+                            #f))))
+         (recv (and (procedure? critical)
+                    (lambda args (lambda () (apply critical args))))))
+    (connect-dependent-value! recv thunk post params)))

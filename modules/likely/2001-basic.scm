@@ -203,6 +203,56 @@
    (thread-yield!)
    success))
 
+#;(observable-connect!
+       (list ob)
+       critical:
+       extern:
+       check:
+       post:)
+
+(test-error
+ "trail v2 failing post condition"
+ (let ((ob (make-observable 23 #f #f 'ob))
+       (success #f))
+   (with-current-transaction
+    (lambda ()
+      (observable-connect!
+       (list ob)
+       critical:
+       (lambda thunk-results
+         ;; This pase is never reached.
+         (set! success (not (current-transaction))) (debug 'stm-critical (current-transaction)))
+       extern: #f
+       ;; check: (lambda () (display "Check\n") #t)
+       check: (lambda () (raise "post condition check failed"))
+       post: (lambda () (display "Done\n")))))
+   (run-observed!
+    (lambda () (observable-set! ob 42)))
+   (unless (= (observable-deref ob) 23) (raise "FAIL FAIL FAIL"))
+   (thread-yield!)
+   success))
+
+(test-assert
+ "trail v2 passing (with traces)"
+ (let ((ob (make-observable 23 #f #f 'ob))
+       (success #f))
+   (with-current-transaction
+    (lambda ()
+      (observable-connect!
+       (list ob)
+       critical:
+       (lambda thunk-results
+         (set! success (not (current-transaction))) (debug 'stm-critical (current-transaction)))
+       extern: #f
+       check: (lambda () (display "Check\n") #t)
+       ;; check: (lambda () (raise "post condition check failed"))
+       post: (lambda () (display "Done\n")))))
+   (run-observed!
+    (lambda () (observable-set! ob 42)))
+   (unless (= (observable-deref ob) 42) (raise "FAIL FAIL FAIL"))
+   (thread-yield!)
+   success))
+
 ;; ($implicit-current-transactions #f)
 
 (test-assert
