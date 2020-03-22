@@ -278,8 +278,15 @@
        (list ob)
        critical: #f
        extern: #f
-       check: (lambda () (display "Check\n") #t)
+       ;; check: (lambda () (display "Check\n") #t)
        ;; check: (lambda () (raise "post condition check failed"))
+       ;;
+       ;; post-changes: return a procedure taking as many arguments as
+       ;; elements in the first argument to `observable-connect!` to
+       ;; be bound to the old values returning a procedure taking the
+       ;; same number to be bound to the new values return nothing
+       ;; specific.  The latter is executed once the transaction
+       ;; commenced.
        post-changes: (lambda (old) (lambda (new) (set! success (list old new)))))))
    (run-observed!
     (lambda () (observable-set! ob 42)))

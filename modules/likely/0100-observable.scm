@@ -260,12 +260,6 @@
                 (if (procedure? all-checks)
                     (lambda () (all-checks) #f)
                     #f))))
-         (thunk (checks
-                 (if (procedure? extern)
-                     extern
-                     (if (procedure? critical)
-                         (lambda () #f)
-                         #f))))
          (post-changes
           (and (procedure? post-changes)
                (lambda () ;; save old values while we have both
@@ -276,6 +270,12 @@
                      (lambda ()
                        ;; defer to post phase
                        (apply (apply post-changes ov) nv)))))))
+         (thunk (checks
+                 (if (procedure? extern)
+                     extern
+                     (if (or (procedure? critical) (procedure? post-changes))
+                         (lambda () #f)
+                         #f))))
          (recv (cond
                 ((procedure? post-changes)
                  (if (procedure? critical)
