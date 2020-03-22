@@ -238,16 +238,49 @@
     (with-current-transaction
      (lambda () (for-each (lambda (p) (observable-regref! p action)) params)))))
 
-(define (observable-connect! params #!key (critical #f) (extern #f) (check #f) (post #f))
-  (let* ((thunk (if (procedure? extern)
-                    (if (procedure? check)
-                        (lambda () (check) (extern))
-                        extern)
-                    (if (procedure? check)
-                        (lambda () (check) #f)
-                        (if (procedure? critical)
-                            (lambda () #f)
-                            #f))))
-         (recv (and (procedure? critical)
-                    (lambda args (lambda () (apply critical args))))))
+(define (observable-connect!
+         params #!key
+         (critical #f)
+         (extern #f)
+         (check #f)
+         ;; (check-changes #f) ;; NO impossible
+         (post-changes #f)
+         (post #f))
+  (let* ((all-checks (and check))
+         (checks
+          (lambda (extern)
+            (if (procedure? extern)
+                (if (procedure? all-checks)
+                    (lambda () (all-checks) (extern))
+                    extern)
+                (if (procedure? all-checks)
+                    (lambda () (all-checks) #f)
+                    #f))))
+         (thunk (checks
+                 (if (procedure? extern)
+                     extern
+                     (if (procedure? critical)
+                         (lambda () #f)
+                         #f))))
+         (post-changes
+          (and (procedure? post-changes)
+               (lambda () ;; save old values while we have both
+                 (let ((ov (map (lambda (v) (%observable-value v)) params)) ;; out
+                       (nv (map observable-deref params)))
+                   (lambda ()
+                     ;; defer over critical phase
+                     (lambda ()
+                       ;; defer to post phase
+                       (apply (apply post-changes ov) nv)))))))
+         (recv (cond
+                ((procedure? post-changes)
+                 (if (procedure? critical)
+                     (lambda args
+                       (let ((final (post-changes)))
+                         ;; FIXME: don't forget 'critical's return, if any
+                         (lambda () (apply critical args) final)))
+                     (lambda args (post-changes))))
+                ((procedure? critical)
+                 (lambda args (lambda () (apply critical args))))
+                (else #f))))
     (connect-dependent-value! recv thunk post params)))

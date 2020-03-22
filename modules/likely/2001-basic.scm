@@ -253,6 +253,24 @@
    (thread-yield!)
    success))
 
+(test-assert
+ "trail change signal"
+ (let ((ob (make-observable 23 #f #f 'ob))
+       (success #f))
+   (with-current-transaction
+    (lambda ()
+      (observable-connect!
+       (list ob)
+       critical: #f
+       extern: #f
+       check: (lambda () (display "Check\n") #t)
+       ;; check: (lambda () (raise "post condition check failed"))
+       post-changes: (lambda (old) (lambda (new) (set! success (list old new)))))))
+   (run-observed!
+    (lambda () (observable-set! ob 42)))
+   (thread-yield!)
+   (equal? '(23 42) success)))
+
 ;; ($implicit-current-transactions #f)
 
 (test-assert
