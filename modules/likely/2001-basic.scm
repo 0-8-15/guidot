@@ -184,6 +184,33 @@
    (thread-yield!)
    success))
 
+(test-error
+ "trail with failing post condition aborts"
+ (let ((ob (make-observable 23 #f #f 'ob))
+       (success #f))
+   (with-current-transaction
+    (lambda ()
+      (connect-dependent-value!
+       (lambda thunk-results
+         (raise "post condition check failed")
+         (lambda () (set! success (not (current-transaction))) (debug 'stm-critical (current-transaction))))
+       (lambda () #f)
+       '() ;; sig
+       (list ob))))
+   (run-observed!
+    (lambda () (observable-set! ob 42)))
+   (unless (= (observable-deref ob) 23) (raise "FAIL FAIL FAIL"))
+   (thread-yield!)
+   success))
+
 ;; ($implicit-current-transactions #f)
+
+(test-assert
+ "likely still working"
+ (=
+  (let ((x (make-observable 23 #f #f 'x1))
+        (y (make-observable 42 #f #f 'y1)))
+    (with-current-transaction (lambda () (observable-apply + (list x y)))))
+  65))
 
 (tests-end)
