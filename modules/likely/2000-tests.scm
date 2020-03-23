@@ -29,7 +29,13 @@
 
 (define (test-report-fail result)
   (test-stats+! 2)
-  (display result) (display "\n  FAIL\n"))
+  (if (error-exception? result)
+      (begin
+        (display (error-exception-message result))
+        (display " ")
+        (display (error-exception-parameters result)))
+      (display result))
+  (display "\n  FAIL\n"))
 
 (define-macro (test-assert msg expr)
   (let ((tmp (gensym 'expr)))

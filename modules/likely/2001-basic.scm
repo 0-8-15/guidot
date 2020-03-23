@@ -329,6 +329,24 @@
    (equal? '(42 23) (with-current-transaction (lambda () (observable-apply list (list x y)))))
    #t))
 
+(test-assert
+ "external files"
+ (let ((ob (make-observable 23 #f #f 'ob))
+       (fn "Test file"))
+   (if (file-exists? fn) (delete-file fn))
+   (with-current-transaction
+    (lambda ()
+      (connect-dependent-value!
+       "Test file"
+       (lambda () (and (= (observable-deref ob) 42) "Test file\n"))
+       '() (list ob))))
+   (run-observed!
+    (lambda () (observable-set! ob 42)))
+   (and (file-exists? fn)
+        (begin
+          (run-observed! (lambda () (observable-set! ob 33)))
+          (not (file-exists? fn))))))
+
 ;; ($implicit-current-transactions #f)
 
 (test-assert
