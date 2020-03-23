@@ -28,6 +28,22 @@
      (error ,msg . ,args)))
 
 ;;;* implementation
+
+;;; NOTE: The following changes where likely a good idea
+;;; (but introduce complexity, hence left for later):
+;;;
+;;; 1. Do NOT load the content of a ref until first actual access.
+;;; (Tag it with #f on create.)
+;;;
+;;; 2. Instead of breaking references and completly wiping the
+;;; reference table from the transaction set their tags to #f (once
+;;; that's handled, see before).
+;;;
+;;; 3. Avoid re-lookup of references.
+;;;
+;;; 4. Lift the phase 2 of trigger handlers into a new phase where
+;;; they may add STM locations to the current transaction.
+
 ;;;** local envt
 
 (define-macro (sub1 x) `(fx- ,x 1))
@@ -250,6 +266,7 @@ nonono: (raise 'stm-conflict)))
                     (found (the (or boolean pair) #f)))
                 (if
                  (or (not trigger-handler)
+                     ;; TBD lift this before a re-check of dirty references.
                      (with-exception-catcher
                       (lambda (ex)	;; Conflict. Undo dirty tagging.
                         (undo-dirty-tagging! dirty)
