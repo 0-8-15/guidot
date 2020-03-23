@@ -1,10 +1,26 @@
 all: # Everything
 all: test
 
-TEST_OPTIONS=-e '(define-cond-expand-feature test)'
+GAMBINDIR=$(HOME)/.cache/lambdanative/linux/bin
 
+TEST_OPTIONS=-e '(define-cond-expand-feature test)'
+# BUILD_OPTIONS=-e '(define-cond-expand-feature no-dirty-tagging)'
+
+test:	# run test
 test:	force
-	$(HOME)/.cache/lambdanative/linux/bin/gsi $(TEST_OPTIONS) likely.scm
+	$(GAMBINDIR)/gsi $(TEST_OPTIONS) likely.scm
+
+build: # build library
+build:	likely.so
+
+SOURCES=likely.scm likely-gambit.scm \
+ 0001-dynamic-extent.scm 0002-srfi-1.scm \
+ 0010-debug.scm \
+ 0011-stm-imports.scm 0020-stm-impl.scm \
+ 0100-observable.scm
+
+likely.o1: $(SOuRCES)
+	$(GAMBINDIR)/gsc -dynamic $(BUILD_OPTIONS) likely.scm
 
 todo: # find things to be done
 	find . -type f \( -name '*.org' -o -name '[Mm]akefile' \) -exec egrep '(TODO|TBD)' '{}' ';' -print
