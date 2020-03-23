@@ -1,6 +1,9 @@
 (include "0001-dynamic-extent.scm")
 (include "0002-srfi-1.scm")
-(include "0010-debug.scm")
+(cond-expand
+ ((or test debug)
+  (include "0010-debug.scm"))
+ (else))
 
 (define-macro (define-values names . body)
   (let ((vals (gensym 'vals)))

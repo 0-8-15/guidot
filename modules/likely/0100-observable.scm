@@ -164,7 +164,7 @@
      (if (and (%observable? s) (= n 1))
 	 (let ((deps (observable-deps s)))
 	   (if ($debug-trace-triggers)
-	       (debug "Transaction name deps" (list t (observable-name s) deps)))
+	       (stm-log 'stm-trace-triggers "Transaction name deps" (list t (observable-name s) deps)))
 	   (lset-union eq? i deps))
 	 i))
    ;; Sync function receives a list of thunks which MUST NOT fail to
@@ -175,7 +175,7 @@
      (fold (lambda (thunk init)
 	     (let ((next (thunk)))
 	       (if ($debug-trace-triggers)
-		   (debug "Phase I trigger returns" (list thunk next)))
+		   (stm-log 'stm-trace-triggers "Phase I trigger returns" (list thunk next)))
 	       (lset-union eq? init (if (or (pair? next) (null? next)) next (list next)))))
 	   (list (lambda () "The elephant in Cairo for the sake of `lset-union`."))
 	   l))
@@ -186,7 +186,7 @@
    ;; forking threads from within.
    (lambda (l)
      (if ($debug-trace-triggers)
-	 (debug "Post transaction triggers" l))
+	 (stm-log 'stm-trace-triggers "Post transaction triggers" l))
      (for-each (lambda (thunk) (thunk)) l)
      ;; (trail-complete! *default-trail*)
      )))

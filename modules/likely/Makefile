@@ -10,16 +10,17 @@ test:	# run test
 test:	force
 	$(GAMBINDIR)/gsi $(TEST_OPTIONS) likely.scm
 
+LOCAL_DYNAMIC_LIBRARY_EXTENSION=o1
+
 build: # build library
-build:	likely.so
+build:	likely.$(LOCAL_DYNAMIC_LIBRARY_EXTENSION)
 
 SOURCES=likely.scm likely-gambit.scm \
  0001-dynamic-extent.scm 0002-srfi-1.scm \
- 0010-debug.scm \
  0011-stm-imports.scm 0020-stm-impl.scm \
  0100-observable.scm
 
-likely.o1: $(SOuRCES)
+likely.$(LOCAL_DYNAMIC_LIBRARY_EXTENSION): $(SOuRCES)
 	$(GAMBINDIR)/gsc -dynamic $(BUILD_OPTIONS) likely.scm
 
 todo: # find things to be done
