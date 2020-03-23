@@ -28,6 +28,19 @@
      (error ,msg . ,args)))
 
 ;;;* implementation
+
+;;; NOTE: The following changes where likely a good idea
+;;; (but introduce complexity, hence left for later):
+;;;
+;;; 1. Do NOT load the content of a ref until first actual access.
+;;; (Tag it with #f on create.)
+;;;
+;;; 2. Instead of breaking references and completly wiping the
+;;; reference table from the transaction set their tags to #f (once
+;;; that's handled, see before).
+;;;
+;;; 3. Avoid re-lookup of references.
+
 ;;;** local envt
 
 (define-macro (sub1 x) `(fx- ,x 1))
