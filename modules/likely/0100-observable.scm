@@ -151,7 +151,7 @@
 
 (define $debug-trace-triggers (make-parameter #f))
 
-(define observable-triggers
+(define (make-observable-triggers #!key (async #f))
   (make-trigger-handler
    ;; Return initial value for fold operation.
    (lambda () '() #;(list (lambda () (lambda () '()))) )
@@ -184,12 +184,22 @@
    ;; aware that they are called with the trigger setting in effect.
    ;; Better send asynchronous operations to pre-created threads than
    ;; forking threads from within.
-   (lambda (l)
-     (if ($debug-trace-triggers)
-	 (stm-log 'stm-trace-triggers "Post transaction triggers" l))
-     (for-each (lambda (thunk) (thunk)) l)
-     ;; (trail-complete! *default-trail*)
-     )))
+   (cond
+    ((eq? async #t)
+     (lambda (l)
+       (if ($debug-trace-triggers)
+           (stm-log 'stm-trace-triggers "Post transaction async triggers" l))
+       (for-each
+        (lambda (thunk)
+          (thread-start! (make-thread (lambda () (kick! thunk)) 'consequence)))
+        l)))
+    (else
+     (lambda (l)
+       (if ($debug-trace-triggers)
+           (stm-log 'stm-trace-triggers "Post transaction triggers" l))
+       (for-each (lambda (thunk) (thunk)) l))))))
+
+(define observable-triggers (make-observable-triggers))
 
 (define stm-critical-execute!
   (dynamic
@@ -202,6 +212,17 @@
       (with-exception-catcher
        (lambda (ex) (stm-consistency-error "toplevel-execute!" ex))
        thunk)))))
+
+(define kick!
+  (let ((triggers (make-observable-triggers async: #t)))
+    (lambda (thunk)
+      ((parameterize
+        ((current-trigger-handler triggers)
+         #;($stm-retry-limit 0)
+         #;($debug-trace-triggers #t)
+         )
+        ;; before ..??
+        (with-current-transaction thunk))))))
 
 #|
 (: connect-dependent-value!
