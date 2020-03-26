@@ -43,6 +43,7 @@
   current-trigger-handler
   make-observable-triggers
   kick!
+  make-lval
   make-observable
   observable?
   observable-deps
@@ -72,27 +73,6 @@
   (include "0100-observable.scm")
   ;; NOTE: The module-end MUST be within the let form.
   (module-likely-end))
-
-;; Short procedural interface.  NOT recommended for eventual use,
-;; except as a drop in compatible to parameters. It just hides too
-;; much.  Better deploy with observables.  Otherwise nice for scripts
-;; as it saves typing.
-(define (make-lval val . more)
-  (define conv (lambda (x) (if (procedure? x) (x #f #f) x)))
-  (let ((x (apply make-observable val more)))
-    (case-lambda
-     (() (observable-ref x))
-     ((v) (observable-set! x v))
-     ((k p . more)
-      (cond
-       ((not (or k p)) x)
-       ((and (string? k) (procedure? p))
-        (let ((sig (if (pair? more) (car more) #f))
-              (params (map conv (if sig (cdr more) more))))
-          (apply connect-dependent-value! k p (or sig '()) (cons x params))))
-       (else
-        (let ((params (map conv k)))
-          (apply observable-connect! (cons x params) p more))))))))
 
 ;;(include "1000-library.scm")
 ;; NO: (include "2000-tests.scm")

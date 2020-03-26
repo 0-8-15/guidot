@@ -347,6 +347,25 @@
           (run-observed! (lambda () (observable-set! ob 33)))
           (not (file-exists? fn))))))
 
+;; script interface
+
+;; (define tnw (make-lval #f (lambda (x) (or (integer? x) (not x))) (lambda (o n) (nws n)) 'tnw))
+
+(test-assert
+ "procedural set with predicate and filter"
+ (=
+  (let ((tnw (make-lval #f (lambda (x) (or (integer? x) (not x))) (lambda (o n) n) 'tnw)))
+    (with-current-transaction (lambda () (tnw 1) (tnw))))
+  1))
+
+(test-assert
+ "procedural kick! with predicate and filter"
+ (=
+  (let ((tnw (make-lval #f (lambda (x) (or (integer? x) (not x))) (lambda (o n) n) 'tnw)))
+    (kick! (lambda () (tnw 1)))
+    (tnw))
+  1))
+
 ;; ($implicit-current-transactions #f)
 
 (test-assert

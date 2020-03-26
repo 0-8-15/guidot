@@ -54,7 +54,7 @@
 
 ;;;** algorithm
 
-(define stm-current-global-clock-value '#(1))
+(define stm-current-global-clock-value (vector 1))
 
 (define-macro (stm-current-global-clock) `(vector-ref stm-current-global-clock-value 0))
 

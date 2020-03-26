@@ -216,13 +216,34 @@
 (define kick!
   (let ((triggers (make-observable-triggers async: #t)))
     (lambda (thunk)
-      ((parameterize
-        ((current-trigger-handler triggers)
-         #;($stm-retry-limit 0)
-         #;($debug-trace-triggers #t)
-         )
-        ;; before ..??
-        (with-current-transaction thunk))))))
+      (parameterize
+       ((current-trigger-handler triggers)
+        #;($stm-retry-limit 0)
+        #;($debug-trace-triggers #t)
+        )
+       ;; before ..??
+       (with-current-transaction thunk)))))
+
+;; Short procedural interface.  NOT recommended for eventual use,
+;; except as a drop in compatible to parameters. It just hides too
+;; much.  Better deploy with observables.  Otherwise nice for scripts
+;; as it saves typing.
+(define (make-lval val . more)
+  (define conv (lambda (x) (if (procedure? x) (x #f #f) x)))
+  (let ((x (apply make-observable val more)))
+    (case-lambda
+     (() (observable-deref x))
+     ((v) (observable-set! x v) #!void)
+     ((k p . more)
+      (cond
+       ((not (or k p)) x)
+       ((and (string? k) (procedure? p))
+        (let ((sig (if (pair? more) (car more) #f))
+              (params (map conv (if sig (cdr more) more))))
+          (apply connect-dependent-value! k p (or sig '()) (cons x params))))
+       (else
+        (let ((params (map conv k)))
+          (apply observable-connect! (cons x params) p more))))))))
 
 #|
 (: connect-dependent-value!
