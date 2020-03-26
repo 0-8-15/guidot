@@ -95,6 +95,13 @@
   (let ((ct (%current-transaction)))
     (and ct (eq? (%stmtnx-owner ct) (current-thread)) ct)))
 
+(define-macro (stm-pure?)
+  ;; No STM context visible so far.
+  `(let ((t (current-transaction)))
+    (or (not t) (and (%stmtnx? t) (null? (%stmtnx-refs t))))))
+
+(define-macro (stm-atomic?) `(not (current-transaction)))
+
 (define current-trigger-handler (make-parameter #f))
 
 (define (make-object-table) (make-table hash: eq?-hash))
@@ -316,7 +323,7 @@ nonono: (raise 'stm-conflict)))
             (let ((source (%stmref-source x)) (slot (%stmref-slot x)))
               (let ((tag (and source (##unchecked-structure-ref source slot 'any 'transaction-commit!))))
                 (cond
-                 ((eq? tag lock-tag)
+                 ((eq? tag lock-tag) ;; eqv? ??
                   ;; Referenced in this transaction later (list is
                   ;; reverse access order).  Ignore prior ref.
                   (cond-expand
@@ -332,7 +339,7 @@ nonono: (raise 'stm-conflict)))
                     (undo-dirty-tagging! dirty)))
                   (transaction-close! transaction) ;; or should this be done elsewhere?
                   (unlock-and-return #f))
-                 ((eq? (##unchecked-structure-ref source (add1 slot) 'any 'transaction-commit!) (%stmref-val x))
+                 ((eqv? (##unchecked-structure-ref source (add1 slot) 'any 'transaction-commit!) (%stmref-val x))
                   ;; Unchanged, no dirty tagging, no updates.
                   (loop (cdr refs) dirty))
                  (else

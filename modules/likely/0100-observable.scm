@@ -152,6 +152,22 @@
 (define $debug-trace-triggers (make-parameter #f))
 
 (define (make-observable-triggers #!key (async #f))
+  (define (async-consequence! x)
+    (cond
+     ((procedure? x) (thread-start! (make-thread (lambda () (kick! x)) 'consequence)))
+     ((and (box? x) (let ((t (unbox x))) (and (procedure? t) t))) =>
+      (lambda (thunk)
+        (stm-log 'atomic-with-consequence "running" thunk)
+        (thread-start!
+         (make-thread
+          (lambda ()
+            (if (current-transaction) (stm-consistency-error 'atomic-with-consequence thunk)) ;; DEBUG
+            (let ((kicking (thunk)))
+              (if (procedure? kicking) (kick! kicking))))
+          'atomic-with-consequence))))
+     (else
+      (stm-log 'async-handler "USELESS handler MAYBE BETTER STM consistency error" x)
+      #f)))
   (make-trigger-handler
    ;; Return initial value for fold operation.
    (lambda () '() #;(list (lambda () (lambda () '()))) )
@@ -189,10 +205,7 @@
      (lambda (l)
        (if ($debug-trace-triggers)
            (stm-log 'stm-trace-triggers "Post transaction async triggers" l))
-       (for-each
-        (lambda (thunk)
-          (thread-start! (make-thread (lambda () (kick! thunk)) 'consequence)))
-        l)))
+       (for-each async-consequence! l)))
     (else
      (lambda (l)
        (if ($debug-trace-triggers)
