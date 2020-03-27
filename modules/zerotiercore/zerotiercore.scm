@@ -1,3 +1,25 @@
+#|
+
+* Thread Model
+
+- (zt-send! to type data)  :: ;; EXPORT - send user message (u8vector)
+
+  Cause: Any peer knowing /to/ as our MAC *MAY* possible *DoS/SPAM* us.
+    (Would cause O(2) traffic increase: /to/ sending multiple packets our way
+     we too. )
+
+  Mitigation:
+    - change frequently
+    - avoid ad-hoc networks
+
+  Defence:
+    - use network management
+      -> 1. NO P2P until JOIN succeeded.
+      -> 2. (since: "change frequently" OR "may have leaked"):
+         consider "take down" measurements.
+      -> ...
+|#
+
 
 (define-macro (define-c-constant var type . const)
   (let* ((const (if (not (null? const)) (car const) (symbol->string var)))
@@ -352,6 +374,21 @@ c-declare-end
 END
 )
    (zt-prm-zt %%zt-prm) nwid srcmac dstmac ethertype vlanid payload (u8vector-length payload)))
+
+(define (zt-virtual-send/ptr nwid srcmac dstmac ethertype vlanid data len) ;; EXPORT
+  (assert-zt-up! zt-virtual-send)
+  ((c-lambda
+    ;; 1     2 nwid         3 src          4 dst          5 ethertype  6 vlan       7
+    (zt-node unsigned-int64 unsigned-int64 unsigned-int64 unsigned-int unsigned-int void* size_t)
+    bool #<<END
+    ___result = (ZT_Node_processVirtualNetworkFrame(___arg1, NULL, zt_now(),
+                 ___arg2, ___arg3, ___arg4, ___arg5, ___arg6,
+                 ___arg7, ___arg8,
+                 &nextBackgroundTaskDeadline)
+                == ZT_RESULT_OK);
+END
+)
+   (zt-prm-zt %%zt-prm) nwid srcmac dstmac ethertype vlanid data len))
 
 ;;* ZT Config
 
