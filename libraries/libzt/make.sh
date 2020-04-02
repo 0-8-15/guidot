@@ -77,6 +77,7 @@ libzt_build() # Essentially a copy from libzt/dist.sh function host()`
     mkdir -p $LIB_OUTPUT_DIR
     rm -rf $LIB_OUTPUT_DIR/libzt.a $LIB_OUTPUT_DIR/$DYNAMIC_LIB_NAME $LIB_OUTPUT_DIR/libztcore.a
     # Build
+    # lnccflags0="${lnccflags0} -DSA_FAMILY_T_DEFINED"
     cmake -H. -B$BUILD_DIR $TCCONF $EXTRACONF -DCMAKE_INSTALL_PREFIX=$SYS_PREFIX \
           "-DCMAKE_C_FLAGS_INIT=${lnccflags0}" "-DCMAKE_CXX_FLAGS_INIT=${lnccflags0}" \
           -DCMAKE_VERBOSE_MAKEFILE=TRUE -DCMAKE_BUILD_TYPE=${cmake_type} \

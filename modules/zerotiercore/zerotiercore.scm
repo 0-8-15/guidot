@@ -835,6 +835,55 @@ END
 
 (c-declare #<<c-declare-end
 
+static inline uint64_t mac_from_vector(const void *src) // maybe better hwaddr instead of void
+{
+ const unsigned char *b = (const unsigned char *)src;
+ uint64_t result;
+ result = ((uint64_t)b[0] << 40)
+  | ((uint64_t)b[1] << 32)
+  | ((uint64_t)b[2] << 24)
+  | ((uint64_t)b[3] << 16)
+  | ((uint64_t)b[4] << 8)
+  | (uint64_t)b[5];
+ return result; // | ;-( highlithing confused with odd number of vertical bars here
+}
+
+static inline uint64_t g_zt_mac_hton(uint64_t mac)
+{
+ uint64_t result = 0;
+ unsigned char *b = (unsigned char *)&result;
+ b[0] = (unsigned char)((mac >> 40) & 0xff);
+ b[1] = (unsigned char)((mac >> 32) & 0xff);
+ b[2] = (unsigned char)((mac >> 24) & 0xff);
+ b[3] = (unsigned char)((mac >> 16) & 0xff);
+ b[4] = (unsigned char)((mac >> 8) & 0xff);
+ b[5] = (unsigned char)(mac & 0xff);
+ return result;
+}
+
+c-declare-end
+)
+
+(define (->zt-mac x) ;; return a ZT uint64_t MAC encoding
+  (cond
+   ((u8vector? x)
+    ((c-lambda
+      (scheme-object) unsigned-int64
+      "___result = mac_from_vector(___CAST(void *,___BODY_AS(___arg1,___tSUBTYPED)));")
+     x))
+   (else (error "->zt-mac illegal argument" x))))
+
+(define (zt-mac->network x) ;; MAC encoding in network byte order (big endian)
+  (cond
+   ((fixnum? x)
+    ((c-lambda
+      (unsigned-int64) unsigned-int64
+      "___result = g_zt_mac_hton(___arg1);")
+     x))
+   (else (error "zt-mac->network illegal argument" x))))
+
+(c-declare #<<c-declare-end
+
 void set_6plane_addr(struct sockaddr_in6 *sin6, uint64_t nwid, uint64_t zeroTierAddress, uint16_t port)
 {
   nwid ^= (nwid >> 32);
@@ -958,3 +1007,5 @@ c-declare-end
       (if (and into (not (equal? was data)))
           (call-with-output-file into (lambda (p) #f (write-subu8vector data 0 (u8vector-length data) p))))))
   (values get put))
+
+(include "zerotiercore-extensions.scm")

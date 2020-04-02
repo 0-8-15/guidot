@@ -1,3 +1,9 @@
+typedef struct ip6_addr ip6_addr_t;
+struct netif;
+extern const ip6_addr_t *gambit_lwip_nd6_get_gw(struct netif *netif, const ip6_addr_t *dest);
+//extern const void *gambit_lwip_nd6_get_gw(const void *, const void*);
+#define LWIP_HOOK_ND6_GET_GW(netif, dest) gambit_lwip_nd6_get_gw(netif, dest)
+
 /*
  * Copyright (c) 2001-2004 Swedish Institute of Computer Science.
  * All rights reserved.
@@ -114,7 +120,7 @@
 // tcpip
 #define TCPIP_MBOX_SIZE                 0
 #define LWIP_TCPIP_CORE_LOCKING         1
-#define LWIP_TCPIP_CORE_LOCKING_INPUT   1
+#define LWIP_TCPIP_CORE_LOCKING_INPUT   0
 // netconn
 #define LWIP_NETCONN_FULLDUPLEX         0
 // netif
