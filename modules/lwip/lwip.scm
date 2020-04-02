@@ -10,6 +10,12 @@
         (() val)
         ((x) (set! val x))))))
 
+(define lwip-host-is-network-endian
+  ;; big endian needs no conversion => #t
+  ;;
+  ;; this is just informal; intented for debugging
+  (c-lambda () bool "___result = htons(1)==1;"))
+
 (c-declare #<<c-declare-end
 
 typedef enum {false=0, true=1} bool;
@@ -29,6 +35,49 @@ typedef enum {false=0, true=1} bool;
 #include "lwip/nd6.h"
 #include "lwip/netifapi.h"
 #include "lwip/stats.h"
+c-declare-end
+)
+
+(define-c-constant ETHTYPE_IP unsigned-int)
+(define-c-constant ETHTYPE_ARP unsigned-int)
+(define-c-constant ETHTYPE_WOL unsigned-int)
+(define-c-constant ETHTYPE_RARP unsigned-int)
+(define-c-constant ETHTYPE_VLAN unsigned-int)
+(define-c-constant ETHTYPE_IPV6 unsigned-int)
+(define-c-constant ETHTYPE_PPPOEDISC unsigned-int)
+(define-c-constant ETHTYPE_PPPOE unsigned-int)
+(define-c-constant ETHTYPE_JUMBO unsigned-int)
+(define-c-constant ETHTYPE_PROFINET unsigned-int)
+(define-c-constant ETHTYPE_ETHERCAT unsigned-int) ;; Ethernet for control automation technology
+(define-c-constant ETHTYPE_LLDP unsigned-int)
+(define-c-constant ETHTYPE_SERCOS unsigned-int) ;; Serial real-time communication system
+(define-c-constant ETHTYPE_MRP unsigned-int) ;; Media redundancy protocol
+(define-c-constant ETHTYPE_PTP unsigned-int) ;; Precision time protocol
+(define-c-constant ETHTYPE_QINQ unsigned-int) ;; Q-in-Q, 802.1ad
+
+(define (ethertype/host->symbol x)
+  (cond
+   ((eqv? x ETHTYPE_IP) 'ETHTYPE_IP)
+   ((eqv? x ETHTYPE_ARP) 'ETHTYPE_ARP)
+   ((eqv? x ETHTYPE_WOL) 'ETHTYPE_WOL)
+   ((eqv? x ETHTYPE_RARP) 'ETHTYPE_RARP)
+   ((eqv? x ETHTYPE_VLAN) 'ETHTYPE_VLAN)
+   ((eqv? x ETHTYPE_IPV6) 'ETHTYPE_IPV6)
+   ((eqv? x ETHTYPE_PPPOEDISC) 'ETHTYPE_PPPOEDISC)
+   ((eqv? x ETHTYPE_PPPOE) 'ETHTYPE_PPPOE)
+   ((eqv? x ETHTYPE_JUMBO) 'ETHTYPE_JUMBO)
+   ((eqv? x ETHTYPE_PROFINET) 'ETHTYPE_PROFINET)
+   ((eqv? x ETHTYPE_ETHERCAT) 'ETHTYPE_ETHERCAT)
+   ((eqv? x ETHTYPE_LLDP) 'ETHTYPE_LLDP)
+   ((eqv? x ETHTYPE_SERCOS) 'ETHTYPE_SERCOS)
+   ((eqv? x ETHTYPE_MRP) 'ETHTYPE_MRP)
+   ((eqv? x ETHTYPE_PTP) 'ETHTYPE_PTP)
+   ((eqv? x ETHTYPE_QINQ) 'ETHTYPE_QINQ)
+   (else 'lwip-UNKNOWN)))
+
+(define (ethertype/network->symbol x) (ethertype/host->symbol (lwip-htons x)))
+
+(c-declare #<<c-declare-end
 
 #include "lwip/init.h" // do we REALLY need that?
 
@@ -55,9 +104,15 @@ typedef enum {false=0, true=1} bool;
 
 #define LOCAL_MTU LWIP_MTU
 
-typedef uint64_t MAC;
-typedef uint64_t MACREF;
-#define MACDEREF(x) (x)
+typedef struct eth_addr MACREF;
+typedef union {
+  uint64_t n;
+  char c[8];
+  struct eth_addr addr;
+} u64w;
+
+#define MACDEREF(x) (x).addr
+#define UI64_TO_MACREF(x) ( ((u64w*)&(x))->addr )
 
 struct ethernetif {
   struct netif net;
@@ -87,8 +142,8 @@ static void lwip_gambit_lock()
  }
  current_gambit_count++;
  // fprintf(stderr, "Gambit ENTER %d %d\n", the_gambit_owner, current_gambit_count);
- if(current_gambit_count > 2) {
-  fprintf(stderr, "WARNING: Gambit ENTERed AGAIN and AGAIN %d %d\n", the_gambit_owner, current_gambit_count);
+ if(current_gambit_count > 1) {
+  fprintf(stderr, "WARNING: Gambit ENTERed AGAIN %d %d\n", the_gambit_owner, current_gambit_count);
  }
 }
 
@@ -157,6 +212,10 @@ c-declare-end
 
 (define-c-constant lwip-NO_SYS size_t "NO_SYS")
 
+(define-c-constant LWIP_TCPIP_CORE_LOCKING_INPUT int)
+
+(define-c-constant LWIP_NETIF_HWADDRHINT int)
+
 (define-c-constant SIZEOF_ETH_HDR size_t "SIZEOF_ETH_HDR")
 
 (define (lwip-tcp-min-sleep) 10)
@@ -179,47 +238,108 @@ c-declare-end
 
 (c-declare #<<c-declare-end
 
-static inline uint64_t mac_from_vector(const void *src) // maybe better hwaddr instead of void
+static inline uint64_t mac_from_u8v6(const void *src) // maybe better hwaddr instead of void
 {
  const unsigned char *b = (const unsigned char *)src;
  uint64_t result;
- result = ((((uint64_t)*b) & 0xff) << 40); ++b;
- result |= ((((uint64_t)*b) & 0xff) << 32); ++b;
- result |= ((((uint64_t)*b) & 0xff) << 24); ++b;
- result |= ((((uint64_t)*b) & 0xff) << 16); ++b;
- result |= ((((uint64_t)*b) & 0xff) << 8); ++b;
- result |= (((uint64_t)*b) & 0xff);
- return result; // | ;-( highlithing confused with wrong numbers of vertical bars here
+ result = ((uint64_t)b[0] << 40)
+  | ((uint64_t)b[1] << 32)
+  | ((uint64_t)b[2] << 24)
+  | ((uint64_t)b[3] << 16)
+  | ((uint64_t)b[4] << 8)
+  | (uint64_t)b[5];
+ return result; // | ;-( highlithing confused with odd number of vertical bars here
 }
 
-static inline void g_lwip_set_mac_ui64(void *buf, uint64_t mac)
+static inline void g_lwip_set_mac_ui64h(void *buf, uint64_t mac)
 {
  unsigned char *b = (unsigned char *)buf;
- *(b++) = (unsigned char)((mac >> 40) & 0xff);
- *(b++) = (unsigned char)((mac >> 32) & 0xff);
- *(b++) = (unsigned char)((mac >> 24) & 0xff);
- *(b++) = (unsigned char)((mac >> 16) & 0xff);
- *(b++) = (unsigned char)((mac >> 8) & 0xff);
- *b = (unsigned char)(mac & 0xff);
+ b[0] = (unsigned char)((mac >> 40) & 0xff);
+ b[1] = (unsigned char)((mac >> 32) & 0xff);
+ b[2] = (unsigned char)((mac >> 24) & 0xff);
+ b[3] = (unsigned char)((mac >> 16) & 0xff);
+ b[4] = (unsigned char)((mac >> 8) & 0xff);
+ b[5] = (unsigned char)(mac & 0xff);
 }
 
+static inline void lwip_fill_mac_string(char *result, struct eth_addr*src)
+{
+ static char cnv[] = "0123456789ABCDEF";
+ unsigned int i, j, v;
+ for(i=0, j=0; i<ETH_HWADDR_LEN;) {
+  v = src->addr[i++];
+  result[j++] = cnv[v >> 4];
+  result[j++] = cnv[v & 0xf];
+  result[j++] = ':';
+ }
+ result[j-1] = '\0';
+}
 
 c-declare-end
 )
 
-(define (->lwip-mac x) ;; return a uint64_t in network byte order
+(define lwip-make-mac/bytes
+  ;; six bytes to one mac
+  (c-lambda
+   (unsigned-int8 unsigned-int8 unsigned-int8 unsigned-int8 unsigned-int8 unsigned-int8) unsigned-int64
+   "u64w r; r.n=0; r.addr.addr[0] = ___arg1; r.addr.addr[1] = ___arg2; r.addr.addr[2] = ___arg3; r.addr.addr[3] = ___arg4; r.addr.addr[4] = ___arg5; r.addr.addr[5] = ___arg6; ___result = r.n;"))
+
+(define (lwip-mac:network->host x) ;; return a uint64_t in host byte order
   (cond
-   ((u8-vector? x)
+   ((fixnum? x)
     ((c-lambda
-      (scheme-object) unsigned-int64
-      "___result = mac_from_vector(___CAST(void *,___BODY_AS(___arg1,___tSUBTYPED)));")
-     ) x)
+      (unsigned-int64) unsigned-int64
+      "___result = mac_from_u8v6(&___arg1);")
+     x))
    (else (error "->zt-mac illegal argument" x))))
 
+(define (lwip-mac:host->network x) ;; return a uint64_t in network byte order
+  (cond
+   ((and (u8vector? x) (eqv? (u8vector-length x) 6))
+    ((c-lambda
+      (scheme-object) unsigned-int64
+      "u64w r; r.n=0; memcpy(r.addr.addr, ___CAST(void *,___BODY_AS(___arg1,___tSUBTYPED)), ETH_HWADDR_LEN); ___result = r.n;")
+     x))
+   ((fixnum? x)
+    ((c-lambda
+      (unsigned-int64) unsigned-int64
+      "___result = 0; g_lwip_set_mac_ui64h(&___result, ___arg1);")
+     x))
+   (else (error "lwip-mac->network illegal argument" x))))
+
+(define lwip-htons (c-lambda (unsigned-int16) unsigned-int16 "lwip_htons"))
+(define lwip-htonl (c-lambda (unsigned-int32) unsigned-int32 "lwip_htonl"))
+(define lwip-ntohs (c-lambda (unsigned-int16) unsigned-int16 "lwip_ntohs"))
+(define lwip-ntohl (c-lambda (unsigned-int32) unsigned-int32 "lwip_ntohl"))
+
+(define lwip-htonll
+  (c-lambda
+   (unsigned-int64) unsigned-int64
+   "___result = (((uint64_t)(lwip_ntohl((uint32_t)((___arg1 << 32) >> 32))) << 32) | (uint32_t)lwip_ntohl(((uint32_t)(___arg1 >> 32))));"))
+(define lwip-ntohll lwip-htonll)
+
+(define lwip-mac-pointer->string
+  (c-lambda
+   (void*) char-string #<<END
+   char result[ETH_HWADDR_LEN*3];
+   lwip_fill_mac_string(result,(struct eth_addr*) ___arg1);
+   ___result = result;
+END
+))
+
+(define lwip-mac-integer->string
+  (c-lambda
+   (unsigned-int64) char-string #<<END
+   char result[ETH_HWADDR_LEN*3];
+   lwip_fill_mac_string(result,(struct eth_addr*) &___arg1);
+   ___result = result;
+END
+))
 
 (c-define-type socket-address (pointer (struct "sockaddr_storage") socket-address))
 
 #|
+
 (c-define-type eth-addr* (pointer (struct "eth_addr")))
 
 (define (lwip-make-eth-addr)
@@ -272,7 +392,7 @@ c-declare-end
 
 (c-define
  (lwip-ethernet-send! ethif src dst proto #;0 bp len)
- ((pointer (struct "ethernetif")) unsigned-int64 unsigned-int64 int void* size_t)
+ ((pointer (struct "ethernetif")) unsigned-int64 unsigned-int64 unsigned-int16 void* size_t)
  int "Xscm_ether_send" "static"
  (let ((handler (lwip-ethernet-send)))
    (cond
@@ -280,13 +400,13 @@ c-declare-end
     (else -12))))
 
 (c-declare #<<c-declare-end
-static int scm_ether_send(struct ethernetif *nif, uint64_t src, uint64_t dst, int proto, void *buf, size_t len)
+static int scm_ether_send(struct ethernetif *nif, uint64_t src, uint64_t dst, uint16_t proto, void *buf, size_t len)
 {
  int got_throw = 0;
  int result;
- // fprintf(stderr, "scm_ether_send\n");
+ //fprintf(stderr, "scm_ether_send\n");
  lwip_gambit_lock();
- // fprintf(stderr, "scm_ether_send gambit locked\n");
+ //fprintf(stderr, "scm_ether_send gambit locked\n");
   ___ON_THROW(result = Xscm_ether_send(nif, src, dst, proto, buf, len), got_throw=1);
  // fprintf(stderr, "scm_ether_send gambit ran\n");
  lwip_gambit_unlock();
@@ -309,8 +429,7 @@ c-declare-end
    // struct netif *net = (struct netif *)malloc(sizeof(struct netif));
    // memset(net, sizeof(struct netif), 0);
    memset(nif, sizeof(struct ethernetif), 0);
-   g_lwip_set_mac_ui64(&nif->net.hwaddr, ___arg1);
-   // memcpy(&nif->net.hwaddr, &hwaddr.c, ETH_HWADDR_LEN);
+   memcpy(&nif->net.hwaddr, &___arg1, ETH_HWADDR_LEN); // argument is in network order
    nif->net.hwaddr_len = ETH_HWADDR_LEN;
    nif->net.state = nif; // ??? should we better return the `etherneitif` type?
    // nif->send_packet = scm_ether_send;
@@ -322,7 +441,16 @@ lwip-make-netif))
 (define lwip-netif-mac
   (c-lambda
    (netif*) unsigned-int64
-   "___result = mac_from_vector(___arg1->hwaddr);"))
+   "___result = mac_from_u8v6(___arg1->hwaddr);"))
+
+(define lwip-netif-mac->string
+  (c-lambda
+   (netif*) char-string #<<END
+   char result[18];
+   lwip_fill_mac_string(result,___arg1->hwaddr);
+   ___result = result;
+END
+))
 
 (define (lwip-check-timeouts #!optional (timeout -1))
  ((c-lambda (int32) int32 #<<END
@@ -377,16 +505,19 @@ lwip_netif_linkoutput(struct netif *netif, struct pbuf *p)
 
   if(1){
     struct eth_hdr *ethhdr = (struct eth_hdr *)bp;
-    uint64_t src = 0, dst = 0;
+    uint64_t src = 0, dst = 0;  // FIXME: Better use lwip types!!!
     uint64_t nwid = 0;  // FIXME
     // fprintf(stderr, "lwip_netif_linkoutput: prepare ethernet frame\n");
-    int proto = ntohs((uint16_t)ethhdr->type);
     size_t len = bl - sizeof(struct eth_hdr);
     bp += sizeof(struct eth_hdr);
-    src = mac_from_vector(ethhdr->src.addr);
-    dst = mac_from_vector(ethhdr->dest.addr);
+    src = mac_from_u8v6(ethhdr->src.addr);
+    dst = mac_from_u8v6(ethhdr->dest.addr);
+//*
+    memcpy(&src, ethhdr->src.addr, ETH_HWADDR_LEN);
+    memcpy(&dst, ethhdr->dest.addr, ETH_HWADDR_LEN);
+//*/
     // fprintf(stderr, "lwip_netif_linkoutput: hand over gambit me %d\n", pthread_self());
-    result = scm_ether_send(ether, /*NULL, NULL, nwid,*/ src, dst, proto, /* 0,*/ bp, len);
+    result = scm_ether_send(ether, /*NULL, NULL, nwid,*/ src, dst, lwip_ntohs(ethhdr->type), /* 0,*/ bp, len);
     // fprintf(stderr, "lwip_netif_linkoutput: sent %d\n", result);
   } else {
     fprintf(stderr, "lwip_netif_linkoutput: no send function registered\n");
@@ -421,6 +552,7 @@ lwip_send_ethernet_input(struct netif *netif, MACREF from, MACREF to, unsigned i
   if(netif == NULL) {
     return ERR_ARG;
   }
+  // input mac addresses are in network order (big-endian)
   memcpy(&ethhdr.src.addr, &MACDEREF(from), ETH_HWADDR_LEN);
   memcpy(&ethhdr.dest.addr, &MACDEREF(to), ETH_HWADDR_LEN);
   ethhdr.type = htons(ethertype);
@@ -457,7 +589,7 @@ lwip_send_ethernet_input(struct netif *netif, MACREF from, MACREF to, unsigned i
     fprintf(stderr, "lwip_send_ethernet_input: input failed\n", p);
     pbuf_free(p);
   } else {
-    fprintf(stderr, "lwip_send_ethernet_input: packet has been read into netif\n", p);
+    // fprintf(stderr, "lwip_send_ethernet_input: packet has been read into netif\n", p);
     /*
     MIB2_STATS_NETIF_ADD(netif, ifinoctets, p->tot_len);
     if (((u8_t *)p->payload)[0] & 1) {
@@ -473,6 +605,15 @@ lwip_send_ethernet_input(struct netif *netif, MACREF from, MACREF to, unsigned i
   return result;
 }
 
+static err_t
+dbg_ethip6_output(struct netif *netif, struct pbuf *q, const ip6_addr_t *ip6addr)
+{
+ err_t r;
+ r = ethip6_output(netif, q, ip6addr);
+ if(r != ERR_OK) fprintf(stderr, "ethip6_output failed for %p %d\n", netif, r);
+ return r;
+}
+
 static err_t netif_init6(struct netif *nif)
 {
   // Called from netif code
@@ -481,7 +622,7 @@ static err_t netif_init6(struct netif *nif)
   nif->name[1]    = IFNAME1;
   nif->linkoutput = lwip_netif_linkoutput;
   nif->output     = NULL /*etharp_output*/;
-  nif->output_ip6 = ethip6_output;
+  nif->output_ip6 = dbg_ethip6_output;
   nif->mtu        = LOCAL_MTU;
   nif->flags      = NETIF_FLAG_BROADCAST
     | NETIF_FLAG_ETHARP  // ??
@@ -505,6 +646,11 @@ static int lwip_calling_back(void*(*s)(void *), int(*f)(void *, void *), void *e
  return result;
 }
 
+static inline void cp_sockaddr_to_ip6_addr(ip6_addr_t *ip6addr, struct sockaddr_in6 *sa_in6)
+{
+  memcpy(&ip6addr->addr, &sa_in6->sin6_addr, sizeof(ip6addr->addr));
+}
+
 static void
 lwip_init_interface_IPv6(struct netif *nif, struct sockaddr_storage *ip)
 {
@@ -514,7 +660,7 @@ lwip_init_interface_IPv6(struct netif *nif, struct sockaddr_storage *ip)
   local_lwip_init(); // be sure that's done
   // fprintf(stderr, "lwip_init_interface_IPv6\n");
   // ip6_addr_copy_from_packed(ip6addr, (sa_in6->sin6_addr));
-  memcpy(&(ip6addr.addr), &(sa_in6->sin6_addr), sizeof(ip6addr.addr));
+  cp_sockaddr_to_ip6_addr(&ip6addr, sa_in6);
   // nif->ip6_autoconfig_enabled = 1; // too early
 
   LOCK_TCPIP_CORE();
@@ -539,15 +685,60 @@ lwip_init_interface_IPv6(struct netif *nif, struct sockaddr_storage *ip)
 c-declare-end
 )
 
+(c-define-type eth-addr (struct "eth_addr"))
+
 (define lwip_init_interface_IPv6
  (c-lambda (netif* socket-address) void "lwip_init_interface_IPv6"))
 
 (define lwip-send-ethernet-input!
   ;; Compose ethernet frame and send it to @param netif
   ;;
+  ;; mac addresses are in network order (big-endian)
+  ;;
   ;; (lwip-send-input! nif srcmac dstmac ethertype payload len)
   (c-lambda
    (netif* unsigned-int64 unsigned-int64 unsigned-int void* size_t) int
-   "lwip_send_ethernet_input"))
+   "___result = lwip_send_ethernet_input(___arg1, UI64_TO_MACREF(___arg2), UI64_TO_MACREF(___arg3), ___arg4,___arg5, ___arg6);"))
 
 ;;(define lwip-default-netif-poll! (c-lambda () void "default_netif_poll"))
+
+(define lwip-nd6-find-route
+  (c-lambda
+   ;; TODO: check for IPv6 address.
+   (socket-address) netif*
+   "ip6_addr_t a; cp_sockaddr_to_ip6_addr(&a,(struct sockaddr_in6*) ___arg1); ___result = nd6_find_route(&a);"))
+
+(define-custom lwip-nd6-get-gateway #f) ;; EXPORT HOOK - return netif for destination
+(c-define
+ (gambit-lwip-nd6-get-gw netif dest)
+ (netif* void*) void*
+ "scm_lwip_nd6_get_gw" "static"
+ (let ((hook (lwip-nd6-get-gateway)))
+   (and hook (hook netif dest))))
+
+(c-declare #<<c-declare-end
+
+struct lwip_nd6_get_gw__args { struct netif *netif; const ip6_addr_t *dest; const ip6_addr_t *result; };
+
+static int call_scm_lwip_nd6_get_gw(void *in, struct lwip_nd6_get_gw__args *args)
+{
+ // unused(in);
+ args->result = scm_lwip_nd6_get_gw(args->netif, (void*) args->dest);
+ return 0; //unused
+}
+
+const ip6_addr_t *gambit_lwip_nd6_get_gw(struct netif *netif, const ip6_addr_t *dest)
+{
+ // return scm_lwip_nd6_get_gw(netif, dest);
+/*
+ struct lwip_nd6_get_gw__args r = {netif, dest, NULL};
+ lwip_calling_back(NULL, call_scm_lwip_nd6_get_gw, &r);
+ return r.result;
+*/
+ip6_addr_t dummy;
+ip6_addr_set(&dummy, dest);
+fprintf(stderr, "RETURN %p\n", dest);
+return dest;
+}
+c-declare-end
+)
