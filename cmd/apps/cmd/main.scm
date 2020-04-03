@@ -37,9 +37,11 @@
 
 ;; (zt-peers-info)
 
+(define (adhoc-port) 7443)
+
 (define nng-nw-o #xa09acf02337b057b)
 (define nng-nw-c #x17d709436ce162a3)
-(define adhoc-nw (zt-adhoc-network-id 7443))
+(define adhoc-nw (zt-adhoc-network-id (adhoc-port)))
 (define (nws x)
   (case x
     ((1) adhoc-nw)
@@ -80,14 +82,14 @@
   (let ((nif (*nwif*)))
     (and nif (eqv? (lwip-netif-mac nif) mac) nif)))
 
-(define (make-zt-ad-hoc-network-interface nwid ndid port)
+(define (make-zt-ad-hoc-network-interface nwid ndid)
   (let ((nif (lwip-make-netif (lwip-mac:host->network (zt-network+node->mac nwid ndid)))))
     (dbgmac 'MAC0 (zt-network+node->mac nwid ndid))
     ;; WRONG (debug 'lwip-mac-integer->string//ll (lwip-mac-integer->string (lwip-htonll (zt-network+node->mac nwid ndid))))
     (debug 'lwip-mac-integer->string (lwip-mac-integer->string (lwip-mac:host->network (zt-network+node->mac nwid ndid))))
     (debug 'lwip-mac/host-integer->string (lwip-mac-integer->string (zt-network+node->mac nwid ndid)))
     (debug 'lwip-netif-mac->string (lwip-netif-mac->string nif))
-    (lwip_init_interface_IPv6 nif (make-6plane-addr nwid ndid port))
+    (lwip_init_interface_IPv6 nif (make-6plane-addr nwid ndid (adhoc-port)))
     nif))
 
 (define (find-nwid-for-nif nif) (ctnw))
@@ -103,35 +105,35 @@
       "\n"))))
 
 (define (report-iam nw)
-  (display (iam nw 7443) (current-error-port)))
+  (display (iam nw (adhoc-port)) (current-error-port)))
 
 (define (ds)
   (zt-start! "/home/u/build/ball/ball/zerotier-server" 9994 background-period: 0.5)
   (zt-add-local-interface-address! (internet-address->socket-address dmeine 0 #;9994))
   (zt-join (ctnw))
   (report-iam (ctnw))
-  (nwif-set! (make-zt-ad-hoc-network-interface (ctnw) (zt-address) 9994)))
+  (nwif-set! (make-zt-ad-hoc-network-interface (ctnw) (zt-address))))
 
 (define (dc)
   (zt-start! "/home/u/build/ball/ball/zerotier-client" 9995 background-period: 0.5)
   (zt-add-local-interface-address! (internet-address->socket-address dmeine 9995))
   (zt-join (ctnw))
   (report-iam (ctnw))
-  (nwif-set! (make-zt-ad-hoc-network-interface (ctnw) (zt-address) 9995)))
+  (nwif-set! (make-zt-ad-hoc-network-interface (ctnw) (zt-address))))
 
 (define (es)
   (zt-start! "/home/u/zerotier-server" 9994 background-period: 0.5)
   (zt-add-local-interface-address! (internet-address->socket-address emeine 9994))
   (zt-join (ctnw))
   (report-iam (ctnw))
-  (nwif-set! (make-zt-ad-hoc-network-interface (ctnw) (zt-address) 9994)))
+  (nwif-set! (make-zt-ad-hoc-network-interface (ctnw) (zt-address))))
 
 (define (ec)
   (zt-start! "/home/u/zerotier-client" 9995 background-period: 0.5)
   (zt-add-local-interface-address! (internet-address->socket-address emeine 9995))
   (zt-join (ctnw))
   (report-iam (ctnw))
-  (nwif-set! (make-zt-ad-hoc-network-interface (ctnw) (zt-address) 9995)))
+  (nwif-set! (make-zt-ad-hoc-network-interface (ctnw) (zt-address))))
 
 (define (zt-start! path port #!key (background-period 0.5)) ;; EXPORT
   (if (zt-up?) (error "zt-start!: already running"))
@@ -244,7 +246,10 @@
 (define (sa->u8 sa)
   (cond
    ((internet-socket-address? sa) (socket-address->internet-address sa))
-   ((internet6-socket-address? sa) (socket-address->internet6-address sa))
+   ((internet6-socket-address? sa)
+    (receive
+      (host port flowinfo scope-id) (socket-address->internet6-address sa)
+      host))
    (else 'invalid #;(raise 'not-a-valid-socket-address))))
 
 (define (is-ip4-local? ip)
@@ -278,6 +283,83 @@
     (write v p)
     (newline p)
     v))
+
+;; lwIP TCP
+
+(define-type tcp-conn
+  pcb
+  thread)
+
+(define (lwip-ok? x) (eqv? x 0))
+
+(on-tcp-accept
+ (lambda (ctx connection err)
+   (case err
+     ((0)
+      (let ((tcp (make-tcp-conn connection (make-thread (ctx connection) 'tcp-service))))
+        (tcp-context-set! connection tcp)
+        (thread-start! (tcp-conn-thread tcp))
+        0)) ;; ERR_OK
+     (else -12)))) ;; FIXME
+
+(on-tcp-receive
+ (lambda (ctx connection pbuf err)
+   ;; ERR_IF
+   -12))
+
+(on-tcp-sent
+ (lambda (ctx connection len)
+   ;; should signal conn free
+   ;; ERR_OK
+   0))
+
+(on-tcp-poll
+ (lambda (ctx connection)
+   (debug 'UpsPOLL connection)
+   ;; ERR_OK ; rarely used
+   0))
+
+(on-tcp-error ;; void
+ (lambda (ctx err)
+   (debug 'ERROR ctx)
+   (debug 'err err)))
+
+(on-tcp-connect
+ (lambda (ctx connection err)
+   (case err
+     ((0)
+      (let ()
+        (debug 'CONNECTED connection)
+        (ctx connection)
+        0)) ;; ERR_OK
+     (else (debug 'on-tcp-connect err))))) ;; FIXME
+
+(define (lws)
+  (let ((pcb (tcp-new-ip-type lwip-IPADDR_TYPE_V6))
+        (addr (sa->u8 (make-6plane-addr (ctnw) (zt-address) (adhoc-port)))))
+    (debug 'lwIP-bind (ip-address->string addr))
+    (unless
+     (lwip-ok? (lwip-tcp-bind (debug 'pcb pcb) addr (adhoc-port)))
+     (error "lwip-tcp-bind failed"))
+    (let ((srv (lwip-tcp-listen pcb)))
+      (unless srv (error "lwip-listen failed"))
+      (tcp-context-set!
+       srv
+       (lambda (pcb)
+         (lambda ()
+           (debug 'Connected pcb))))
+      (tcp-set-err! srv)
+      (tcp-set-accept! srv)
+      (let ((client (tcp-new6)))
+        (tcp-context-set!
+         client
+         (lambda (connection)
+           (debug 'ClientConnected connection)
+           (lwip-tcp-close connection)))
+        (lwip-tcp-bind/netif client (*nwif*))
+        (unless (lwip-ok? (lwip-tcp-connect client addr (adhoc-port)))
+                (error "lwip-tcp-connect failed"))
+        'waiting-for-callback))))
 
 (define (system-command-line)
   (let loop ((n (system-cmdargc)) (r '()))
