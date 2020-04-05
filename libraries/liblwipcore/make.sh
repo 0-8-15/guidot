@@ -32,7 +32,7 @@ ABI=armeabi-v7a
 # build
 
 if [ -f testing ]; then
-  cd lwip
+  cd lwip-$VERSION
 else
  : #  cd lwip-$VERSION
 fi
@@ -98,7 +98,7 @@ lwip_build() # trick the abdomination going by the name cmake into compiling the
     mkdir -p $LIB_OUTPUT_DIR
     rm -rf $LIB_OUTPUT_DIR/lwip.a $LIB_OUTPUT_DIR/$DYNAMIC_LIB_NAME $LIB_OUTPUT_DIR/lwipcore.a
     # Prepare cmake - maybe that should be a patch?
-    grep -q contrib CMakeCache.txt || echo 'include(${LWIP_PORT}/Filelists.cmake)' >> CMakeLists.txt
+    grep -q LWIP_PORT CMakeLists.txt || echo 'include(${LWIP_PORT}/Filelists.cmake)' >> CMakeLists.txt
     # Build
     # lnccflags0="${lnccflags0} -DSA_FAMILY_T_DEFINED"
     cmake -H. -B$BUILD_DIR $TCCONF $EXTRACONF -DCMAKE_INSTALL_PREFIX=$SYS_PREFIX \
