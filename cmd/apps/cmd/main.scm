@@ -286,6 +286,11 @@
 
 ;; lwIP TCP
 
+#;(zt-pre-maintainance
+ (lambda (prm)
+   (debug 'zt-maintainance 'now)
+   #t))
+
 (define-type tcp-conn
   pcb
   thread)
@@ -313,11 +318,13 @@
    ;; ERR_OK
    0))
 
+(define (c-tcp-poll-interval) 255)
+
 (on-tcp-poll
  (lambda (ctx connection)
    (debug 'UpsPOLL connection)
-   ;; ERR_OK ; rarely used
-   0))
+   (debug 'lwip-tcp-flush! (lwip-err (lwip-tcp-flush! connection)))
+    ERR_OK))
 
 (on-tcp-error ;; void
  (lambda (ctx err)
@@ -334,6 +341,17 @@
         0)) ;; ERR_OK
      (else (debug 'on-tcp-connect err))))) ;; FIXME
 
+(define (tcp-set-all! pcb) ;; debug
+  (for-each
+   (lambda (x) (x pcb))
+   (list
+    tcp-set-receive!
+    tcp-set-sent!
+    tcp-set-err!
+    tcp-set-accept!
+    (lambda (pcb) (tcp-set-poll! pcb (c-tcp-poll-interval)))
+    )))
+
 (define (lws)
   (let ((pcb (tcp-new-ip-type lwip-IPADDR_TYPE_V6))
         (addr (sa->u8 (make-6plane-addr (ctnw) (zt-address) (adhoc-port)))))
@@ -341,7 +359,7 @@
     (unless
      (lwip-ok? (lwip-tcp-bind (debug 'pcb pcb) addr (adhoc-port)))
      (error "lwip-tcp-bind failed"))
-    (let ((srv (lwip-tcp-listen pcb)))
+    (let ((srv (debug 'listening (lwip-tcp-listen (debug 'litenon pcb)))))
       (unless srv (error "lwip-listen failed"))
       (tcp-context-set!
        srv
@@ -350,15 +368,21 @@
            (debug 'Connected pcb))))
       (tcp-set-err! srv)
       (tcp-set-accept! srv)
+      (tcp-set-all! srv)
       (let ((client (tcp-new6)))
+        (lwip-tcp-bind/netif client (*nwif*))
+        (debug 'client 'bound)
         (tcp-context-set!
          client
          (lambda (connection)
            (debug 'ClientConnected connection)
            (lwip-tcp-close connection)))
-        (lwip-tcp-bind/netif client (*nwif*))
-        (unless (lwip-ok? (lwip-tcp-connect client addr (adhoc-port)))
+        (tcp-set-err! client)
+        (tcp-set-all! client)
+        (unless (lwip-ok? (lwip-tcp-connect client addr (debug 'connecting (adhoc-port))))
                 (error "lwip-tcp-connect failed"))
+        (unless (lwip-ok? (lwip-tcp-flush! (debug 'lwip-tcp-flush! client)))
+                (error "lwip-tcp-flush! failed"))
         'waiting-for-callback))))
 
 (define (system-command-line)
