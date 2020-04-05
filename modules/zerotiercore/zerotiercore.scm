@@ -512,7 +512,7 @@ END
 ) (zt-prm-zt %%zt-prm)))
   (define (maintainance-loop)
     (thread-sleep! (max background-period (zt-background-period/lower-limit)))
-    (when (zt-up?) (%%checked maintainance (and (zt-pre-maintainance %%zt-prm) (maintainance)) #f) (maintainance-loop)))
+    (when (zt-up?) (%%checked maintainance (and ((zt-pre-maintainance) %%zt-prm) (maintainance)) #f) (maintainance-loop)))
   ;; Should we lock?  No: Better document single-threadyness!
   (if (zt-up?) (error "ZT already running"))
   (let ((prm (make-zt-prm #f udp (make-thread recv-loop 'zt-receiver)))
@@ -545,7 +545,7 @@ END
 ;; zt-pre-maintainance is a hook/predicate.  Should be used to add to mainainace.
 ;; RETURN: #t to run or #f to suppress running the ZT background tasks.
 
-(define zt-pre-maintainance (lambda (prm) #t)) ;; EXPORT
+(define-custom zt-pre-maintainance (lambda (prm) #t)) ;; EXPORT
 
 (define (zt-add-local-interface-address! sa) ;; EXPORT
   (assert-zt-up! zt-add-local-interface-address)
