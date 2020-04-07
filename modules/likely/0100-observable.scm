@@ -241,22 +241,50 @@
 ;; except as a drop in compatible to parameters. It just hides too
 ;; much.  Better deploy with observables.  Otherwise nice for scripts
 ;; as it saves typing.
-(define (make-lval val . more)
+(define (%make-lval x)
   (define conv (lambda (x) (if (procedure? x) (x #f #f) x)))
+  ;; has only the output side
+  (case-lambda
+   (() (observable-deref x))
+   ((v)
+    ;; FIXME: $implicit-current-transactions was a bad idea
+    ;;
+    ;; TODO: await this check failing for a while and abstain from testing
+    (if (not (current-transaction)) (error "make-rval: $implicit-current-transactions are a bad idea"))
+    (observable-set! x v) #!void)
+   ((k p . more)
+    (cond
+     ((not (or k p)) x)
+     ((and (string? k) (procedure? p))
+      (let ((sig (if (pair? more) (car more) #f))
+            (params (map conv (if sig (cdr more) more))))
+        (apply connect-dependent-value! k p (or sig '()) (cons x params))))
+     (else
+      (let ((params (map conv k)))
+        (apply observable-connect! (cons x params) p more)))))))
+
+(define (%make-rval x)
+  ;; authoritative input and top level, implicit transactional access
+  (case-lambda
+   (() (observable-deref x))
+   ((v)
+    (if (current-transaction)
+        (observable-set! x v)
+        (if #f ;; kick or not? TBD: for now kick
+            (with-current-transaction (lambda () (observable-set! x v)))
+            (kick! (lambda () (observable-set! x v))))))
+   ((k p . more)
+    (error "make-rval: may not connect to the input side of a wire"))))
+
+(define (make-lval val . more) ;;
+  (%make-lval (apply make-observable val more)))
+
+(define (make-mval val . more) ;; intermediate
   (let ((x (apply make-observable val more)))
-    (case-lambda
-     (() (observable-deref x))
-     ((v) (observable-set! x v) #!void)
-     ((k p . more)
-      (cond
-       ((not (or k p)) x)
-       ((and (string? k) (procedure? p))
-        (let ((sig (if (pair? more) (car more) #f))
-              (params (map conv (if sig (cdr more) more))))
-          (apply connect-dependent-value! k p (or sig '()) (cons x params))))
-       (else
-        (let ((params (map conv k)))
-          (apply observable-connect! (cons x params) p more))))))))
+    (values
+     (%make-rval x)
+     ;; output side
+     (%make-lval x))))
 
 #|
 (: connect-dependent-value!

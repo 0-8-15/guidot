@@ -43,7 +43,7 @@
   current-trigger-handler
   make-observable-triggers
   kick!
-  make-lval
+  make-rval make-lval make-mval
   make-observable
   observable?
   observable-deps

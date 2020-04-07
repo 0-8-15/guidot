@@ -352,19 +352,29 @@
 ;; (define tnw (make-lval #f (lambda (x) (or (integer? x) (not x))) (lambda (o n) (nws n)) 'tnw))
 
 (test-assert
- "procedural set with predicate and filter"
+ "procedural lval set with predicate and filter"
  (=
   (let ((tnw (make-lval #f (lambda (x) (or (integer? x) (not x))) (lambda (o n) n) 'tnw)))
     (with-current-transaction (lambda () (tnw 1) (tnw))))
   1))
 
 (test-assert
- "procedural kick! with predicate and filter"
+ "procedural lval kick! with predicate and filter"
  (=
   (let ((tnw (make-lval #f (lambda (x) (or (integer? x) (not x))) (lambda (o n) n) 'tnw)))
     (kick! (lambda () (tnw 1)))
     (tnw))
   1))
+
+(test-assert
+ "procedural mval set"
+ (let ((unique (list 'unique)))
+   (eq?
+    (receive
+     (in out) (make-mval #f)
+     (in unique)
+     (out))
+    unique)))
 
 ;; ($implicit-current-transactions #f)
 
