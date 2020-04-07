@@ -253,7 +253,7 @@
     ;; TODO: await this check failing for a while and abstain from testing
     (if (not (current-transaction)) (error "make-rval: $implicit-current-transactions are a bad idea"))
     (observable-set! x v) #!void)
-   ((k p . more)
+   ((k p . more) ;; INTERNAL API; TODO protect from uncontrolled access
     (cond
      ((not (or k p)) x)
      ((and (string? k) (procedure? p))
@@ -286,6 +286,17 @@
      (%make-rval x)
      ;; output side
      (%make-lval x))))
+
+(define (wire! s . more)
+  (define lval? procedure?)
+  (let* ((s
+          (cond
+           ((pair? s) s)
+           ((lval? s) (list s))
+           (else (error "wire!: argument error" s))))
+         (hooker (car s)))
+    (unless (lval? hooker) (error "wire!: argument error" hooker))
+    (apply hooker (cdr s) more)))
 
 #|
 (: connect-dependent-value!
