@@ -558,6 +558,8 @@ END
 ))
 lwip-make-netif))
 
+(define lwip-netif-find (c-lambda (char-string) netif* "netif_find"))
+
 (define lwip-netif-mac
   (c-lambda
    (netif*) unsigned-int64
@@ -689,7 +691,7 @@ lwip_send_ethernet_input(struct netif *netif, MACREF from, MACREF to, unsigned i
     // first pbuf smaller than ethernet header
     return ERR_BUF;
   }
-  { // fprintf(stderr, "lwip_send_ethernet_input: copy data into pbuf(s)\n");
+  { //**/ fprintf(stderr, "lwip_send_ethernet_input: copy data into pbuf(s)\n");
     const char *src = (const char*) data;
     int rest = q->len - sizeof(ethhdr);
     memcpy(q->payload,&ethhdr,sizeof(ethhdr));
@@ -700,7 +702,7 @@ lwip_send_ethernet_input(struct netif *netif, MACREF from, MACREF to, unsigned i
       src += q->len;
     }
   }
-  // fprintf(stderr, "lwip_send_ethernet_input: feed packet into netif->input %p\n", netif->input);
+  //**/fprintf(stderr, "lwip_send_ethernet_input: feed packet into netif->input %p\n", netif->input);
   if(netif->input == NULL) {
     fprintf(stderr, "lwip_send_ethernet_input: INTERNAL ERROR feed packet into netif->input \n");
     return ERR_IF;
@@ -709,7 +711,7 @@ lwip_send_ethernet_input(struct netif *netif, MACREF from, MACREF to, unsigned i
     fprintf(stderr, "lwip_send_ethernet_input: input failed\n", p);
     pbuf_free(p);
   } else {
-    // fprintf(stderr, "lwip_send_ethernet_input: packet has been read into netif\n", p);
+    //**/ fprintf(stderr, "lwip_send_ethernet_input: packet has been read into netif\n", p);
     /*
     MIB2_STATS_NETIF_ADD(netif, ifinoctets, p->tot_len);
     if (((u8_t *)p->payload)[0] & 1) {
@@ -790,14 +792,14 @@ lwip_init_interface_IPv6(struct netif *nif, struct sockaddr_storage *ip)
   }
   // fprintf(stderr, "lwip: netif_create_ip6_linklocal_address\n");
   netif_create_ip6_linklocal_address(nif, 1);
-  netif_ip6_addr_set_state(nif, 0, IP6_ADDR_VALID); // was IP6_ADDR_TENTATIVE
+  // using default now: netif_ip6_addr_set_state(nif, 0, IP6_ADDR_VALID); // was IP6_ADDR_TENTATIVE
   nif->ip6_autoconfig_enabled = 1; // ??
   netif_set_default(nif);  // ??
   // fprintf(stderr, "lwip: netif_set_up\n");
   netif_set_up(nif);  // ??
   // fprintf(stderr, "init addr %s\n", ip6addr_ntoa(&ip6addr));  // DEBUG
   netif_ip6_addr_set(nif, 1, &ip6addr);
-  netif_ip6_addr_set_state(nif, 1, IP6_ADDR_TENTATIVE); // was IP6_ADDR_TENTATIVE
+  netif_ip6_addr_set_state(nif, 1, IP6_ADDR_PREFERRED); // was IP6_ADDR_TENTATIVE
   gambit_lwipcore_unlock();
   // fprintf(stderr, "lwip_init_interface_IPv6 DONE\n");
 }

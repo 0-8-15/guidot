@@ -1,8 +1,27 @@
 typedef struct ip6_addr ip6_addr_t;
 struct netif;
 extern const ip6_addr_t *gambit_lwip_nd6_get_gw(struct netif *netif, const ip6_addr_t *dest);
-//extern const void *gambit_lwip_nd6_get_gw(const void *, const void*);
 #define LWIP_HOOK_ND6_GET_GW(netif, dest) gambit_lwip_nd6_get_gw(netif, dest)
+
+// extern void gambit_lwip_netif_status(struct netif *);
+
+// we SHOULD need LWIP_NETIF_LOOPBACK, but it crashes
+// #define LWIP_NETIF_LOOPBACK 1
+
+/*
+#define LWIP_DEBUG 0xffff
+#define LWIP_DBG_TYPES_ON 128
+#define NETIF_DEBUG LWIP_DBG_ON
+#define API_LIB_DEBUG LWIP_DBG_ON
+#define IP_DEBUG LWIP_DBG_ON
+#define TCP_DEBUG LWIP_DBG_ON
+#define TCPIP_DEBUG LWIP_DBG_ON
+#define IP6_DEBUG LWIP_DBG_ON
+#define NETIF_DEBUG LWIP_DBG_ON
+#define TCPIP_DEBUG LWIP_DBG_ON
+#define ETHARP_DEBUG LWIP_DBG_ON
+#define SYS_DEBUG LWIP_DBG_ON
+//*/
 
 /*
  * Copyright (c) 2001-2004 Swedish Institute of Computer Science.
