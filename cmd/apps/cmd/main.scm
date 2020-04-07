@@ -37,6 +37,10 @@
 
 ;; (zt-peers-info)
 
+(define (dave-server) #x6f318c4783)
+
+(define (earline-server) #xf3de84af82)
+
 (define (adhoc-port) 7443)
 
 (define nng-nw-o #xa09acf02337b057b)
@@ -49,34 +53,48 @@
     ((3) nng-nw-c)
     (else x)))
 
-(define tnw (make-lval #f (lambda (x) (or (integer? x) (not x))) (lambda (o n) (nws n)) 'tnw))
+(define (make-mval* #!key (initial #f) (pred #f) (filter #f) (name #f))
+  (make-mval initial pred filter name))
 
-(define (tnw! x)
-  (kick! (lambda () (tnw x))))
+(define-macro (define-wire in out val . more)
+  (let ((setter (gensym 'set))
+        (v (gensym 'v)))
+    `(begin
+       (define ,in (make-mval ,val . ,more))
+       (define ,out (call-with-values (lambda() ,in) (lambda (x y) y)))
+       (let ((,setter (call-with-values (lambda() ,in) (lambda (x y) x))))
+         (set! ,in (lambda (,v) (,setter ,v)))))))
+
+(define-macro (define-wire* in out val . more)
+  (let ((setter (gensym 'set))
+        (v (gensym 'v)))
+    `(begin
+       (define ,in (make-mval* ,val . ,more))
+       (define ,out (call-with-values (lambda() ,in) (lambda (x y) y)))
+       (let ((,setter (call-with-values (lambda() ,in) (lambda (x y) x))))
+         (set! ,in (lambda (,v) (,setter ,v)))))))
+
+(define-wire*
+  tnw! tnw
+  initial: #f
+  pred: (lambda (x) (or (integer? x) (not x)))
+  filter: (lambda (o n) (nws n))
+  name: 'tnw)
 
 (tnw! 1)
 
 (define (ctnw) (tnw))
 
-(define (make-lval* #!key (initial #f) (pred #f) (filter #f) (name #f))
-  (make-lval initial pred filter name))
-(define (make-kick-setter! x)
-   ;; force transaction context amd ansynchronous consequences on `x`.
-  (lambda (v) (kick! (lambda () (x v)))))
-
 (define (dbgmac l v)
   (debug l (hexstr v 12))
   v)
 
-(define *nwif*
-  (make-lval*
-   initial: #f
-   pred: (lambda (x) (or (netif? x) (not x)))
-   filter: #f
-   name: '*nwif-example*
-   ))
-
-(define nwif-set! (make-kick-setter! *nwif*))
+(define-wire*
+  set-nwif! *nwif*
+  initial: #f
+  pred: (lambda (x) (or (netif? x) (not x)))
+  filter: #f
+  name: '*nwif-example*)
 
 (define (find-nif mac)
   (let ((nif (*nwif*)))
@@ -112,28 +130,28 @@
   (zt-add-local-interface-address! (internet-address->socket-address dmeine 0 #;9994))
   (zt-join (ctnw))
   (report-iam (ctnw))
-  (nwif-set! (make-zt-ad-hoc-network-interface (ctnw) (zt-address))))
+  (set-nwif! (make-zt-ad-hoc-network-interface (ctnw) (zt-address))))
 
 (define (dc)
   (zt-start! "/home/u/build/ball/ball/zerotier-client" 9995 background-period: 0.5)
   (zt-add-local-interface-address! (internet-address->socket-address dmeine 9995))
   (zt-join (ctnw))
   (report-iam (ctnw))
-  (nwif-set! (make-zt-ad-hoc-network-interface (ctnw) (zt-address))))
+  (set-nwif! (make-zt-ad-hoc-network-interface (ctnw) (zt-address))))
 
 (define (es)
   (zt-start! "/home/u/zerotier-server" 9994 background-period: 0.5)
   (zt-add-local-interface-address! (internet-address->socket-address emeine 9994))
   (zt-join (ctnw))
   (report-iam (ctnw))
-  (nwif-set! (make-zt-ad-hoc-network-interface (ctnw) (zt-address))))
+  (set-nwif! (make-zt-ad-hoc-network-interface (ctnw) (zt-address))))
 
 (define (ec)
   (zt-start! "/home/u/zerotier-client" 9995 background-period: 0.5)
   (zt-add-local-interface-address! (internet-address->socket-address emeine 9995))
   (zt-join (ctnw))
   (report-iam (ctnw))
-  (nwif-set! (make-zt-ad-hoc-network-interface (ctnw) (zt-address))))
+  (set-nwif! (make-zt-ad-hoc-network-interface (ctnw) (zt-address))))
 
 (define (zt-start! path port #!key (background-period 0.5)) ;; EXPORT
   (if (zt-up?) (error "zt-start!: already running"))
@@ -160,11 +178,22 @@
 
 (zt-recv
  (lambda (from type data)
-   (debug 'RECV-from-type-data (list from type data))))
+   (debug 'RECV-from-type-data (list from type data))
+   (case type
+     ((2) (lwc)) ;; tcp test should connect back now
+     (else #f))))
+
+(define-wire
+  set-zt-online! zt-online
+  #f boolean?
+  (lambda (o n) (if (boolean? n) n (eq? 'ONLINE n)))
+  'zt-online)
 
 (zt-event
  (lambda (node userptr thr event payload)
-   (debug 'soso event)))
+   (debug 'soso event)
+   (case event
+     ((ONLINE OFFLINE) (set-zt-online! event)))))
 
 #;(zt-wire-packet-send
  (lambda (udp socket remaddr data ttl)
@@ -329,7 +358,8 @@
 (on-tcp-error ;; void
  (lambda (ctx err)
    (debug 'ERROR ctx)
-   (debug 'err err)))
+   (debug 'err (lwip-err err))
+   #f))
 
 (on-tcp-connect
  (lambda (ctx connection err)
@@ -352,9 +382,44 @@
     (lambda (pcb) (tcp-set-poll! pcb (c-tcp-poll-interval)))
     )))
 
+(define (lwc)
+  (let ((pcb (tcp-new-ip-type lwip-IPADDR_TYPE_V6))
+        (addr (sa->u8 (make-6plane-addr (ctnw) (dave-server) (adhoc-port)))))
+    (debug "
+
+
+
+
+
+
+"  'PLATZ)
+     (let ((client (tcp-new6)))
+        (debug 'client-bound (lwip-tcp-bind/netif client (*nwif*)))
+        (tcp-context-set!
+         client
+         (lambda (connection)
+           (debug 'ClientConnected connection)
+           (lwip-tcp-close connection)))
+        (tcp-set-err! client)
+        (tcp-set-all! client)
+        (unless (lwip-ok? (debug 'conn (lwip-tcp-connect client addr (debug 'connecting (adhoc-port)))))
+                (error "lwip-tcp-connect failed"))
+        (unless (lwip-ok? (lwip-tcp-flush! (debug 'lwip-tcp-flush! client)))
+                (error "lwip-tcp-flush! failed"))
+        #;(debug 'lws 'waiting-for-callback)
+        #;(lambda () (debug 'lws 'post-post) #f))))
+
 (define (lws)
   (let ((pcb (tcp-new-ip-type lwip-IPADDR_TYPE_V6))
         (addr (sa->u8 (make-6plane-addr (ctnw) (zt-address) (adhoc-port)))))
+    (debug "
+
+
+
+
+
+
+"  'BEDARF)
     (debug 'lwIP-bind (ip-address->string addr))
     (unless
      (lwip-ok? (lwip-tcp-bind (debug 'pcb pcb) addr (adhoc-port)))
@@ -369,21 +434,18 @@
       (tcp-set-err! srv)
       (tcp-set-accept! srv)
       (tcp-set-all! srv)
-      (let ((client (tcp-new6)))
-        (lwip-tcp-bind/netif client (*nwif*))
-        (debug 'client 'bound)
-        (tcp-context-set!
-         client
-         (lambda (connection)
-           (debug 'ClientConnected connection)
-           (lwip-tcp-close connection)))
-        (tcp-set-err! client)
-        (tcp-set-all! client)
-        (unless (lwip-ok? (lwip-tcp-connect client addr (debug 'connecting (adhoc-port))))
-                (error "lwip-tcp-connect failed"))
-        (unless (lwip-ok? (lwip-tcp-flush! (debug 'lwip-tcp-flush! client)))
-                (error "lwip-tcp-flush! failed"))
-        'waiting-for-callback))))
+      (zt-send! (earline-server) 2 (object->u8vector "listening")))))
+
+#;(*nwif*
+ '() ;; list of other dependencies
+ post: lws ;; connect post condition
+ )
+
+(zt-online
+ (list *nwif*) ;; list of other dependencies
+ post:         ;; connect post condition
+ ;; TBD DEBUG: lws here just does not cut it.
+ (lambda () (if (and (*nwif*) (zt-online)) (lws))))
 
 (define (system-command-line)
   (let loop ((n (system-cmdargc)) (r '()))
