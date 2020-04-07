@@ -16,6 +16,8 @@
   ;; this is just informal; intented for debugging
   (c-lambda () bool "___result = htons(1)==1;"))
 
+;;; Constants
+
 (c-declare #<<c-declare-end
 
 typedef enum {false=0, true=1} bool;
@@ -117,7 +119,59 @@ c-declare-end
 
 (define (ethertype/network->symbol x) (ethertype/host->symbol (lwip-htons x)))
 
+;;; C Types
+
+(c-define-type void* (pointer "void"))
+
+(c-define-type nonnull-void* (nonnull-pointer "void"))
+
 (c-define-type err_t int)
+
+(c-define-type netif* (pointer (struct "netif")))
+
+;;; LWIP Hooks
+
+(define-custom lwip-nd6-get-gateway #f) ;; EXPORT HOOK - return netif for destination
+(c-define
+ (gambit-lwip-nd6-get-gw netif dest)
+ (netif* void*) void*
+ "scm_lwip_nd6_get_gw" "static"
+ (let ((hook (lwip-nd6-get-gateway)))
+   (and hook (hook netif dest))))
+
+(c-declare #<<c-declare-end
+
+struct lwip_nd6_get_gw__args { struct netif *netif; const ip6_addr_t *dest; const ip6_addr_t *result; };
+
+static int call_scm_lwip_nd6_get_gw(void *in, struct lwip_nd6_get_gw__args *args)
+{
+ // unused(in);
+ args->result = scm_lwip_nd6_get_gw(args->netif, (void*) args->dest);
+ return 0; //unused
+}
+
+// just for gambit_lwip_nd6_get_gw debugging
+#include <netinet/in.h>
+
+const ip6_addr_t *gambit_lwip_nd6_get_gw(struct netif *netif, const ip6_addr_t *dest)
+{
+ // return scm_lwip_nd6_get_gw(netif, dest);
+/*
+ struct lwip_nd6_get_gw__args r = {netif, dest, NULL};
+ lwip_calling_back(NULL, call_scm_lwip_nd6_get_gw, &r);
+ return r.result;
+ */
+ char buf[46];
+ip6_addr_t dummy;
+ip6_addr_set(&dummy, dest);
+inet_ntop(AF_INET6, dest->addr, buf, INET6_ADDRSTRLEN);
+fprintf(stderr, "RETURN %p %s\n", dest, buf);
+return dest;
+}
+c-declare-end
+)
+
+;;; LOCKING
 
 (c-declare
 ;;; This section is the only one, which MAY use {UN}LOCK_TCPIP_CORE
@@ -316,6 +370,8 @@ c-declare-end
        (c-define ,def ,type ,result-type ,locked-c-part ,scope ,body)
        (c-declare ,within-gambit))))
 
+;;; Init Part II
+
 (define (lwip-gambit-state)
   (list
    'Caller: ((c-lambda () unsigned-int64 "___result = pthread_self();"))
@@ -352,9 +408,7 @@ c-declare-end
           (thread-start! (make-thread (lambda () (lwip-tcp-loop 1)) 'tcp))
           #t))))
 
-(c-define-type void* (pointer "void"))
-
-(c-define-type nonnull-void* (nonnull-pointer "void"))
+;;; MAC and Host/Network Byte Order
 
 (c-declare #<<c-declare-end
 
@@ -455,60 +509,34 @@ END
    ___result = result;
 END
 ))
+;;; Timeout Handling
+
+(define (lwip-check-timeouts #!optional (timeout -1))
+ ((c-lambda (int32) int32 #<<END
+#if NO_SYS
+  /* handle timers (already done in tcpip.c when NO_SYS=0) */
+  sys_check_timeouts();
+  ___result = sys_timeouts_sleeptime();
+#else
+  // fprintf(stderr, "enabling callbacks into gambit\n");
+  lwip_gambit_unlock();
+  if(___arg1 < 0) ___arg1 = local_sys_timeouts_sleeptime();
+  // fprintf(stderr, "gambit sleep %d microseconds\n", ___arg1);
+  usleep(___arg1);
+  ___result = local_sys_timeouts_sleeptime();
+  lwip_gambit_lock();
+#endif
+END
+)
+  timeout))
+
+;;; Network Interfaces
 
 (c-define-type socket-address (pointer (struct "sockaddr_storage") socket-address))
-
-#|
-
-(c-define-type eth-addr* (pointer (struct "eth_addr")))
-
-(define (lwip-make-eth-addr)
-  ((c-lambda (scheme-object) eth-addr* "___result = ___arg1;") (make-u8vector 6 0)))
-
-(define lwip-eth-addr-equal? (c-lambda (eth-addr* eth-addr*) bool "___result = eth_addr_cmp(___arg1, ___arg2);"))
-
-(define eth-addr->uint64
-  (c-lambda
-   (eth-addr*) unsigned-int64
-   "___result = 0; memcpy(&((struct eth_addr*)&___result)->addr, &___arg1->addr, ETH_HWADDR_LEN);"))
-
-(define (lwip-eth-addr-set! addr u8)
-  (cond
-   ((integer? u8)
-    ((c-lambda
-      (eth-addr* unsigned-int64) void
-      "memcpy(&___arg1->addr, &___arg2, ETH_HWADDR_LEN);")
-     addr u8))
-   ((u8vector? u8)
-    ((c-lambda
-      (eth-addr* scheme-object) void
-      "memcpy(&___arg1->addr, ___CAST(void *,___BODY_AS(___arg2,___tSUBTYPED)), ETH_HWADDR_LEN);")
-     addr u8))
-   (else (error "lwip-eth-addr-set! illegal argument" u8))))
-
-(c-define-type eth-hdr (struct "eth_hdr"))
-|#
-
-(c-define-type netif* (pointer (struct "netif")))
 
 (define (netif? obj) (and (foreign? obj) (let ((f (foreign-tags obj))) (and f (eq? (car f) '|struct netif*|)))))
 
 (define-custom lwip-ethernet-send #f) ;; EXPORT HOOK - ethernet output to send
-
-(define cebug
-  (let ((t (make-thread
-            (lambda ()
-              (do ()
-                  (#f)
-                (call-with-values thread-receive debug)))
-            'cebug)))
-    (thread-start! t)
-    (lambda (l v)
-      (declare (not interrupts-enabled))
-      (let ((x (values l v)))
-        (thread-send t x)
-        x)
-      v)))
 
 (c-define
  (lwip-ethernet-send! ethif src dst proto #;0 bp len)
@@ -556,7 +584,7 @@ c-declare-end
    ___result_voidstar = nif;
 END
 ))
-lwip-make-netif))
+    lwip-make-netif))
 
 (define lwip-netif-find (c-lambda (char-string) netif* "netif_find"))
 
@@ -574,24 +602,7 @@ lwip-make-netif))
 END
 ))
 
-(define (lwip-check-timeouts #!optional (timeout -1))
- ((c-lambda (int32) int32 #<<END
-#if NO_SYS
-  /* handle timers (already done in tcpip.c when NO_SYS=0) */
-  sys_check_timeouts();
-  ___result = sys_timeouts_sleeptime();
-#else
-  // fprintf(stderr, "enabling callbacks into gambit\n");
-  lwip_gambit_unlock();
-  if(___arg1 < 0) ___arg1 = local_sys_timeouts_sleeptime();
-  // fprintf(stderr, "gambit sleep %d microseconds\n", ___arg1);
-  usleep(___arg1);
-  ___result = local_sys_timeouts_sleeptime();
-  lwip_gambit_lock();
-#endif
-END
-)
-  timeout))
+;;; Network Interface IO
 
 (c-declare #<<c-declare-end
 
@@ -807,8 +818,6 @@ lwip_init_interface_IPv6(struct netif *nif, struct sockaddr_storage *ip)
 c-declare-end
 )
 
-(c-define-type eth-addr (struct "eth_addr"))
-
 (define lwip_init_interface_IPv6
  (c-lambda (netif* socket-address) void "lwip_init_interface_IPv6"))
 
@@ -824,48 +833,14 @@ c-declare-end
 
 ;;(define lwip-default-netif-poll! (c-lambda () void "default_netif_poll"))
 
+
+;;; ND6, Routing
+
 (define lwip-nd6-find-route
   (c-lambda
    ;; TODO: check for IPv6 address.
    (socket-address) netif*
    "ip6_addr_t a; cp_sockaddr_to_ip6_addr(&a,(struct sockaddr_in6*) ___arg1); ___result = nd6_find_route(&a);"))
-
-(define-custom lwip-nd6-get-gateway #f) ;; EXPORT HOOK - return netif for destination
-(c-define
- (gambit-lwip-nd6-get-gw netif dest)
- (netif* void*) void*
- "scm_lwip_nd6_get_gw" "static"
- (let ((hook (lwip-nd6-get-gateway)))
-   (and hook (hook netif dest))))
-
-(c-declare #<<c-declare-end
-
-struct lwip_nd6_get_gw__args { struct netif *netif; const ip6_addr_t *dest; const ip6_addr_t *result; };
-
-static int call_scm_lwip_nd6_get_gw(void *in, struct lwip_nd6_get_gw__args *args)
-{
- // unused(in);
- args->result = scm_lwip_nd6_get_gw(args->netif, (void*) args->dest);
- return 0; //unused
-}
-
-const ip6_addr_t *gambit_lwip_nd6_get_gw(struct netif *netif, const ip6_addr_t *dest)
-{
- // return scm_lwip_nd6_get_gw(netif, dest);
-/*
- struct lwip_nd6_get_gw__args r = {netif, dest, NULL};
- lwip_calling_back(NULL, call_scm_lwip_nd6_get_gw, &r);
- return r.result;
- */
- char buf[46];
-ip6_addr_t dummy;
-ip6_addr_set(&dummy, dest);
-inet_ntop(AF_INET6, dest->addr, buf, INET6_ADDRSTRLEN);
-fprintf(stderr, "RETURN %p %s\n", dest, buf);
-return dest;
-}
-c-declare-end
-)
 
 ;;;* TCP callback API
 
