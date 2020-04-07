@@ -20,9 +20,15 @@
 
 ;; (zt-contact-peer "c72fe7ef99:0:d5986544158efb7c668a53c1a9d42c37f93cb8ad71be49b22cd54e1bf3cf533681ed86b18b36e908d31983db126e45f439d9bb2a975015a2d98757f12d9dfc1d" (internet-address->socket-address '#u8(192 168 43 86) 9993))
 
-;; es: (zt-contact-peer "f3de84af82:0:d6eea42c09e3f91845dd8fdf9e94c048ea5d63bde1108e8369a7cb79a98ca76951c6b80b80c9d596e0d32d83d94ee73de724412a10ae1cda21888b1206bb1461" (internet-address->socket-address '#u8(192 168 43 86) 9994))
+(define (contact-earline)
+  (zt-contact-peer
+   "f3de84af82:0:d6eea42c09e3f91845dd8fdf9e94c048ea5d63bde1108e8369a7cb79a98ca76951c6b80b80c9d596e0d32d83d94ee73de724412a10ae1cda21888b1206bb1461"
+   (internet-address->socket-address '#u8(192 168 43 86) 9994)))
 
-;; dave: (zt-contact-peer "183ae34a4c:0:fb013629f7ad7c47b10356ab06e29f0244b8e3ddf47dac9fb6392c04d9b26d0c307c05fae6162d97b2c338f4bcfe7abe397c0fcbba6f806f78f11992a7230442" (internet-address->socket-address '#u8(192 168 43 96) 9993))
+(define (contact-dave)
+  (zt-contact-peer
+   "183ae34a4c:0:fb013629f7ad7c47b10356ab06e29f0244b8e3ddf47dac9fb6392c04d9b26d0c307c05fae6162d97b2c338f4bcfe7abe397c0fcbba6f806f78f11992a7230442"
+   (internet-address->socket-address '#u8(192 168 43 96) 9993)))
 
 ;; (zt-peers-info)
 
@@ -72,7 +78,10 @@
        (define ,in (make-mval* ,val . ,more))
        (define ,out (call-with-values (lambda() ,in) (lambda (x y) y)))
        (let ((,setter (call-with-values (lambda() ,in) (lambda (x y) x))))
-         (set! ,in (lambda (,v) (,setter ,v)))))))
+         (set! ,in (lambda (,v) (,setter ,v) 'HAE))))))
+
+(define (wire! lst . more)
+  (apply (car lst) (cdr lst) more))
 
 (define-wire*
   tnw! tnw
@@ -84,6 +93,11 @@
 (tnw! 1)
 
 (define (ctnw) (tnw))
+
+(define-wire
+  set-here! here
+  #f
+  (lambda (x) (memq x '(#f Dave Earline))))
 
 (define (dbgmac l v)
   (debug l (hexstr v 12))
@@ -126,6 +140,7 @@
   (display (iam nw (adhoc-port)) (current-error-port)))
 
 (define (ds)
+  (set-here! 'Dave)
   (zt-start! "/home/u/build/ball/ball/zerotier-server" 9994 background-period: 0.5)
   (zt-add-local-interface-address! (internet-address->socket-address dmeine 0 #;9994))
   (zt-join (ctnw))
@@ -133,6 +148,7 @@
   (set-nwif! (make-zt-ad-hoc-network-interface (ctnw) (zt-address))))
 
 (define (dc)
+  (set-here! 'DaveC)
   (zt-start! "/home/u/build/ball/ball/zerotier-client" 9995 background-period: 0.5)
   (zt-add-local-interface-address! (internet-address->socket-address dmeine 9995))
   (zt-join (ctnw))
@@ -140,6 +156,7 @@
   (set-nwif! (make-zt-ad-hoc-network-interface (ctnw) (zt-address))))
 
 (define (es)
+  (set-here! 'Earline)
   (zt-start! "/home/u/zerotier-server" 9994 background-period: 0.5)
   (zt-add-local-interface-address! (internet-address->socket-address emeine 9994))
   (zt-join (ctnw))
@@ -217,7 +234,10 @@
  (lambda (udp socket remaddr data ttl)
    ;;(debug 'wire-send-via socket)
    ;; FIXME: allocate IPv6 too!
-   (if (internet-socket-address? remaddr) (send-message udp data 0 #f 0 remaddr))))
+   (if (internet-socket-address? remaddr)
+       (begin
+         (debug 'wire-send-via (socket-address->string remaddr))
+         (send-message udp data 0 #f 0 remaddr)))))
 
 (zt-virtual-receive
  ;; API issue: looks like zerotier may just have disassembled a memory
@@ -409,6 +429,9 @@
         #;(debug 'lws 'waiting-for-callback)
         #;(lambda () (debug 'lws 'post-post) #f))))
 
+(define (lws-listening!)
+  (zt-send! (earline-server) 2 (object->u8vector "listening")))
+
 (define (lws)
   (let ((pcb (tcp-new-ip-type lwip-IPADDR_TYPE_V6))
         (addr (sa->u8 (make-6plane-addr (ctnw) (zt-address) (adhoc-port)))))
@@ -434,16 +457,20 @@
       (tcp-set-err! srv)
       (tcp-set-accept! srv)
       (tcp-set-all! srv)
-      (zt-send! (earline-server) 2 (object->u8vector "listening")))))
+      (lws-listening!))))
 
-#;(*nwif*
- '() ;; list of other dependencies
- post: lws ;; connect post condition
- )
+(wire!
+ (list here zt-online)
+ post:
+ (lambda ()
+   (if (zt-online)
+       (case (here)
+         ((Dave) (contact-earline))
+         ((Earline) (contact-dave))))))
 
-(zt-online
- (list *nwif*) ;; list of other dependencies
- post:         ;; connect post condition
+(wire!
+ (list zt-online *nwif*) ;; list of dependencies
+ post:                   ;; connect post condition
  ;; TBD DEBUG: lws here just does not cut it.
  (lambda () (if (and (*nwif*) (zt-online)) (lws))))
 
