@@ -106,7 +106,8 @@
          (%filter source var (%cell-ref var) val %alter!)))
    ((%observable? var)
     (%filter var var (%observable-value var) val (lambda (var val) (alter-current-slot! var 1 val))))
-   (else (error "observable-set! unhandled reference" var))))
+   (else (error "observable-set! unhandled reference" var)))
+  #!void)
 
 (define (observable-alter! ref f . args)
   (observable-invoke!
