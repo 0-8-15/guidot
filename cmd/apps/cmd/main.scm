@@ -1,6 +1,29 @@
 ;; LambdaNative console template
 
-;; place your code here
+(include "observable-notational-conventions.scm")
+
+(define (or-false pred?) (lambda (x) (or (eq? x #f) (pred? x))))
+
+(define (ground) #f)
+(define (ground? x) (eq? x (ground)))
+(define (or-ground pred?) (lambda (x) (or (eq? x #f) (pred? x))))
+
+;; utilitarian garbage
+
+(define (sa->u8 sa)
+  (cond
+   ((internet-socket-address? sa) (socket-address->internet-address sa))
+   ((internet6-socket-address? sa)
+    (receive
+      (host port flowinfo scope-id) (socket-address->internet6-address sa)
+      (values host port)))
+   (else 'invalid #;(raise 'not-a-valid-socket-address))))
+
+(define (is-ip4-local? ip)
+  (and (eqv? (u8vector-length ip) 4)
+       (eqv? (u8vector-ref ip 0) 192)
+       (eqv? (u8vector-ref ip 1) 168)
+       (eqv? (u8vector-ref ip 2) 43)))
 
 (define difaddr "192.168.43.96")
 (define eifaddr "192.168.43.86")
@@ -18,14 +41,26 @@
 
 ;; (zt-node-status)
 
-;; (zt-contact-peer "c72fe7ef99:0:d5986544158efb7c668a53c1a9d42c37f93cb8ad71be49b22cd54e1bf3cf533681ed86b18b36e908d31983db126e45f439d9bb2a975015a2d98757f12d9dfc1d" (internet-address->socket-address '#u8(192 168 43 86) 9993))
+(define testers
+  '((Dave)
+    (Earline)))
+
+(define (contact-whom?)
+  (zt-contact-peer
+   "c72fe7ef99:0:d5986544158efb7c668a53c1a9d42c37f93cb8ad71be49b22cd54e1bf3cf533681ed86b18b36e908d31983db126e45f439d9bb2a975015a2d98757f12d9dfc1d"
+   (internet-address->socket-address '#u8(192 168 43 86) 9993)))
+
+(define (contact-dave)
+  (zt-contact-peer
+   "6f318c4783:0:5d46ec5136b6a184c39d7c34acc749d495921baa944cc6ef945d843a588ca601b40b09b8849e404b2506c26aa654364f1ecc8562d3ec4f924efc78705f29f6ea"
+   (internet-address->socket-address '#u8(192 168 43 96) 9994)))
 
 (define (contact-earline)
   (zt-contact-peer
    "f3de84af82:0:d6eea42c09e3f91845dd8fdf9e94c048ea5d63bde1108e8369a7cb79a98ca76951c6b80b80c9d596e0d32d83d94ee73de724412a10ae1cda21888b1206bb1461"
    (internet-address->socket-address '#u8(192 168 43 86) 9994)))
 
-(define (contact-dave)
+(define (contact-dave-vm)
   (zt-contact-peer
    "183ae34a4c:0:fb013629f7ad7c47b10356ab06e29f0244b8e3ddf47dac9fb6392c04d9b26d0c307c05fae6162d97b2c338f4bcfe7abe397c0fcbba6f806f78f11992a7230442"
    (internet-address->socket-address '#u8(192 168 43 96) 9993)))
@@ -43,6 +78,8 @@
 
 ;; (zt-peers-info)
 
+;; (set-use-external! #t)
+
 (define (dave-server) #x6f318c4783)
 
 (define (earline-server) #xf3de84af82)
@@ -54,59 +91,107 @@
 (define adhoc-nw (zt-adhoc-network-id (adhoc-port)))
 (define (nws x)
   (case x
+    ((0) (ground))
     ((1) adhoc-nw)
     ((2) nng-nw-o)
     ((3) nng-nw-c)
     (else x)))
 
-(define (make-mval* #!key (initial #f) (pred #f) (filter #f) (name #f))
-  (make-mval initial pred filter name))
-
-(define-macro (define-wire in out val . more)
-  (let ((setter (gensym 'set))
-        (v (gensym 'v)))
-    `(begin
-       (define ,in (make-mval ,val . ,more))
-       (define ,out (call-with-values (lambda() ,in) (lambda (x y) y)))
-       (let ((,setter (call-with-values (lambda() ,in) (lambda (x y) x))))
-         (set! ,in (lambda (,v) (,setter ,v)))))))
-
-(define-macro (define-wire* in out val . more)
-  (let ((setter (gensym 'set))
-        (v (gensym 'v)))
-    `(begin
-       (define ,in (make-mval* ,val . ,more))
-       (define ,out (call-with-values (lambda() ,in) (lambda (x y) y)))
-       (let ((,setter (call-with-values (lambda() ,in) (lambda (x y) x))))
-         (set! ,in (lambda (,v) (,setter ,v) 'HAE))))))
-
-(define (wire! lst . more)
-  (apply (car lst) (cdr lst) more))
-
-(define-wire*
-  tnw! tnw
-  initial: #f
-  pred: (lambda (x) (or (integer? x) (not x)))
+#;(define-sense*
+  tnw
+  initial: (ground)
+  pred: (or-ground integer?)
   filter: (lambda (o n) (nws n))
   name: 'tnw)
 
-(tnw! 1)
+(define .tnw
+  (SENSOR
+   initial: (ground)
+   pred: (or-ground integer?)
+   filter: (lambda (o n) (nws n))
+   name: 'tnw))
+
+(define tnw (.tnw))
+
+(.tnw 1)
 
 (define (ctnw) (tnw))
 
-(define-wire
-  set-here! here
+;;; lwIP
+
+(define .lwip
+  (SENSOR
+   initial: #f
+   pred: boolean?
+   filter:
+   (lambda (o n)
+     ;; remove #f to not need the check-values below
+     (if (and #t o)
+         (error "lwIP initialization can not be undone")
+         n))
+   name: "lwIP enabled"))
+
+(define lwip (.lwip))
+
+#|
+(wire!
+ ;; NOTE: This could be (more easily) achieved using a filter against
+ ;; the old value.  But it's a nice example when it comes to multiple
+ ;; input values
+ (list lwip #| other dependencies go here |# )
+ check-values: ;;; still aborts the transaction
+ (let ((would-disable-lwip-if-that-where-possible (dynamic lwip)))
+   (lambda (enable)
+     (if (and (not enable) (would-disable-lwip-if-that-where-possible))
+         (error "would-disable-lwip-if-that-where-possible")))))
+;|#
+
+(define .zt-started (SENSOR)) (define zt-started (.zt-started))
+
+(wire!
+ (list lwip zt-started)
+ post:
+ (lambda ()
+   (if (and (lwip) (zt-started))
+       (.*nwif* (make-zt-ad-hoc-network-interface (ctnw) (zt-address))))))
+
+(wire!
+ zt-started
+ post:
+ (let ()
+   (define (iam nwid port)
+     (let* ((ndid (zt-address))
+            (mac (zt-network+node->mac nwid ndid)))
+       (receive
+        (ip6-addr port flowinfo scope-id) (socket-address->internet6-address (make-6plane-addr nwid ndid port))
+        (string-append
+         "I am: \npublic:\n "
+         (zt-node-status)
+         "\n #x" (hexstr ndid 10) " in nw #x" (hexstr nwid 16) " mac " (hexstr mac 12)
+         " at addr " (ip-address->string ip6-addr) " port " (number->string port)
+         "\n"))))
+   (lambda ()
+     (display (iam (ctnw) (adhoc-port)) (current-error-port)))))
+
+(define-sense use-external #f)
+
+(define-sense
+  here
   #f
-  (lambda (x) (memq x '(#f Dave Earline))))
+  (or-ground (lambda (x) (assq x testers))))
+
+(define (hexstr id digits)
+  (let ((effective (number->string id 16)))
+    (string-append (make-string (- digits (string-length effective)) #\0) effective)))
 
 (define (dbgmac l v)
   (debug l (hexstr v 12))
   v)
 
-(define-wire*
-  set-nwif! *nwif*
-  initial: #f
-  pred: (lambda (x) (or (netif? x) (not x)))
+(define-sense*
+  *nwif*
+  initial: (ground)
+  pred: (or-ground netif?)
   filter: #f
   name: '*nwif-example*)
 
@@ -126,49 +211,32 @@
 
 (define (find-nwid-for-nif nif) (ctnw))
 
-(define (iam nwid port)
-  (let* ((ndid (zt-address))
-         (mac (zt-network+node->mac nwid ndid)))
-    (receive
-     (ip6-addr port flowinfo scope-id) (socket-address->internet6-address (make-6plane-addr nwid ndid port))
-     (string-append
-      "I am #x" (hexstr ndid 10) " in nw #x" (hexstr nwid 16) " mac " (hexstr mac 12)
-      " at addr " (ip-address->string ip6-addr) " port " (number->string port)
-      "\n"))))
-
-(define (report-iam nw)
-  (display (iam nw (adhoc-port)) (current-error-port)))
-
 (define (ds)
-  (set-here! 'Dave)
+  (.here 'Dave)
   (zt-start! "/home/u/build/ball/ball/zerotier-server" 9994 background-period: 0.5)
   (zt-add-local-interface-address! (internet-address->socket-address dmeine 0 #;9994))
   (zt-join (ctnw))
-  (report-iam (ctnw))
-  (set-nwif! (make-zt-ad-hoc-network-interface (ctnw) (zt-address))))
+  (.zt-started #t))
 
 (define (dc)
-  (set-here! 'DaveC)
+  (.here 'DaveC)
   (zt-start! "/home/u/build/ball/ball/zerotier-client" 9995 background-period: 0.5)
   (zt-add-local-interface-address! (internet-address->socket-address dmeine 9995))
   (zt-join (ctnw))
-  (report-iam (ctnw))
-  (set-nwif! (make-zt-ad-hoc-network-interface (ctnw) (zt-address))))
+  (.zt-started #t))
 
 (define (es)
-  (set-here! 'Earline)
+  (.here 'Earline)
   (zt-start! "/home/u/zerotier-server" 9994 background-period: 0.5)
   (zt-add-local-interface-address! (internet-address->socket-address emeine 9994))
   (zt-join (ctnw))
-  (report-iam (ctnw))
-  (set-nwif! (make-zt-ad-hoc-network-interface (ctnw) (zt-address))))
+  (.zt-started #t))
 
 (define (ec)
   (zt-start! "/home/u/zerotier-client" 9995 background-period: 0.5)
   (zt-add-local-interface-address! (internet-address->socket-address emeine 9995))
   (zt-join (ctnw))
-  (report-iam (ctnw))
-  (set-nwif! (make-zt-ad-hoc-network-interface (ctnw) (zt-address))))
+  (.zt-started #t))
 
 (define (zt-start! path port #!key (background-period 0.5)) ;; EXPORT
   (if (zt-up?) (error "zt-start!: already running"))
@@ -187,10 +255,6 @@
         #t)
       #f))
 
-(define (hexstr id digits)
-  (let ((effective (number->string id 16)))
-    (string-append (make-string (- digits (string-length effective)) #\0) effective)))
-
 ;;* EVENTS
 
 (zt-recv
@@ -200,17 +264,29 @@
      ((2) (lwc)) ;; tcp test should connect back now
      (else #f))))
 
-(define-wire
-  set-zt-online! zt-online
+#;(define-sense
+  zt-online
   #f boolean?
   (lambda (o n) (if (boolean? n) n (eq? 'ONLINE n)))
   'zt-online)
+
+(define-pin
+  zt-online
+  initial: #f
+  pred: boolean?
+  filter: (lambda (o n) (if (boolean? n) n (eq? 'ONLINE n)))
+  name: 'zt-online)
 
 (zt-event
  (lambda (node userptr thr event payload)
    (debug 'soso event)
    (case event
-     ((ONLINE OFFLINE) (set-zt-online! event)))))
+     ((UP) (.use-external #t))
+     ((ONLINE OFFLINE)
+      (kick!
+       (lambda ()
+         (use-external #f)
+         (zt-online event)))))))
 
 #;(zt-wire-packet-send
  (lambda (udp socket remaddr data ttl)
@@ -232,12 +308,14 @@
 
 (zt-wire-packet-send
  (lambda (udp socket remaddr data ttl)
-   ;;(debug 'wire-send-via socket)
+   ;; (debug 'wire-send-via socket)
    ;; FIXME: allocate IPv6 too!
    (if (internet-socket-address? remaddr)
-       (begin
+       (cond
+        ((or (use-external) (receive (a p) (sa->u8 remaddr) (is-ip4-local? a)))
          (debug 'wire-send-via (socket-address->string remaddr))
-         (send-message udp data 0 #f 0 remaddr)))))
+         (send-message udp data 0 #f 0 remaddr))
+        (else #;(debug 'wire-send-via/blocked (socket-address->string remaddr)) -1)))))
 
 (zt-virtual-receive
  ;; API issue: looks like zerotier may just have disassembled a memory
@@ -292,28 +370,13 @@
 
 ;; Optional
 
-(define (sa->u8 sa)
-  (cond
-   ((internet-socket-address? sa) (socket-address->internet-address sa))
-   ((internet6-socket-address? sa)
-    (receive
-      (host port flowinfo scope-id) (socket-address->internet6-address sa)
-      host))
-   (else 'invalid #;(raise 'not-a-valid-socket-address))))
-
-(define (is-ip4-local? ip)
-  (and (eqv? (u8vector-length ip) 4)
-       (eqv? (u8vector-ref ip 0) 192)
-       (eqv? (u8vector-ref ip 1) 168)
-       (eqv? (u8vector-ref ip 2) 43)))
-
 (zt-path-check
  (lambda (node userptr thr nodeid socket sa)
    (debug 'PATHCHECK (number->string nodeid 16))
    (receive
     (addr port) (sa->u8 sa)
     (debug 'PATHCHECK (cons addr port))
-    (is-ip4-local? addr))))
+    (or (use-external) (is-ip4-local? addr)))))
 
 (zt-path-lookup
  (lambda (node uptr thr nodeid family sa)
@@ -403,8 +466,9 @@
     )))
 
 (define (lwc)
-  (let ((pcb (tcp-new-ip-type lwip-IPADDR_TYPE_V6))
-        (addr (sa->u8 (make-6plane-addr (ctnw) (dave-server) (adhoc-port)))))
+  (let* ((pcb (tcp-new-ip-type lwip-IPADDR_TYPE_V6))
+         (sa (make-6plane-addr (ctnw) (dave-server) (adhoc-port)))
+         (addr (receive (a p) (sa->u8 sa) a)))
     (debug "
 
 
@@ -429,12 +493,17 @@
         #;(debug 'lws 'waiting-for-callback)
         #;(lambda () (debug 'lws 'post-post) #f))))
 
+(define lws-listener (PIN))
+
 (define (lws-listening!)
-  (zt-send! (earline-server) 2 (object->u8vector "listening")))
+  (and (lws-listener) (zt-send! (earline-server) 2 (object->u8vector "listening"))))
+
+(wire! lws-listener post: lws-listening!)
 
 (define (lws)
-  (let ((pcb (tcp-new-ip-type lwip-IPADDR_TYPE_V6))
-        (addr (sa->u8 (make-6plane-addr (ctnw) (zt-address) (adhoc-port)))))
+  (let* ((pcb (tcp-new-ip-type lwip-IPADDR_TYPE_V6))
+         (sa (make-6plane-addr (ctnw) (zt-address) (adhoc-port)))
+         (addr (receive (a p) (sa->u8 sa) a)))
     (debug "
 
 
@@ -447,7 +516,7 @@
     (unless
      (lwip-ok? (lwip-tcp-bind (debug 'pcb pcb) addr (adhoc-port)))
      (error "lwip-tcp-bind failed"))
-    (let ((srv (debug 'listening (lwip-tcp-listen (debug 'litenon pcb)))))
+    (let ((srv (debug 'listening (lwip-tcp-listen (debug 'listenon pcb)))))
       (unless srv (error "lwip-listen failed"))
       (tcp-context-set!
        srv
@@ -457,22 +526,27 @@
       (tcp-set-err! srv)
       (tcp-set-accept! srv)
       (tcp-set-all! srv)
-      (lws-listening!))))
+      (lws-listener srv))))
+
+(define tried-to-contact (PIN #f))
 
 (wire!
  (list here zt-online)
  post:
  (lambda ()
    (if (zt-online)
-       (case (here)
-         ((Dave) (contact-earline))
-         ((Earline) (contact-dave))))))
+       (begin
+         (case (here)
+           ((Dave) (contact-earline))
+           ((Earline) (contact-dave)))
+         (thread-start! (make-thread (lambda () (thread-sleep! 10) (kick! (lambda () (tried-to-contact #t)))))))
+       (tried-to-contact #f))))
 
 (wire!
- (list zt-online *nwif*) ;; list of dependencies
+ (list *nwif* tried-to-contact) ;; list of dependencies
  post:                   ;; connect post condition
  ;; TBD DEBUG: lws here just does not cut it.
- (lambda () (if (and (*nwif*) (zt-online)) (lws))))
+ (lambda () (if (and (*nwif*) (tried-to-contact) (not (lws-listener))) (lws))))
 
 (define (system-command-line)
   (let loop ((n (system-cmdargc)) (r '()))
@@ -488,10 +562,6 @@
      (##repl-debug)))
   (replloop))
 
-(let ((cmd (system-command-line)))
-  (with-exception-catcher
-   (lambda (e) (write e (current-error-port)))
-   replloop))
+(replloop)
 
 ;; eof
-
