@@ -1,5 +1,6 @@
 (include "0001-dynamic-extent.scm")
 (include "0002-srfi-1.scm")
+(include "0003-tagged-proc-gambit.scm")
 (cond-expand
  ((or test debug)
   (include "0010-debug.scm"))
