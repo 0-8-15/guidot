@@ -10,6 +10,9 @@
         (() val)
         ((x) (set! val x))))))
 
+(define-macro (start! expr)
+  (thread-start! (make-thread (lambda () ,expr)) 'start!))
+
 (define lwip-host-is-network-endian
   ;; big endian needs no conversion => #t
   ;;
@@ -127,7 +130,8 @@ c-declare-end
 
 (c-define-type err_t int)
 
-(c-define-type netif* (pointer (struct "netif")))
+(c-declare "static ___SCMOBJ release_netif(void *p);")
+(c-define-type netif* (pointer (struct "netif") netif "release_netif"))
 
 ;;; LWIP Hooks
 
@@ -177,23 +181,27 @@ c-declare-end
 ;;; This section is the only one, which MAY use {UN}LOCK_TCPIP_CORE
 #<<lwip-core-lock-end
 //*
+#define LG_TRACELOCK(x) //{fprintf x;}
 #include <pthread.h>
 
 static /*inline*/ void gambit_lwipcore_lock(const char *src)
 {
- //fprintf(stderr, "gambit_lwipcore O %x %s\n", pthread_self(), src);
+ LG_TRACELOCK((stderr, "gambit_lwipcore O %x %s\n", pthread_self(), src));
  LOCK_TCPIP_CORE();
- //fprintf(stderr, "gambit_lwipcore P %x %s\n", pthread_self(), src);
+ LG_TRACELOCK((stderr, "gambit_lwipcore P %x %s\n", pthread_self(), src));
 }
 static inline void gambit_lwipcore_unlock()
 {
- //fprintf(stderr, "gambit_lwipcore V %x\n", pthread_self());
+ LG_TRACELOCK((stderr, "gambit_lwipcore V %x\n", pthread_self()));
  UNLOCK_TCPIP_CORE();
 }
 
 #define gambit_lwipcore_lock_bg() LOCK_TCPIP_CORE()
 #define gambit_lwipcore_unlock_bg() UNLOCK_TCPIP_CORE()
 //*/
+#ifndef LG_TRACELOCK
+#define LG_TRACELOCK(x) {}
+#endif
 lwip-core-lock-end
 )
 
@@ -257,13 +265,13 @@ static int current_gambit_count = 0;
 
 static void lwip_gambit_lock()
 {
- //fprintf(stderr, "Gambit REQ %x - %x %d\n", pthread_self(), the_gambit_owner, current_gambit_count);
+ LG_TRACELOCK((stderr, "Gambit REQ %x - %x %d\n", pthread_self(), the_gambit_owner, current_gambit_count));
  if(the_gambit_owner != pthread_self() ) {
   sys_mutex_lock(&gambit_lock);
   the_gambit_owner = pthread_self();
  }
  current_gambit_count++;
- //fprintf(stderr, "Gambit ENTER %x %d\n", the_gambit_owner, current_gambit_count);
+ LG_TRACELOCK((stderr, "Gambit ENTER %x %d\n", the_gambit_owner, current_gambit_count));
  if(current_gambit_count > 1) {
   fprintf(stderr, "WARNING: Gambit ENTERed AGAIN %x %d\n", the_gambit_owner, current_gambit_count);
  }
@@ -271,7 +279,7 @@ static void lwip_gambit_lock()
 
 static void lwip_gambit_unlock()
 {
- //fprintf(stderr, "Gambit EXIT  %x %d\n", the_gambit_owner, current_gambit_count);
+ LG_TRACELOCK((stderr, "Gambit EXIT  %x %d\n", the_gambit_owner, current_gambit_count));
  if(the_gambit_owner == pthread_self() ) {
   if(--current_gambit_count == 0) {
     the_gambit_owner = 0;
@@ -534,7 +542,7 @@ END
 
 (c-define-type socket-address (pointer (struct "sockaddr_storage") socket-address))
 
-(define (netif? obj) (and (foreign? obj) (let ((f (foreign-tags obj))) (and f (eq? (car f) '|struct netif*|)))))
+(define (netif? obj) (and (foreign? obj) (let ((f (foreign-tags obj))) (and f (eq? (car f) 'netif)))))
 
 (define-custom lwip-ethernet-send #f) ;; EXPORT HOOK - ethernet output to send
 
@@ -567,6 +575,21 @@ static int scm_ether_send(struct ethernetif *nif, uint64_t src, uint64_t dst, ui
 c-declare-end
 )
 
+(c-declare #<<END
+static ___SCMOBJ release_netif(void *p)
+{
+ struct netif *nif=p;
+ gambit_lwipcore_lock("release_netif");
+ netif_remove(nif);
+ netif_set_down(nif);
+ netif_set_link_down(nif);
+ free(nif);
+ gambit_lwipcore_unlock();
+ return ___FIX(___NO_ERR);
+}
+END
+)
+
 (define lwip-make-netif
   (let ()
     (define lwip-make-netif
@@ -581,7 +604,7 @@ c-declare-end
    nif->net.hwaddr_len = ETH_HWADDR_LEN;
    nif->net.state = nif; // ??? should we better return the `etherneitif` type?
    // nif->send_packet = scm_ether_send;
-   ___result_voidstar = nif;
+   ___return(nif);
 END
 ))
     lwip-make-netif))
@@ -991,7 +1014,7 @@ c-declare-end
   on-tcp-error
   (begin
     ;; FIXME TODO: compare to default as if nothing had been registered
-    (lwip-tcp-close (debug 'lwip-TCP-error-close ctx))
+    (lwip-tcp-close (debug 'lwip-TCP-error-close ctx)) ;; MAY HANG?
     #!void)
   ctx err))
 

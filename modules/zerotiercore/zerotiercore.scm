@@ -663,14 +663,16 @@ END
         ((= i len) result)
       (set! result (cons (zt-peer-n-path peer i) result)))))
 
-(define zt-peerpath-address
-  (c-lambda
-   (ZT_PeerPhysicalPath) socket-address #<<END
-   struct sockaddr_storage *sa_st = (struct sockaddr_storage *)malloc(sizeof(struct sockaddr_storage));
-   memcpy(sa_st, &___arg1->address, (sizeof(struct sockaddr_storage)));
-   ___result_voidstar = sa_st;
+(define (zt-peerpath-address ppp)
+  (let ((sockaddr (make-unspecified-socket-address)))
+    ((c-lambda
+      (socket-address ZT_PeerPhysicalPath) void #<<END
+      struct sockaddr_storage *sa_st = ___arg1;
+      sa_st->ss_family = AF_INET6;
+      memcpy(sa_st, &___arg2->address, (sizeof(struct sockaddr_storage)));
 END
-))
+) sockaddr ppp)
+    sockaddr))
 
 (define zt-peer-info->vector
   (let ((all (vector
