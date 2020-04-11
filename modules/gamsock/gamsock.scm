@@ -45,6 +45,13 @@ struct sockaddr_un {
 #define SO_REUSEPORT SO_REUSEADDR
 #endif
 #include <string.h>
+
+static ___SCMOBJ release_memory(void *p)
+{
+  free(p);
+  return ___FIX(___NO_ERR);
+}
+
 ")
 (define-macro (define-c-constant var type . const)
   (let* ((const (if (not (null? const)) (car const) (symbol->string var)))
@@ -229,7 +236,7 @@ ___result = (char*) inet_ntop(AF_INET6, ___CAST(void *,___BODY_AS(___arg1,___tSU
 
 ; This is the definition of the socket address type.
 
-(c-define-type socket-address (pointer (struct "sockaddr_storage") socket-address))
+(c-define-type socket-address (pointer (struct "sockaddr_storage") socket-address "release_memory"))
 
 (c-declare "
 size_t
@@ -324,7 +331,7 @@ if(sa_un != NULL) {
     strncpy(sa_un->sun_path,___arg1,UNIX_PATH_MAX);
     sa_un->sun_path[UNIX_PATH_MAX - 1] = '\\0';
 }
-___result_voidstar = (void *)sa_un;
+___return(sa_un);
 ") fn))))
 
 (c-declare
@@ -374,7 +381,7 @@ if(sa_un != NULL) {
     sa_un->sun_family = AF_UNIX;
     set_socket_name(sa_un, ___arg1);
 }
-___result_voidstar = (void *)sa_un;
+___return(sa_un);
 ") fn))))
 
 ; Predicate for UNIX-socket-address-ness.
@@ -447,7 +454,7 @@ if(sa_in != NULL) {
     sa_in->sin_port = htons(___arg2);
     memcpy((void *)(&(sa_in->sin_addr)),(const void *)___BODY_AS(___arg1,___tSUBTYPED),sizeof(struct in_addr));
 }
-___result_voidstar = sa_st;
+___return(sa_st);
 ") host port))
 
 ; IPv4 socket-address predicate.
@@ -486,7 +493,7 @@ if(sa_in6 != NULL) {
     sa_in6->sin6_scope_id = htonl(___arg4);
     memcpy((void *)(&(sa_in6->sin6_addr)),(const void *)___BODY_AS(___arg1,___tSUBTYPED),sizeof(struct in6_addr));
 }
-___result_voidstar = sa_st;
+___return(sa_st);
 ") host port flowinfo scope-id))
 
 ; IPv6 socket-address predicate.
@@ -519,7 +526,7 @@ struct sockaddr_storage *sa_st = (struct sockaddr_storage *)malloc(sizeof(struct
 if(sa_st != NULL) {
 sa_st->ss_family = AF_UNSPEC;
 }
-___result_voidstar = (void *)sa_st;
+___return(sa_st);
 ")))
 
 ;; ; Predicate to test for an unspecified socket address.
