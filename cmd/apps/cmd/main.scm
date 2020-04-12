@@ -1,3 +1,5 @@
+(define-macro (XXX-lwip-initial) #t)
+
 ;; LambdaNative console template
 
 (include "observable-notational-conventions.scm")
@@ -7,6 +9,11 @@
 (define (ground) #f)
 (define (ground? x) (eq? x (ground)))
 (define (or-ground pred?) (lambda (x) (or (eq? x #f) (pred? x))))
+
+(define (async! thunk)
+  (thread-start! (make-thread thunk 'async)))
+
+(define (async thunk) (lambda () (async! thunk)))
 
 ;; utilitarian garbage
 
@@ -78,7 +85,7 @@
 
 ;; (zt-peers-info)
 
-;; (set-use-external! #t)
+;; (.use-external #t)
 
 (define (dave-server) #x6f318c4783)
 
@@ -125,11 +132,12 @@
    pred: boolean?
    filter:
    (lambda (o n)
-     ;; remove #f to not need the check-values below
      (if (and #t o)
          (error "lwIP initialization can not be undone")
          n))
    name: "lwIP enabled"))
+
+(.lwip (XXX-lwip-initial)) ;; do not get cought in the on-time-check
 
 (define lwip (.lwip))
 
@@ -173,12 +181,18 @@
    (lambda ()
      (display (iam (ctnw) (adhoc-port)) (current-error-port)))))
 
-(define-sense use-external #f)
+(define .use-external
+  (SENSOR
+   initial: #f
+   filter: (lambda (o n) #f) ;; BEWARE: forcing #f here!!!
+   name: 'use-external))
+(define use-external (.use-external))
 
-(define-sense
-  here
-  #f
-  (or-ground (lambda (x) (assq x testers))))
+(define .here
+  (SENSOR
+   initial: #f
+   pred: (or-ground (lambda (x) (assq x testers)))))
+(define here (.here))
 
 (define (hexstr id digits)
   (let ((effective (number->string id 16)))
@@ -188,12 +202,13 @@
   (debug l (hexstr v 12))
   v)
 
-(define-sense*
-  *nwif*
-  initial: (ground)
-  pred: (or-ground netif?)
-  filter: #f
-  name: '*nwif-example*)
+(define .*nwif*
+  (SENSOR
+   initial: (ground)
+   pred: (or-ground netif?)
+   filter: #f
+   name: '*nwif-example*))
+(define *nwif* (.*nwif*))
 
 (define (find-nif mac)
   (let ((nif (*nwif*)))
@@ -228,7 +243,7 @@
 (define (es)
   (.here 'Earline)
   (zt-start! "/home/u/zerotier-server" 9994 background-period: 0.5)
-  (zt-add-local-interface-address! (internet-address->socket-address emeine 9994))
+  (zt-add-local-interface-address! (internet-address->socket-address emeine 0 #;9994))
   (zt-join (ctnw))
   (.zt-started #t))
 
@@ -270,18 +285,26 @@
   (lambda (o n) (if (boolean? n) n (eq? 'ONLINE n)))
   'zt-online)
 
-(define-pin
-  zt-online
-  initial: #f
-  pred: boolean?
-  filter: (lambda (o n) (if (boolean? n) n (eq? 'ONLINE n)))
-  name: 'zt-online)
+(define zt-online
+  (PIN
+   initial: #f
+   pred: boolean?
+   filter: (lambda (o n) (if (boolean? n) n (eq? 'ONLINE n)))
+   name: 'zt-online))
+
+(define (.zt-online x) (kick! (lambda () (zt-online x))))
+
+(define zt-up (PIN))
 
 (zt-event
  (lambda (node userptr thr event payload)
    (debug 'soso event)
    (case event
-     ((UP) (.use-external #t))
+     ((UP)
+      (kick!
+       (lambda ()
+         (zt-up #t)
+         (use-external #t))) )
      ((ONLINE OFFLINE)
       (kick!
        (lambda ()
@@ -365,7 +388,7 @@
 (zt-virtual-config
  (lambda (node userptr nwid netptr op config)
    (debug 'CONFIG op)
-   (debug 'CFG (zt-virtual-config-base->vector config))
+   ;;(debug 'CFG (zt-virtual-config-base->vector config))
    #t))
 
 ;; Optional
@@ -398,9 +421,9 @@
 
 ;; lwIP TCP
 
-#;(zt-pre-maintainance
+(zt-pre-maintainance
  (lambda (prm)
-   (debug 'zt-maintainance 'now)
+   #;(debug 'zt-maintainance 'now)
    #t))
 
 (define-type tcp-conn
@@ -530,16 +553,25 @@
 
 (define tried-to-contact (PIN #f))
 
+(define (report-contact-attempt-later)
+  (thread-sleep! 10)
+  (kick! (lambda () (tried-to-contact #t))))
+
+(define (contact-other-party)
+  (case (here)
+    ((Dave) (contact-earline))
+    ((Earline) (contact-dave)))
+  (if #t
+      (async! report-contact-attempt-later)
+      (tried-to-contact #t))
+  #!void)
+
 (wire!
- (list here zt-online)
+ (list here zt-online zt-up)
  post:
  (lambda ()
-   (if (zt-online)
-       (begin
-         (case (here)
-           ((Dave) (contact-earline))
-           ((Earline) (contact-dave)))
-         (thread-start! (make-thread (lambda () (thread-sleep! 10) (kick! (lambda () (tried-to-contact #t)))))))
+   (if (or (zt-online) (zt-up))
+       (contact-other-party)
        (tried-to-contact #f))))
 
 (wire!
@@ -558,8 +590,7 @@
   (with-exception-catcher
    (lambda (e)
      (for-each display (list (exception->string e) "\n")) #f)
-   (lambda ()
-     (##repl-debug)))
+   (lambda () (##repl-debug #f #t)))
   (replloop))
 
 (replloop)

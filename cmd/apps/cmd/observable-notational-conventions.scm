@@ -11,8 +11,9 @@
 
 (define PIN make-pin)
 
-(define-macro (define-pin name . more)
-  `(define ,name (make-pin . ,more)))
+(eval
+'(define-macro (define-pin name . more)
+  `(define ,name (make-pin . ,more))))
 
 (define (make-sensor . more)
   (receive
@@ -35,11 +36,12 @@
        (let ((,setter (call-with-values (lambda() ,in) (lambda (x y) x))))
          (set! ,in (lambda (,v) (,setter ,v)))))))
 
-(define-macro (define-sense name . more)
-  (let ((in (string->symbol (string-append "." (symbol->string name)))))
-    `(begin
-       (define ,in ,(if (null? more) `(make-sensor #f) `(make-sensor . ,more)))
-       (define ,name (,in)))))
+(eval
+ '(define-macro (define-sense name . more)
+    (let ((in (string->symbol (string-append "." (symbol->string name)))))
+      `(begin
+         (define ,in ,(if (null? more) `(make-sensor #f) `(make-sensor . ,more)))
+         (define ,name (,in))))))
 ;;
 (define (make-sensor* . more)
   (define (make-mval* #!key (initial #!void) (pred #f) (filter #f) (name #f))
@@ -54,12 +56,6 @@
       (else (error "make-sensor*: unexpected case"))))
     (else (error "UNDEFINED")))))
 
-(define SENSOR
-  (case-lambda
-   (() (make-sensor #f))
-   ((x) (make-sensor x))
-   (args (apply make-sensor* args))))
-
 (define (wire-trivial-async-alias-connection! from to)
   (wire!
    from       ;; Any change in `from` (COULD be a list) will trigger:
@@ -67,8 +63,26 @@
    (lambda () ;; `to` to be set to the value of `from`
      (to (from)))))
 
-(define-macro (define-sense* name val . more)
-  (let ((in (string->symbol (string-append "." (symbol->string name)))))
-    `(begin
-       (define ,in (make-sensor* ,val . ,more))
-       (define ,name (,in)))))
+(eval
+ '(define-macro (define-sense* name val . more)
+    (let ((in (string->symbol (string-append "." (symbol->string name)))))
+      `(begin
+         (define ,in (make-sensor* ,val . ,more))
+         (define ,name (,in))))))
+
+(define SENSOR
+  (case-lambda
+   (() (make-sensor #f))
+   ((x) (make-sensor x))
+   (args (apply make-sensor* args))))
+
+;;; Not only gambit specific, but runtime-only as well.
+
+(define (%DEF+leading-dot name generator more)
+  (let ((name_1 (string->symbol (string-append "." (symbol->string name))))
+        (ref1 (##make-global-var name_1)))
+    (##global-var-set! ref1 (apply generator more))
+    (##global-var-set! (##make-global-var name) ((##global-var-ref name_1)))))
+
+(define (SENSOR! name . more)
+  (%DEF+leading-dot name SENSOR more))
