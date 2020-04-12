@@ -23,7 +23,7 @@
 
 (define-macro (define-c-constant var type . const)
   (let* ((const (if (not (null? const)) (car const) (symbol->string var)))
-	 (str (string-append "___result = " const ";")))
+	 (str (string-append "___return(" const ");")))
     `(define ,var ((c-lambda () ,type ,str)))))
 
 ;; There's an issue with gambit when using `set!` - it does sometimes,
@@ -149,9 +149,9 @@ END
  void "scm_zt_recv" "static"
  (cond
   ((procedure? (zt-recv))
-   (let ((size ((c-lambda (zt-message) size_t "___result = ___arg1->length;") payload))
-         (from ((c-lambda (zt-message) size_t "___result = ___arg1->origin;") payload))
-         (type ((c-lambda (zt-message) size_t "___result = ___arg1->typeId;") payload)))
+   (let ((size ((c-lambda (zt-message) size_t "___return(___arg1->length);") payload))
+         (from ((c-lambda (zt-message) size_t "___return(___arg1->origin);") payload))
+         (type ((c-lambda (zt-message) size_t "___return(___arg1->typeId);") payload)))
      (let ((data (make-u8vector size)))
        ((c-lambda
          (scheme-object zt-message) void
@@ -258,7 +258,7 @@ static volatile int64_t nextBackgroundTaskDeadline;
 c-declare-end
 )
 
-(define zt-bg-deadline (c-lambda () unsigned-int64 "___result = nextBackgroundTaskDeadline;"))
+(define zt-bg-deadline (c-lambda () unsigned-int64 "___return(nextBackgroundTaskDeadline);"))
 
 ;;* ZT Network
 
@@ -275,7 +275,7 @@ c-declare-end
      int rc = -1;
      rc = ZT_Node_processWirePacket(___arg1, NULL, zt_now(), ___arg2, (void *) ___arg3,
              ___CAST(void *,___BODY_AS(___arg4,___tSUBTYPED)), ___arg5, &nextBackgroundTaskDeadline);
-     ___result = rc == ZT_RESULT_OK;
+     ___return(rc == ZT_RESULT_OK);
 END
 ))
   (and
@@ -366,11 +366,11 @@ c-declare-end
     ;; 1     2 nwid         3 src          4 dst          5 ethertype  6 vlan       7
     (zt-node unsigned-int64 unsigned-int64 unsigned-int64 unsigned-int unsigned-int scheme-object size_t)
     bool #<<END
-    ___result = (ZT_Node_processVirtualNetworkFrame(___arg1, NULL, zt_now(),
-                 ___arg2, ___arg3, ___arg4, ___arg5, ___arg6,
-                 ___CAST(void *, ___BODY_AS(___arg7, ___tSUBTYPED)), ___arg8,
-                 &nextBackgroundTaskDeadline)
-                == ZT_RESULT_OK);
+    ___return(ZT_Node_processVirtualNetworkFrame(___arg1, NULL, zt_now(),
+                ___arg2, ___arg3, ___arg4, ___arg5, ___arg6,
+                ___CAST(void *, ___BODY_AS(___arg7, ___tSUBTYPED)), ___arg8,
+                &nextBackgroundTaskDeadline)
+              == ZT_RESULT_OK);
 END
 )
    (zt-prm-zt %%zt-prm) nwid srcmac dstmac ethertype vlanid payload (u8vector-length payload)))
@@ -381,11 +381,11 @@ END
     ;; 1     2 nwid         3 src          4 dst          5 ethertype  6 vlan       7
     (zt-node unsigned-int64 unsigned-int64 unsigned-int64 unsigned-int unsigned-int void* size_t)
     bool #<<END
-    ___result = (ZT_Node_processVirtualNetworkFrame(___arg1, NULL, zt_now(),
+    ___return(ZT_Node_processVirtualNetworkFrame(___arg1, NULL, zt_now(),
                  ___arg2, ___arg3, ___arg4, ___arg5, ___arg6,
                  ___arg7, ___arg8,
                  &nextBackgroundTaskDeadline)
-                == ZT_RESULT_OK);
+              == ZT_RESULT_OK);
 END
 )
    (zt-prm-zt %%zt-prm) nwid srcmac dstmac ethertype vlanid data len))
@@ -488,7 +488,7 @@ c-declare-end
 nextBackgroundTaskDeadline = ___arg3;
 static ZT_Node *zt_node = NULL;
 int rc=ZT_Node_new(&zt_node, (void*) ___arg1, ___arg2, &zt_callbacks, nextBackgroundTaskDeadline);
-___result = rc == ZT_RESULT_OK ? zt_node : NULL;
+___return(rc == ZT_RESULT_OK ? zt_node : NULL);
 END
 )
      zt #f now))
@@ -507,12 +507,12 @@ END
       uint64_t now = zt_now();
       int rc = nextBackgroundTaskDeadline <= now ?
       ZT_Node_processBackgroundTasks(___arg1, NULL, now, &nextBackgroundTaskDeadline) : ZT_RESULT_OK;
-      ___result = rc == ZT_RESULT_OK;
+      ___return(rc == ZT_RESULT_OK);
 END
 ) (zt-prm-zt %%zt-prm)))
   (define (maintainance-loop)
     (thread-sleep! (max background-period (zt-background-period/lower-limit)))
-    (when (zt-up?) (%%checked maintainance (and ((zt-pre-maintainance) %%zt-prm) (maintainance)) #f) (maintainance-loop)))
+    (when (zt-up?) (%%checked maintainance (((zt-maintainance) %%zt-prm maintainance)) #f) (maintainance-loop)))
   ;; Should we lock?  No: Better document single-threadyness!
   (if (zt-up?) (error "ZT already running"))
   (let ((prm (make-zt-prm #f udp (make-thread recv-loop 'zt-receiver)))
@@ -540,18 +540,18 @@ END
 (define (zt-up?) (and %%zt-prm #t))
 
 (define (zt-address) ;; EXPORT
-  (and (zt-up?) ((c-lambda (zt-node) unsigned-int64 "___result = ZT_Node_address(___arg1);") (zt-prm-zt %%zt-prm))))
+  (and (zt-up?) ((c-lambda (zt-node) unsigned-int64 "___return(ZT_Node_address(___arg1));") (zt-prm-zt %%zt-prm))))
 
 ;; zt-pre-maintainance is a hook/predicate.  Should be used to add to mainainace.
 ;; RETURN: #t to run or #f to suppress running the ZT background tasks.
 
-(define-custom zt-pre-maintainance (lambda (prm) #t)) ;; EXPORT
+(define-custom zt-maintainance (lambda (prm thunk) thunk)) ;; EXPORT
 
 (define (zt-add-local-interface-address! sa) ;; EXPORT
   (assert-zt-up! zt-add-local-interface-address)
   ((c-lambda
     (zt-node socket-address) bool
-    "___result = ZT_Node_addLocalInterfaceAddress(___arg1, ___arg2);")
+    "___return(ZT_Node_addLocalInterfaceAddress(___arg1, ___arg2));")
    (zt-prm-zt %%zt-prm) sa))
 
 (define (zt-clear-local-interface-address!) ;; EXPORT
@@ -563,7 +563,7 @@ END
   ((c-lambda
     (zt-node unsigned-int64 unsigned-int64 scheme-object size_t) bool #<<END
     void *buf = ___CAST(void *,___BODY_AS(___arg4,___tSUBTYPED));
-    ___result = ZT_Node_sendUserMessage(___arg1, NULL, ___arg2, ___arg3, buf, ___arg5);
+    ___return(ZT_Node_sendUserMessage(___arg1, NULL, ___arg2, ___arg3, buf, ___arg5));
 END
 ) (zt-prm-zt %%zt-prm) to type data (u8vector-length data)))
 
@@ -571,24 +571,24 @@ END
   (assert-zt-up! zt-orbit)
   ((c-lambda
    (zt-node unsigned-int64 unsigned-int64) bool
-   "___result = ZT_Node_orbit(___arg1, NULL, ___arg2, ___arg3) == ZT_RESULT_OK;")
+   "___return(ZT_Node_orbit(___arg1, NULL, ___arg2, ___arg3) == ZT_RESULT_OK);")
    (zt-prm-zt %%zt-prm) moon seed))
 
 (define (zt-deorbit moon) ;; EXPORT
   (assert-zt-up! zt-deorbit)
   ((c-lambda
    (zt-node unsigned-int64) bool
-   "___result = ZT_Node_deorbit(___arg1, NULL, ___arg2);")
+   "___return(ZT_Node_deorbit(___arg1, NULL, ___arg2));")
    (zt-prm-zt %%zt-prm) moon))
 
 (define (zt-join network) ;; EXPORT
-  (define dojoin (c-lambda (zt-node unsigned-int64) int "___result = ZT_Node_join(___arg1, ___arg2, NULL, NULL);"))
+  (define dojoin (c-lambda (zt-node unsigned-int64) int "___return(ZT_Node_join(___arg1, ___arg2, NULL, NULL));"))
   (assert-zt-up! zt-join)
   (let ((rc (dojoin (zt-prm-zt %%zt-prm) network)))
     (or (eqv? rc 0) (error "zt-join: failed for with rc" network rc))))
 
 (define (zt-leave network) ;; EXPORT
-  (define doit (c-lambda (zt-node unsigned-int64) int "___result = ZT_Node_leave(___arg1, ___arg2, NULL, NULL);"))
+  (define doit (c-lambda (zt-node unsigned-int64) int "___return(ZT_Node_leave(___arg1, ___arg2, NULL, NULL));"))
   (assert-zt-up! zt-leave)
   (let ((rc (doit network)))
     (or (eqv? rc 0) (error "zt-leave: failed for with rc" network rc))))
@@ -597,7 +597,7 @@ END
   (define doit
     (c-lambda
      (zt-node unsigned-int64 unsigned-int64 unsigned-int64) int
-     "___result = ZT_Node_multicastSubscribe(___arg1, NULL, ___arg2, ___arg3, ___arg4);"))
+     "___return(ZT_Node_multicastSubscribe(___arg1, NULL, ___arg2, ___arg3, ___arg4));"))
   (assert-zt-up! zt-multicast-subscribe)
   (let ((rc (doit (zt-prm-zt %%zt-prm) network group adi)))
     (or (eqv? rc 0) (error "zt-multicast-subscribe: failed for with rc" network rc))))
@@ -606,7 +606,7 @@ END
   (define doit
     (c-lambda
      (zt-node unsigned-int64 unsigned-int64 unsigned-int64) int
-     "___result = ZT_Node_multicastUnsubscribe(___arg1, ___arg2, ___arg3, ___arg4);"))
+     "___return(ZT_Node_multicastUnsubscribe(___arg1, ___arg2, ___arg3, ___arg4));"))
   (assert-zt-up! zt-multicast-unsubscribe)
   (let ((rc (doit (zt-prm-zt %%zt-prm) network group adi)))
     (or (eqv? rc 0) (error "zt-multicast-unsubscribe: failed for with rc" network rc))))
@@ -614,15 +614,15 @@ END
 ;;* Inspection
 
 (define zt-node-status
-  (let ((bufsiz ((c-lambda () size_t "___result=sizeof(ZT_NodeStatus);")))
+  (let ((bufsiz ((c-lambda () size_t "___return(sizeof(ZT_NodeStatus));")))
         (address (c-lambda (scheme-object) unsigned-int64
-                           "___result=___CAST(ZT_NodeStatus *,___BODY_AS(___arg1,___tSUBTYPED))->address;"))
+                           "___return(___CAST(ZT_NodeStatus *,___BODY_AS(___arg1,___tSUBTYPED))->address);"))
         (public (c-lambda (scheme-object) char-string
-                          "___result= (char*) ___CAST(ZT_NodeStatus *,___BODY_AS(___arg1,___tSUBTYPED))->publicIdentity;"))
+                          "___return((char*) ___CAST(ZT_NodeStatus *,___BODY_AS(___arg1,___tSUBTYPED))->publicIdentity);"))
         (private (c-lambda (scheme-object) char-string
-                           "___result= (char*) ___CAST(ZT_NodeStatus *,___BODY_AS(___arg1,___tSUBTYPED))->secretIdentity;"))
+                           "___return((char*) ___CAST(ZT_NodeStatus *,___BODY_AS(___arg1,___tSUBTYPED))->secretIdentity);"))
         (online (c-lambda (scheme-object) bool
-                           "___result=___CAST(ZT_NodeStatus *,___BODY_AS(___arg1,___tSUBTYPED))->online;")))
+                           "___return(___CAST(ZT_NodeStatus *,___BODY_AS(___arg1,___tSUBTYPED))->online);")))
     (lambda (#!optional k)
       (assert-zt-up! zt-node-status)
       (let ((buf (make-u8vector bufsiz)))
@@ -637,7 +637,7 @@ END
           ((online) (online buf))
           (else (public buf)))))))
 
-(define zt-peer-address (c-lambda (zt-peer) unsigned-int64 "___result = ___arg1->address;"))
+(define zt-peer-address (c-lambda (zt-peer) unsigned-int64 "___return(___arg1->address);"))
 (define zt-peer-version
   (c-lambda
    (zt-peer) char-string #<<END
@@ -645,18 +645,18 @@ END
    if(___arg1->versionMajor != -1) {
      snprintf(buf,20, "%d.%d.%d",___arg1->versionMajor, ___arg1->versionMinor, ___arg1->versionRev);
    }
-   ___result = buf;
+   ___return(buf);
 END
 ))
-(define zt-peer-latency (c-lambda (zt-peer) int "___result = ___arg1->latency;"))
+(define zt-peer-latency (c-lambda (zt-peer) int "___return(___arg1->latency);"))
 (define zt-peer-role
-  (let ((numeric (c-lambda (zt-peer) int "___result = ___arg1->role;"))
+  (let ((numeric (c-lambda (zt-peer) int "___return(___arg1->role);"))
         (roles '#(leaf moon planet)))
     (lambda (peer) (vector-ref roles (numeric peer)))))
-(define zt-peer-path-count (c-lambda (zt-peer) size_t "___result = ___arg1->pathCount;"))
-(define zt-peer-had-aggregate-link (c-lambda (zt-peer) bool "___result = ___arg1->hadAggregateLink;"))
+(define zt-peer-path-count (c-lambda (zt-peer) size_t "___return(___arg1->pathCount);"))
+(define zt-peer-had-aggregate-link (c-lambda (zt-peer) bool "___return(___arg1->hadAggregateLink);"))
 ;; TODO accessors for `ZT_PeerPhysicalPath`
-(define zt-peer-n-path (c-lambda (zt-peer size_t) ZT_PeerPhysicalPath  "___result = &___arg1->paths[___arg2];"))
+(define zt-peer-n-path (c-lambda (zt-peer size_t) ZT_PeerPhysicalPath  "___return(&___arg1->paths[___arg2]);"))
 (define (zt-peer-paths peer)
   (let ((len (zt-peer-path-count peer)) (result '()))
     (do ((i 0 (+ i 1)))
@@ -693,9 +693,9 @@ END
           (vector-set! result i ((vector-ref all i) obj)))))))
 
 (define zt-peers-map
-  (let ((get (c-lambda (zt-node) zt-peers "___result = ZT_Node_peers(___arg1);"))
+  (let ((get (c-lambda (zt-node) zt-peers "___return(ZT_Node_peers(___arg1));"))
         (free (c-lambda (zt-node zt-peers) void "ZT_Node_freeQueryResult(___arg1, (void*)___arg2);"))
-        (peer-n (c-lambda (zt-peers size_t) zt-peer "___result = &___arg1->peers[___arg2];")))
+        (peer-n (c-lambda (zt-peers size_t) zt-peer "___return(&___arg1->peers[___arg2]);")))
     (lambda (proc)
       (assert-zt-up! zt-peers-map)
       (let* ((node (zt-prm-zt %%zt-prm))
@@ -703,7 +703,7 @@ END
         (with-exception-catcher
          (lambda (ex) (free node all) (raise ex))
          (lambda ()
-           (let ((n ((c-lambda (zt-peers) size_t "___result = ___arg1->peerCount;") all))
+           (let ((n ((c-lambda (zt-peers) size_t "___return(___arg1->peerCount);") all))
                  (result '()))
              (do ((i 0 (+ i 1)))
                  ((= i n)
@@ -714,25 +714,25 @@ END
 (define (zt-peers-info) (zt-peers-map zt-peer-info->vector))
 
 ;;** Config Accessors
-(define zt-virtual-config-nwid (c-lambda (zt-virtual-config*) unsigned-int64 "___result = ___arg1->nwid;"))
-(define zt-virtual-config-mac (c-lambda (zt-virtual-config*) unsigned-int64 "___result = ___arg1->mac;"))
-(define zt-virtual-config-name (c-lambda (zt-virtual-config*) char-string "___result = ___arg1->name;"))
+(define zt-virtual-config-nwid (c-lambda (zt-virtual-config*) unsigned-int64 "___return(___arg1->nwid);"))
+(define zt-virtual-config-mac (c-lambda (zt-virtual-config*) unsigned-int64 "___return(___arg1->mac);"))
+(define zt-virtual-config-name (c-lambda (zt-virtual-config*) char-string "___return(___arg1->name);"))
 (define (zt-virtual-config-status cfg) ;; EXPORT
   (vector-ref
    '#(REQUESTING_CONFIGURATION OK ACCESS_DENIED NOT_FOUND PORT_ERROR CLIENT_TOO_OLD)
-   ((c-lambda (zt-virtual-config*) int "___result = ___arg1->status;") cfg)))
-(define zt-virtual-config-public (c-lambda (zt-virtual-config*) bool "___result = ___arg1->type;"))
-(define zt-virtual-config-mtu (c-lambda (zt-virtual-config*) size_t "___result = ___arg1->mtu;"))
-(define zt-virtual-config-dhcp (c-lambda (zt-virtual-config*) bool "___result = ___arg1->dhcp;"))
-(define zt-virtual-config-bridge (c-lambda (zt-virtual-config*) bool "___result = ___arg1->bridge;"))
-(define zt-virtual-config-broadcast (c-lambda (zt-virtual-config*) bool "___result = ___arg1->broadcastEnabled;"))
-(define zt-virtual-config-porterror (c-lambda (zt-virtual-config*) int "___result = ___arg1->portError;"))
+   ((c-lambda (zt-virtual-config*) int "___return(___arg1->status);") cfg)))
+(define zt-virtual-config-public (c-lambda (zt-virtual-config*) bool "___return(___arg1->type);"))
+(define zt-virtual-config-mtu (c-lambda (zt-virtual-config*) size_t "___return(___arg1->mtu);"))
+(define zt-virtual-config-dhcp (c-lambda (zt-virtual-config*) bool "___return(___arg1->dhcp);"))
+(define zt-virtual-config-bridge (c-lambda (zt-virtual-config*) bool "___return(___arg1->bridge);"))
+(define zt-virtual-config-broadcast (c-lambda (zt-virtual-config*) bool "___return(___arg1->broadcastEnabled);"))
+(define zt-virtual-config-porterror (c-lambda (zt-virtual-config*) int "___return(___arg1->portError);"))
 (define zt-virtual-config-assigned-address-count
-  (c-lambda (zt-virtual-config*) size_t "___result = ___arg1->assignedAddressCount;"))
+  (c-lambda (zt-virtual-config*) size_t "___return(___arg1->assignedAddressCount);"))
 (define zt-virtual-config-route-count
-  (c-lambda (zt-virtual-config*) size_t "___result = ___arg1->routeCount;"))
+  (c-lambda (zt-virtual-config*) size_t "___return(___arg1->routeCount);"))
 (define zt-virtual-config-multicast-subscription-count
-  (c-lambda (zt-virtual-config*) size_t "___result = ___arg1->multicastSubscriptionCount;"))
+  (c-lambda (zt-virtual-config*) size_t "___return(___arg1->multicastSubscriptionCount);"))
 
 (define zt-virtual-config-base->vector
   (let ((all (vector
@@ -767,7 +767,7 @@ END
 
 (define (zt-network-virtual-config* network) ;; INTERN
   (assert-zt-up! zt-VirtualNetworkConfig)
-  ((c-lambda (zt-node unsigned-int64) zt-virtual-config* "___result = ZT_Node_networkConfig(___arg1, ___arg2);")
+  ((c-lambda (zt-node unsigned-int64) zt-virtual-config* "___return(ZT_Node_networkConfig(___arg1, ___arg2));")
    (zt-prm-zt %%zt-prm) network))
 
 (define (make-zt-network-config-query accessor) ;; INTERN
@@ -806,7 +806,7 @@ END
    node ^= ((nwid >> 24) & 0xff) << 16;
    node ^= ((nwid >> 32) & 0xff) << 8;
    node ^= (nwid >> 40) & 0xff;
-   ___result = node;
+   ___return(node);
 END
 ))
 
@@ -831,7 +831,7 @@ END
  mac ^= ((nwid >> 24) & 0xff) << 16;
  mac ^= ((nwid >> 32) & 0xff) << 8;
  mac ^= (nwid >> 40) & 0xff;
- ___result = mac;
+ ___return(mac);
 END
 ))
 
@@ -871,7 +871,7 @@ c-declare-end
    ((u8vector? x)
     ((c-lambda
       (scheme-object) unsigned-int64
-      "___result = mac_from_vector(___CAST(void *,___BODY_AS(___arg1,___tSUBTYPED)));")
+      "___return(mac_from_vector(___CAST(void *,___BODY_AS(___arg1,___tSUBTYPED))));")
      x))
    (else (error "->zt-mac illegal argument" x))))
 
@@ -880,7 +880,7 @@ c-declare-end
    ((fixnum? x)
     ((c-lambda
       (unsigned-int64) unsigned-int64
-      "___result = g_zt_mac_hton(___arg1);")
+      "___return(g_zt_mac_hton(___arg1));")
      x))
    (else (error "zt-mac->network illegal argument" x))))
 
@@ -942,7 +942,7 @@ c-declare-end
 (define (zt-adhoc-network-id start #!optional (end start))
   ((c-lambda
     (unsigned-int unsigned-int) unsigned-int64
-    "uint64_t r = 0xff00000000000000, s=(uint16_t)___arg1, e=(uint16_t)___arg2; ___result = r | (s << 40) | (e << 24);")
+    "uint64_t r = 0xff00000000000000, s=(uint16_t)___arg1, e=(uint16_t)___arg2; ___return(r | (s << 40) | (e << 24));")
    start end))
 
 (define (zt-state-file-generator file-pattern base)
