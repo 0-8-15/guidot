@@ -310,6 +310,7 @@ static int lwip_init_once()
     if(sys_sem_new(&sem, 0) != ERR_OK) return 0;
     tcpip_init(tcpip_init_done, &sem);
     sys_sem_wait(&sem);
+    sys_sem_free(&sem);
     tcp_init();
     // disable callbacks until being asked for in
     return 1;
