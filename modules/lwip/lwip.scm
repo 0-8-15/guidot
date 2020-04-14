@@ -128,7 +128,7 @@ c-declare-end
 
 (c-define-type nonnull-void* (nonnull-pointer "void"))
 
-(c-define-type err_t int)
+(c-define-type err_t int8)
 
 (c-declare "static ___SCMOBJ release_netif(void *p);")
 (c-define-type netif* (pointer (struct "netif") netif "release_netif"))
@@ -156,6 +156,7 @@ static int call_scm_lwip_nd6_get_gw(void *in, struct lwip_nd6_get_gw__args *args
 
 // just for gambit_lwip_nd6_get_gw debugging
 #include <netinet/in.h>
+#include <arpa/inet.h>
 
 const ip6_addr_t *gambit_lwip_nd6_get_gw(struct netif *netif, const ip6_addr_t *dest)
 {
@@ -172,8 +173,123 @@ inet_ntop(AF_INET6, dest->addr, buf, INET6_ADDRSTRLEN);
 fprintf(stderr, "RETURN %p %s\n", dest, buf);
 return dest;
 }
+
 c-declare-end
 )
+
+;;; PBUF
+
+(c-declare
+ "static ___SCMOBJ g_release_pbuf(struct pbuf *p) {pbuf_free(p); return(___FIX(___NO_ERR));}")
+
+(c-define-type pbuf (pointer (struct "pbuf") pbuf #;"g_release_pbuf"))  ;; MUST NOT have a release function.
+
+;;;** pbuf->u8vector
+;;;
+;;; return fresh u8vector with a COPY of the pbuf section
+
+(define %lwip-allocate-u8vector-for-pbuf
+  ;; FIXME: Performance: How to allocate without useless initialization?
+  (c-lambda
+   (pbuf) scheme-object
+   "___SCMOBJ result = ___EXT(___alloc_scmobj) (___PSTATE, ___sU8VECTOR, ___arg1->tot_len);
+if(___FIXNUMP(result)) { fprintf(stderr, \"OH NOOO\\n\"); ___return(___FAL); }
+___EXT(___release_scmobj)(result);
+___return(result);"))
+
+(c-declare #<<end-pbuf-cdeclare
+#include <string.h>
+static inline void copy_pbuf_to_ptr(char *bp, struct pbuf *from, size_t offset, size_t limit)
+// precondition: arguments are valid
+{
+ struct pbuf *q = from;
+ if(offset > from->tot_len) return; // ok, avoid very bad cases
+
+ /* skip offset and copy first pbuf */
+ for(q=from; q != NULL && offset > 0; q = q->next) {
+   if(offset < q->len) {
+    size_t using = q->len-offset;
+    memcpy(bp, q->payload+offset, using);
+    q = q->next;
+    bp+=using;
+    limit-=using;
+    break;
+   } else {
+    offset -= q->len;
+  }
+ }
+ // fprintf(stderr, "copy_pbuf_to_ptr: collect chained buffer into single one\n");
+ for (; q != NULL && limit > 0; q = q->next) {
+    size_t using = q->len;
+    using = using > limit ? limit : using;
+    memcpy(bp, q->payload, q->len);
+    limit-=using;
+    bp += q->len;
+  }
+}
+static inline void copy_pbuf_from_ptr(struct pbuf *to, const void* src, size_t offset, size_t limit)
+// precondition: arguments are valid
+{
+ struct pbuf *q = to;
+ const char *bp=src;
+ if(offset > to->tot_len) return; // ok, avoid very bad cases
+ if(offset + limit > to->tot_len) limit = to->tot_len - offset; // should better throw error?
+
+ /* skip offset and copy first pbuf */
+ for(q=to; q != NULL && offset > 0; q = q->next) {
+   if(offset < q->len) {
+    size_t using = q->len-offset;
+    memcpy(q->payload+offset, bp, using);
+    q = q->next;
+    bp+=using;
+    limit-=using;
+    break;
+   } else {
+    offset -= q->len;
+  }
+ }
+ // fprintf(stderr, "copy_pbuf_to_ptr: collect chained buffer into single one\n");
+ for (; q != NULL && limit > 0; q = q->next) {
+    size_t using = q->len;
+    using = using > limit ? limit : using;
+    memcpy(q->payload, bp, q->len);
+    limit-=using;
+    bp += q->len;
+  }
+}
+static inline ___SCMOBJ pbuf_to_u8v_copied(___SCMOBJ to, struct pbuf *from, size_t offset, size_t limit)
+{
+ struct pbuf *q = from;
+ char *bp;
+ if(offset > from->tot_len) return ___FAL;
+ /* nonono, release_scmobj!!! to = ___EXT(___alloc_scmobj) (___PSTATE, ___sU8VECTOR, p->tot_len - sizeof(ethhdr));
+ if(___FIXNUMP(to)) {
+   return ___FAL;
+ }
+ //*/
+ bp = ___CAST(char*, ___BODY(to));
+ copy_pbuf_to_ptr(bp, from, offset, limit);
+ return to;
+}
+end-pbuf-cdeclare
+)
+
+(define (pbuf->u8vector pbuf #!optional (offset 0) limit)
+  (let ((result (%lwip-allocate-u8vector-for-pbuf pbuf)))
+    (unless result (error (debug result "allocation failed"))) ;;; ???
+    ((c-lambda (scheme-object pbuf size_t size_t) scheme-object "pbuf_to_u8v_copied")
+     result pbuf offset (if limit (min limit (u8vector-length result)) (u8vector-length result)))))
+
+(define pbuf-copy-to-ptr!
+  (c-lambda (void* pbuf size_t size_t) void "copy_pbuf_to_ptr"))
+
+(define (make-pbuf-raw+ram size)
+  (let ((result ((c-lambda (size_t) pbuf "___return(pbuf_alloc(PBUF_RAW, ___arg1, PBUF_RAM));") size)))
+    (make-will result (c-lambda (pbuf) scheme-object "g_release_pbuf"))
+    result))
+
+(define pbuf-copy-from-ptr!
+  (c-lambda (pbuf void* size_t size_t) void "copy_pbuf_from_ptr"))
 
 ;;; LOCKING
 
@@ -181,22 +297,28 @@ c-declare-end
 ;;; This section is the only one, which MAY use {UN}LOCK_TCPIP_CORE
 #<<lwip-core-lock-end
 //*
-#define LG_TRACELOCK(x) //{fprintf x;}
+#define LG_TRACELOCK(x) // {fprintf x;}
 #include <pthread.h>
+
+static pthread_t the_tcp_pthread = 0;
 
 static /*inline*/ void gambit_lwipcore_lock(const char *src)
 {
- LG_TRACELOCK((stderr, "gambit_lwipcore O %x %s\n", pthread_self(), src));
- LOCK_TCPIP_CORE();
- LG_TRACELOCK((stderr, "gambit_lwipcore P %x %s\n", pthread_self(), src));
+ if(src) LG_TRACELOCK((stderr, "gambit_lwipcore O %x %s\n", pthread_self(), src));
+ if( the_tcp_pthread != pthread_self()) {
+   LOCK_TCPIP_CORE();
+ }
+ if(src) LG_TRACELOCK((stderr, "gambit_lwipcore P %x %s\n", pthread_self(), src));
 }
 static inline void gambit_lwipcore_unlock()
 {
  LG_TRACELOCK((stderr, "gambit_lwipcore V %x\n", pthread_self()));
- UNLOCK_TCPIP_CORE();
+ if( the_tcp_pthread != pthread_self()) {
+   UNLOCK_TCPIP_CORE();
+ }
 }
 
-#define gambit_lwipcore_lock_bg() LOCK_TCPIP_CORE()
+#define gambit_lwipcore_lock_bg(x) gambit_lwipcore_lock(NULL)
 #define gambit_lwipcore_unlock_bg() UNLOCK_TCPIP_CORE()
 //*/
 #ifndef LG_TRACELOCK
@@ -260,12 +382,18 @@ static void tcpip_init_done(void *arg)
 
 //*
 static sys_mutex_t gambit_lock;
-static pthread_t the_gambit_owner = 0;
+static pthread_t the_gambit_owner = 0, the_gambit_pthread = 0;
 static int current_gambit_count = 0;
 
-static void lwip_gambit_lock()
+static void lwip_gambit_lock(const char *msg)
 {
- LG_TRACELOCK((stderr, "Gambit REQ %x - %x %d\n", pthread_self(), the_gambit_owner, current_gambit_count));
+ LG_TRACELOCK((stderr, "Gambit REQ %x - %x %d %s\n", pthread_self(), the_gambit_owner, current_gambit_count, msg));
+ if( the_tcp_pthread == 0 && the_gambit_pthread != pthread_self() ) {
+  // NONO: not only the gambit thread can do that: local_lwip_init();
+  the_tcp_pthread = pthread_self();
+  fprintf(stderr, "Guessing TCP thread is %x\n", the_tcp_pthread);
+ }
+
  if(the_gambit_owner != pthread_self() ) {
   sys_mutex_lock(&gambit_lock);
   the_gambit_owner = pthread_self();
@@ -291,7 +419,8 @@ static void lwip_gambit_unlock()
 static int lwip_gambit_init()
 {
  if(sys_mutex_new(&gambit_lock) != ERR_OK) return -1;
- lwip_gambit_lock();
+ the_gambit_pthread = pthread_self();
+ lwip_gambit_lock("lwip_gambit_init");
  return ERR_OK;
 }
 
@@ -306,12 +435,11 @@ static int lwip_init_once()
     if(lwip_gambit_init() != ERR_OK) return 0;
     done=true;
     fprintf(stderr, "Init NO_SYS: %d LWIP_CALLBACK_API %d\n", NO_SYS, LWIP_CALLBACK_API); // DEBUG
-    // lwip_init();
+    lwip_init();
     if(sys_sem_new(&sem, 0) != ERR_OK) return 0;
     tcpip_init(tcpip_init_done, &sem);
     sys_sem_wait(&sem);
     sys_sem_free(&sem);
-    tcp_init();
     // disable callbacks until being asked for in
     return 1;
   }
@@ -321,7 +449,7 @@ static int lwip_init_once()
 static inline u32_t local_sys_timeouts_sleeptime()
 {
   u32_t result = 0;
-  gambit_lwipcore_lock_bg();
+  gambit_lwipcore_lock_bg("sys_timeouts_sleeptime");
   result = sys_timeouts_sleeptime();
   gambit_lwipcore_unlock_bg();
   return result;
@@ -339,7 +467,7 @@ c-declare-end
          (isvoid (cond
                   ((eq? result-type 'void))
                   (else #f)))
-         (result-type (if isvoid "void" TBD-proto-result))
+         (result-type-str (if isvoid "void" TBD-proto-result))
          (paramlist
           (call-with-output-string
            (lambda (p)
@@ -352,11 +480,11 @@ c-declare-end
                  (set! params next)
                  (unless (null? next) (display ", " p)))))))
 	 (within-gambit
-          (let ((decl (string-append "\nstatic inline " result-type " " c-name TBD-proto "\n{\n"))
+          (let ((decl (string-append "\nstatic inline " result-type-str " " c-name TBD-proto "\n{\n"))
                 (local (if isvoid
                            (string-append " int got_throw = 0;\n")
                            (string-append " int got_throw = 0; " TBD-proto-result " result;\n")))
-                (p " lwip_gambit_lock();\n")
+                (p (string-append " lwip_gambit_lock(\"" c-name "\");\n"))
                 (v " lwip_gambit_unlock();\n")
                 (body (string-append
                        " ___ON_THROW("
@@ -445,7 +573,7 @@ static inline void g_lwip_set_mac_ui64h(void *buf, uint64_t mac)
  b[5] = (unsigned char)(mac & 0xff);
 }
 
-static inline void lwip_fill_mac_string(char *result, struct eth_addr*src)
+static inline void lwip_fill_mac_string(char *result, const struct eth_addr*src)
 {
  static char cnv[] = "0123456789ABCDEF";
  unsigned int i, j, v;
@@ -472,7 +600,7 @@ c-declare-end
    ((fixnum? x)
     ((c-lambda
       (unsigned-int64) unsigned-int64
-      "___result = mac_from_u8v6(&___arg1);")
+      "___return(mac_from_u8v6(&___arg1));")
      x))
    (else (error "->zt-mac illegal argument" x))))
 
@@ -481,12 +609,12 @@ c-declare-end
    ((and (u8vector? x) (eqv? (u8vector-length x) 6))
     ((c-lambda
       (scheme-object) unsigned-int64
-      "u64w r; r.n=0; memcpy(r.addr.addr, ___CAST(void *,___BODY_AS(___arg1,___tSUBTYPED)), ETH_HWADDR_LEN); ___result = r.n;")
+      "u64w r; r.n=0; memcpy(r.addr.addr, ___CAST(void *,___BODY_AS(___arg1,___tSUBTYPED)), ETH_HWADDR_LEN); ___return(r.n);")
      x))
    ((fixnum? x)
     ((c-lambda
       (unsigned-int64) unsigned-int64
-      "___result = 0; g_lwip_set_mac_ui64h(&___result, ___arg1);")
+      "uint64_t result = 0; g_lwip_set_mac_ui64h(&result, ___arg1); ___return(result);")
      x))
    (else (error "lwip-mac->network illegal argument" x))))
 
@@ -498,15 +626,16 @@ c-declare-end
 (define lwip-htonll
   (c-lambda
    (unsigned-int64) unsigned-int64
-   "___result = (((uint64_t)(lwip_ntohl((uint32_t)((___arg1 << 32) >> 32))) << 32) | (uint32_t)lwip_ntohl(((uint32_t)(___arg1 >> 32))));"))
+   "___return( (((uint64_t)(lwip_ntohl((uint32_t)((___arg1 << 32) >> 32))) << 32) | (uint32_t)lwip_ntohl(((uint32_t)(___arg1 >> 32)))) );"))
 (define lwip-ntohll lwip-htonll)
 
+FIXME: figure out how to properly use char-string
 (define lwip-mac-pointer->string
   (c-lambda
    (void*) char-string #<<END
    char result[ETH_HWADDR_LEN*3];
    lwip_fill_mac_string(result,(struct eth_addr*) ___arg1);
-   ___result = result;
+   ___return(result);
 END
 ))
 
@@ -515,9 +644,36 @@ END
    (unsigned-int64) char-string #<<END
    char result[ETH_HWADDR_LEN*3];
    lwip_fill_mac_string(result,(struct eth_addr*) &___arg1);
-   ___result = result;
+   ___return(result);
 END
 ))
+#|
+(define lwip-mac-pointer->string
+  (c-lambda
+   (void*) scheme-object #<<END
+   char buf[ETH_HWADDR_LEN*3];
+   ___SCMOBJ err, result;
+   lwip_fill_mac_string(buf, (struct eth_addr*) ___arg1);
+   err = ___EXT(___CHARSTRING_to_SCMOBJ)(___PSTATE, buf, &result, ___RETURN_POS);
+   ___EXT(___release_scmobj)(result);
+   if(___FIXNUMP(result)) ___return(___FAL);
+   ___return(result);
+END
+))
+
+(define lwip-mac-integer->string
+  (c-lambda
+   (unsigned-int64) scheme-object #<<END
+   char buf[ETH_HWADDR_LEN*3];
+   ___SCMOBJ err, result;
+   lwip_fill_mac_string(buf, (struct eth_addr*) &___arg1);
+   err = ___EXT(___CHARSTRING_to_SCMOBJ)(___PSTATE, buf, &result, ___RETURN_POS);
+   ___EXT(___release_scmobj)(result);
+   if(___FIXNUMP(result)) ___return(___FAL);
+   ___return(result);
+END
+))
+|#
 ;;; Timeout Handling
 
 (define (lwip-check-timeouts #!optional (timeout -1))
@@ -525,15 +681,19 @@ END
 #if NO_SYS
   /* handle timers (already done in tcpip.c when NO_SYS=0) */
   sys_check_timeouts();
-  ___result = sys_timeouts_sleeptime();
+  ___return(sys_timeouts_sleeptime());
 #else
-  // fprintf(stderr, "enabling callbacks into gambit\n");
-  lwip_gambit_unlock();
-  if(___arg1 < 0) ___arg1 = local_sys_timeouts_sleeptime();
-  // fprintf(stderr, "gambit sleep %d microseconds\n", ___arg1);
-  usleep(___arg1);
-  ___result = local_sys_timeouts_sleeptime();
-  lwip_gambit_lock();
+  uint32_t result = 10;
+  if( the_gambit_owner == the_gambit_pthread && current_gambit_count == 1) {
+    // fprintf(stderr, "enabling callbacks into gambit\n");
+    lwip_gambit_unlock();
+    if(___arg1 < 0) ___arg1 = local_sys_timeouts_sleeptime();
+    // fprintf(stderr, "gambit sleep %d microseconds\n", ___arg1);
+    usleep(___arg1);
+    result = local_sys_timeouts_sleeptime();
+    lwip_gambit_lock("lwip-check-timeouts");
+  }
+  ___return(result);
 #endif
 END
 )
@@ -548,25 +708,54 @@ END
 (define-custom lwip-ethernet-send #f) ;; EXPORT HOOK - ethernet output to send
 
 (c-define
- (lwip-ethernet-send! ethif src dst proto #;0 bp len)
- ((pointer (struct "ethernetif")) unsigned-int64 unsigned-int64 unsigned-int16 void* size_t)
+ (lwip-ethernet-send! ethif src dst proto #;0 pbuf)
+ ((pointer (struct "ethernetif")) unsigned-int64 unsigned-int64 unsigned-int16 pbuf)
  int "Xscm_ether_send" "static"
+ (let ((handler (lwip-ethernet-send)))
+   (cond
+    ((procedure? handler) (handler netif src dst proto #;0 pbuf))
+    (else -12))))
+
+#|
+(c-define
+ (lwip-ethernet-send/raw! ethif src dst proto #;0 bp len)
+ ((pointer (struct "ethernetif")) unsigned-int64 unsigned-int64 unsigned-int16 void* size_t)
+ int "Xscm_ether_send_raw" "static"
  (let ((handler (lwip-ethernet-send)))
    (cond
     ((procedure? handler) (handler netif src dst proto #;0 bp len))
     (else -12))))
+|#
 
-(c-declare #<<c-declare-end
-static int scm_ether_send(struct ethernetif *nif, uint64_t src, uint64_t dst, uint16_t proto, void *buf, size_t len)
+(c-declare
+;;; FIXME: This is only useful now, if we know that the other side is
+;;; ZT and does NOT want the ethernet header.
+#<<c-declare-end
+static err_t scm_ether_send(struct ethernetif *nif, struct pbuf *p)
 {
  int got_throw = 0;
- int result;
+ err_t result;
+ struct pbuf *q = q;
+ char *bp;
+ struct eth_hdr *ethhdr = p->payload; // caller is responsible!
  //fprintf(stderr, "scm_ether_send\n");
- lwip_gambit_lock();
+ {
+   uint64_t src = 0, dst = 0;  // FIXME: Better use lwip types!!!
+   uint64_t nwid = 0;  // FIXME
+   // fprintf(stderr, "lwip_netif_linkoutput: prepare ethernet frame\n");
+   src = mac_from_u8v6(ethhdr->src.addr);
+   dst = mac_from_u8v6(ethhdr->dest.addr);
+//*
+   memcpy(&src, ethhdr->src.addr, ETH_HWADDR_LEN);
+   memcpy(&dst, ethhdr->dest.addr, ETH_HWADDR_LEN);
+//*/
+ lwip_gambit_lock("scm_ether_send");
  //fprintf(stderr, "scm_ether_send gambit locked\n");
-  ___ON_THROW(result = Xscm_ether_send(nif, src, dst, proto, buf, len), got_throw=1);
+   // fprintf(stderr, "lwip_netif_linkoutput: hand over gambit me %d\n", pthread_self());
+  ___ON_THROW(result = Xscm_ether_send(nif, src, dst, lwip_ntohs(ethhdr->type), p), got_throw=1);
  // fprintf(stderr, "scm_ether_send gambit ran\n");
- lwip_gambit_unlock();
+   lwip_gambit_unlock();
+ }
  if (got_throw) {
    fprintf(stderr, "scm_ether_send: threw an exception\n");
    return ERR_IF;
@@ -635,51 +824,11 @@ lwip_netif_linkoutput(struct netif *netif, struct pbuf *p)
 {
   struct ethernetif *ether = netif->state;
   err_t result;
-  struct pbuf *q = q;
-  char buf[LOCAL_MTU+32];
-  char *bp=buf;
-  size_t bl=0;
-  // fprintf(stderr, "linkoutput pre\n");  // DEBUG
+ // fprintf(stderr, "linkoutput pre\n");  // DEBUG
   if(netif == NULL) return -1;
   if(p == NULL) return -1;
   // fprintf(stderr, "linkoutput\n");  // DEBUG
-
-  if(q->next != NULL) {
-    // fprintf(stderr, "lwip_netif_linkoutput: collect chained buffer into single one\n");
-    for (; q != NULL; q = q->next) {
-      /* Send the data from the pbuf to the interface, one pbuf at a
-         time. The size of the data in each pbuf is kept in the ->len
-         variable. */
-      memcpy(bp, q->payload, q->len);
-      bp += q->len;
-      bl += q->len;
-    }
-    bp = buf;
-  } else {
-    bp=q->payload;
-    bl=q->len;
-  }
-
-  if(1){
-    struct eth_hdr *ethhdr = (struct eth_hdr *)bp;
-    uint64_t src = 0, dst = 0;  // FIXME: Better use lwip types!!!
-    uint64_t nwid = 0;  // FIXME
-    // fprintf(stderr, "lwip_netif_linkoutput: prepare ethernet frame\n");
-    size_t len = bl - sizeof(struct eth_hdr);
-    bp += sizeof(struct eth_hdr);
-    src = mac_from_u8v6(ethhdr->src.addr);
-    dst = mac_from_u8v6(ethhdr->dest.addr);
-//*
-    memcpy(&src, ethhdr->src.addr, ETH_HWADDR_LEN);
-    memcpy(&dst, ethhdr->dest.addr, ETH_HWADDR_LEN);
-//*/
-    // fprintf(stderr, "lwip_netif_linkoutput: hand over gambit me %d\n", pthread_self());
-    result = scm_ether_send(ether, /*NULL, NULL, nwid,*/ src, dst, lwip_ntohs(ethhdr->type), /* 0,*/ bp, len);
-    // fprintf(stderr, "lwip_netif_linkoutput: sent %d\n", result);
-  } else {
-    fprintf(stderr, "lwip_netif_linkoutput: no send function registered\n");
-    return ERR_IF;
-  }
+  result = scm_ether_send(ether, p);
 
   /* // From ethernetif.c example of lwip
   MIB2_STATS_NETIF_ADD(netif, ifoutoctets, p->tot_len);
@@ -727,15 +876,8 @@ lwip_send_ethernet_input(struct netif *netif, MACREF from, MACREF to, unsigned i
     return ERR_BUF;
   }
   { //**/ fprintf(stderr, "lwip_send_ethernet_input: copy data into pbuf(s)\n");
-    const char *src = (const char*) data;
-    int rest = q->len - sizeof(ethhdr);
-    memcpy(q->payload,&ethhdr,sizeof(ethhdr));
-    memcpy((char*)q->payload + sizeof(ethhdr),src,rest);
-    src += rest;
-    while ((q = q->next)) {
-      memcpy(q->payload,src,q->len);
-      src += q->len;
-    }
+    copy_pbuf_from_ptr(p, &ethhdr, 0, sizeof(ethhdr));
+    copy_pbuf_from_ptr(p, data, sizeof(ethhdr), len);
   }
   //**/fprintf(stderr, "lwip_send_ethernet_input: feed packet into netif->input %p\n", netif->input);
   if(netif->input == NULL) {
@@ -798,7 +940,7 @@ static int lwip_calling_back(void*(*s)(void *), int(*f)(void *, void *), void *e
  in = s ? (s)(e) : NULL;
  lwip_gambit_unlock();
  result = (f)(in, e);
- lwip_gambit_lock();
+ lwip_gambit_lock("lwip_calling_back");
  gambit_lwipcore_lock("lwip_calling_back");
  return result;
 }
@@ -866,43 +1008,30 @@ c-declare-end
    (socket-address) netif*
    "ip6_addr_t a; cp_sockaddr_to_ip6_addr(&a,(struct sockaddr_in6*) ___arg1); ___result = nd6_find_route(&a);"))
 
-;;;* TCP callback API
-
-(c-define-type tcpip_callback_fn (function (void*) void))
-
-(define lwip-tcpip-call (c-lambda (tcpip_callback_fn void*) err_t "tcpip_callback"))
-
-(define lwip-tcpip-try-call (c-lambda (tcpip_callback_fn void*) err_t "tcpip_try_callback"))
-
-(define-c-constant lwip-IPADDR_TYPE_V4 int "IPADDR_TYPE_V4")
-(define-c-constant lwip-IPADDR_TYPE_V6 int "IPADDR_TYPE_V6")
-(define-c-constant lwip-IPADDR_TYPE_ANY int "IPADDR_TYPE_ANY")
-
-(c-define-type tcp_pcb (pointer (struct "tcp_pcb")))
-
-(c-define-type pbuf* (pointer (struct "pbuf")))
+;;;* TCP API
 
 ;;(c-define-type CONTEXT (pointer "void")) ;; we may want to redefine that.
 (c-define-type CONTEXT scheme-object) ;; we may want to redefine that.
 (c-declare "\n#define GAME_CONTEXT ___SCMOBJ\n")
 
-;;; Function prototype for tcp accept callback functions. Called when
-;;; a new connection can be accepted on a listening pcb.
-;;;
-;;; @param ctx Additional argument to pass to the callback function
-;;; @see tcp-pcb-context-set!
-;;;
-;;; @param newpcb The new connection pcb
-;;;
-;;; @param err An error code if there has been an error accepting.
-;;; Only return ERR_ABRT if you have called tcp_abort from within the
-;;; callback function!
-;;;
-;;; typedef err_t (*tcp_accept_fn)(void *ctx, struct tcp_pcb *newpcb, err_t err);
+(define-c-constant lwip-IPADDR_TYPE_V4 int "IPADDR_TYPE_V4")
+(define-c-constant lwip-IPADDR_TYPE_V6 int "IPADDR_TYPE_V6")
+(define-c-constant lwip-IPADDR_TYPE_ANY int "IPADDR_TYPE_ANY")
 
-(c-define-type tcp_accept_fn (function (CONTEXT tcp_pcb err_t) err_t))
+(c-define-type tcp_pcb (pointer (struct "tcp_pcb") tcp-pcb)) ;; MUST NOT have a release function.
 
-(define-custom on-tcp-accept #f) ;; TBD
+(define (tcp-pcb? obj) (let ((f (foreign-tags obj))) (and f (eq? (car f) 'tcp-pcb))))
+
+(define-macro (c-lambda-with-lwip-locked formals ret pre code)
+   ;; BEWARE: MUST NOT use the ___return macro!  But assign to
+   ;; ___result
+  `(c-lambda
+    ,formals ,ret
+    ,(string-append
+      pre
+      "\ngambit_lwipcore_lock(" (with-output-to-string (lambda () (write code))) ");\n"
+      code
+      "\ngambit_lwipcore_unlock();\n")))
 
 (define-macro (custom-handler name default . args)
   ;; FIXME: We better check from c-define-with-gambit-locked.0 for the
@@ -913,207 +1042,15 @@ c-declare-end
            (,handler . ,args)
            ,default))))
 
-(c-define-with-gambit-locked.0
- (%%on-tcp-accept ctx connection err)
- (CONTEXT tcp_pcb err_t)
- err_t "scm_tcp_accept" "static inline"
- "(GAME_CONTEXT ctx, struct tcp_pcb* connection, err_t err)" "err_t" "ERR_IF"
- (custom-handler
-  on-tcp-accept
-  (begin
-    ;; default as if nothing had been registered
-    (tcp_abort (debug 'TCP-accept-aborting connection))
-    ERR_ABRT)
-  ctx connection err))
-
-;; typedef err_t (*tcp_recv_fn)(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err);
-
-(c-define-type tcp_recv_fn (function (CONTEXT tcp_pcb pbuf* err_t) err_t))
-
-(define-custom on-tcp-receive #f)
-
-(c-define-with-gambit-locked.0
- (%%on-tcp-receive ctx connection pbuf err)
- (CONTEXT tcp_pcb pbuf* err_t)
- err_t "scm_tcp_recv" "static inline"
- "(GAME_CONTEXT ctx, struct tcp_pcb *connection, struct pbuf *pbuf, err_t err)" "err_t" "ERR_IF"
- (custom-handler
-  on-tcp-recv
-  (begin
-    ;; TODO: compare to default as if nothing had been registered
-    (tcp_abort (debug 'TCP-receive-aborting connection))
-    ERR_ABRT)
-  ctx connection pbuf err))
-
-;; typedef err_t (*tcp_sent_fn)(void *arg, struct tcp_pcb *tpcb, u16_t len);
-;;
-;; Function prototype for tcp sent callback functions. Called when sent data has
-;; been acknowledged by the remote side. Use it to free corresponding resources.
-;; This also means that the pcb has now space available to send new data.
-
-(c-define-type tcp_sent_fn (function (CONTEXT tcp_pcb unsigned-int16) err_t))
-
-(define-custom on-tcp-sent #f)
-
-(c-define-with-gambit-locked.0
- (%%on-tcp-sent ctx connection len)
- (CONTEXT tcp_pcb unsigned-int16)
- err_t "scm_tcp_sent" "static inline"
- "(GAME_CONTEXT ctx, struct tcp_pcb* connection, u16_t len)" "err_t" "ERR_IF"
- (begin
-   (debug 'NYI '%%on-tcp-sent)
- (custom-handler
-  on-tcp-sent
-  ;; TBD: free ressources
-  (begin
-    ;; FIXME: compare to default as if nothing had been registered
-    ERR_OK)
-  ctx connection len)))
-
-;; Function prototype for tcp poll callback functions. Called
-;; periodically as specified by @see tcp_poll.
-;;
-;; @return ERR_OK: try to send some data by calling tcp_output Only
-;; return ERR_ABRT if you have called tcp_abort from within the
-;, callback function!
-;;
-;; typedef err_t (*tcp_poll_fn)(void *arg, struct tcp_pcb *tpcb);
-
-(c-define-type tcp_poll_fn (function (CONTEXT tcp_pcb) err_t))
-
-(define-custom on-tcp-poll #f)
-
-(c-define-with-gambit-locked.0
- ;; TODO: skip C-to-Scheme call
- (%%on-tcp-poll ctx connection)
- (CONTEXT tcp_pcb)
- err_t "scm_tcp_poll" "static inline"
- "(GAME_CONTEXT ctx, struct tcp_pcb* connection)" "err_t" "ERR_IF"
- (custom-handler
-  on-tcp-poll
-  (begin
-    (lwip-tcp-flush!1 ctx)
-    ERR_OK)
-  ctx connection))
-
-;; Function prototype for tcp error callback functions. Called when
-;; the pcb receives a RST or is unexpectedly closed for any other
-;; reason.
-;;
-;; typedef void  (*tcp_err_fn)(void *arg, err_t err);
-
-(c-define-type tcp_err_fn (function (CONTEXT err_t) void))
-
-(define-custom on-tcp-error #f)
-
-(c-define-with-gambit-locked.0
- (%%on-tcp-error ctx err)
- (CONTEXT err_t)
- void "scm_tcp_error" "static inline"
- "(GAME_CONTEXT ctx, err_t err)" 'ignored 'ignored
- (custom-handler
-  on-tcp-error
-  (begin
-    ;; FIXME TODO: compare to default as if nothing had been registered
-    (lwip-tcp-close (debug 'lwip-TCP-error-close ctx)) ;; MAY HANG?
-    #!void)
-  ctx err))
-
-(define-macro (c-lambda-with-lwip-locked formals ret pre code)
-  `(c-lambda
-    ,formals ,ret
-    ,(string-append
-      pre
-      "\ngambit_lwipcore_lock(" (with-output-to-string (lambda () (write code))) ");\n"
-      code
-      "\ngambit_lwipcore_unlock();\n")))
-
-;; Function prototype for tcp connected callback functions. Called
-;; when a pcb is connected to the remote side after initiating a
-;; connection attempt by calling tcp_connect().
-;;
-;; typedef err_t (*tcp_connected_fn)(void *arg, struct tcp_pcb *tpcb, err_t err);
-
-(c-define-type tcp_connected_fn (function (CONTEXT tcp_pcb err_t) err_t))
-
-(define-custom on-tcp-connect #f)
-
-(c-define-with-gambit-locked.0
- (%%on-tcp-connect ctx connection err)
- (CONTEXT tcp_pcb err_t)
- err_t "scm_tcp_connect" "static inline"
- "(GAME_CONTEXT ctx, struct tcp_pcb* connection, err_t err)" "err_t" "ERR_IF"
- (custom-handler
-  on-tcp-connect
-  (begin
-    ;; FIXME TODO: compare to default as if nothing had been registered
-    (lwip-tcp-close (debug 'lwip-TCP-connect-close ctx))
-    err)
-  ctx connection err))
-
-#|
-/** TCP connected callback (active connection), send data now */
-static err_t
-lwiperf_tcp_client_connected(void *arg, struct tcp_pcb *tpcb, err_t err)
-{
-  lwiperf_state_tcp_t *conn = (lwiperf_state_tcp_t *)arg;
-  LWIP_ASSERT("invalid conn", conn->conn_pcb == tpcb);
-  LWIP_UNUSED_ARG(tpcb);
-  if (err != ERR_OK) {
-    lwiperf_tcp_close(conn, LWIPERF_TCP_ABORTED_REMOTE);
-    return ERR_OK;
-  }
-  conn->poll_count = 0;
-  conn->time_started = sys_now();
-  return lwiperf_tcp_client_send_more(conn);
-}
-|#
-
-(define tcp-new (c-lambda () tcp_pcb "tcp_new"))
-
-(define tcp-new-ip-type (c-lambda (unsigned-int8) tcp_pcb "tcp_new_ip_type"))
-
-(define (tcp-new6) (tcp-new-ip-type lwip-IPADDR_TYPE_V6))
-
-(define tcp-context-set! (c-lambda (tcp_pcb CONTEXT) void "tcp_arg"))
-
-(define (tcp-set-receive! pcb)
-  ((c-lambda (tcp_pcb tcp_recv_fn) void "tcp_recv") pcb %%on-tcp-receive))
-
-(define (tcp-set-sent! pcb)
-  ((c-lambda (tcp_pcb tcp_sent_fn) void "tcp_sent") pcb %%on-tcp-sent))
-
-(define (tcp-set-err! pcb)
-  ((c-lambda (tcp_pcb tcp_err_fn) void "tcp_err") pcb %%on-tcp-error))
-
-(define (tcp-set-accept! pcb)
-  ((c-lambda (tcp_pcb tcp_accept_fn) void "tcp_accept") pcb %%on-tcp-accept))
-
-(define (tcp-set-poll! pcb interval)
-  ((c-lambda (tcp_pcb tcp_poll_fn unsigned-int8) void "tcp_poll") pcb %%on-tcp-poll interval))
-
-(define tcp-flags-set! (c-lambda (tcp_pcb unsigned-int) void "tcp_set_flags"))
-
-(define tcp-flags-clear! (c-lambda (tcp_pcb unsigned-int) void "tcp_clear_flags"))
-
-(define tcp-flags-set? (c-lambda (tcp_pcb unsigned-int) bool "tcp_is_flag_set"))
-
-;; TBD Some are missing here
-
-;; To be called by the application to aknowledge that it has read that
-;; much incoming data.
-(define tcp-received!
-  (c-lambda-with-lwip-locked (tcp_pcb unsigned-int16) void "" "tcp_recved(___arg1, ___arg2);"))
-
 ;; err_t tcp_bind (struct tcp_pcb *pcb, const ip_addr_t *ipaddr, u16_t port);
 
-(define lwip-tcp-bind/socket-address
-  (c-lambda
+#;(define lwip-tcp-bind/socket-address
+  (c-lambda-with-lwip-locked
    ;; FIXME: works only with IPv6 for now., does not at all, misses locking
-   (tcp_pcb socket-address) err_t #<<END
-   ip6_addr_t ip6addr;
-   cp_sockaddr_to_ip6_addr(&ip6addr, (struct sockaddr_in6 *) ___arg2);
-   ___result = tcp_bind(___arg1, &ip6addr, ((struct sockaddr_in6 *) ___arg2)->sin6_port);
+   (tcp_pcb socket-address) err_t "" #<<END
+   ip_addr_t ipaddr = IPADDR6_INIT(0,0,0,0);
+   cp_sockaddr_to_ip6_addr(&ipaddr.u_addr.ip6, (struct sockaddr_in6 *) ___arg2);
+   ___result = tcp_bind(___arg1, &ipaddr, ((struct sockaddr_in6 *) ___arg2)->sin6_port);
 END
 ))
 
@@ -1130,7 +1067,7 @@ END
    gambit_lwipcore_lock("lwip-tcp-bind");
    ___result = tcp_bind(___arg1, &ipaddr, ___arg3);
    gambit_lwipcore_unlock();
-   lwip_gambit_lock();
+   lwip_gambit_lock("lwip-tcp-bind");
 END
 ) pcb u8 port))
 
@@ -1143,33 +1080,89 @@ END
 END
 ) pcb netif))
 
-;; err_t tcp_connect (struct tcp_pcb *pcb, const ip_addr_t *ipaddr, u16_t port, tcp_connected_fn connected);
+(define tcp-new (c-lambda () tcp_pcb "local_lwip_init(); ___return(tcp_new());"))
 
-#;(define lwip-tcp-connect/socket-address
+(define tcp-new-ip-type
+  (c-lambda
+   (unsigned-int8) tcp_pcb
+   "local_lwip_init();
+ struct tcp_pcb *result=tcp_new_ip_type(___arg1);
+ fprintf(stderr, \"PCB %p\\n\", result);
+ ___return(result);"))
+
+(define (tcp-new6) (tcp-new-ip-type lwip-IPADDR_TYPE_V6))
+
+(define tcp-context-set!
+  (c-lambda-with-lwip-locked
+   (tcp_pcb CONTEXT) void "" "tcp_arg(___arg1, (void*)___arg2);"))
+
+;;;** TCP Event API
+
+(define-c-constant LWIP_EVENT_ACCEPT unsigned-int8)
+(define-c-constant LWIP_EVENT_SENT unsigned-int8)
+(define-c-constant LWIP_EVENT_RECV unsigned-int8)
+(define-c-constant LWIP_EVENT_CONNECTED unsigned-int8)
+(define-c-constant LWIP_EVENT_POLL unsigned-int8)
+(define-c-constant LWIP_EVENT_ERR unsigned-int8)
+
+(define-custom on-tcp-event #f) ;; TBD
+
+(c-define-with-gambit-locked.0
+ (%%on-tcp-event ctx pcb event pbuf size err)
+ (CONTEXT tcp_pcb unsigned-int8 pbuf unsigned-int16 err_t)
+ err_t "scm_lwip_tcp_event" "static inline"
+ "(GAME_CONTEXT ctx, struct tcp_pcb* pcb, enum lwip_event event, struct pbuf* pbuf, u16_t size, err_t err)"
+ "err_t" "ERR_IF"
+ (custom-handler on-tcp-event ERR_ABRT ctx pcb event pbuf size err))
+
+(c-declare #<<end-lwip-tcp-event
+err_t lwip_tcp_event(void *arg, struct tcp_pcb *pcb, enum lwip_event event, struct pbuf *p, u16_t size, err_t err)
+{
+ return ERR_ABRT; // lwip_tcp_event((GAME_CONTEXT) arg, pcb, event, p, size, err);
+}
+end-lwip-tcp-event
+)
+
+(define lwip-tcp-connect/event
+  ;; EVENT API version, NULL connect function (unused)
   (c-lambda
    ;; FIXME: works only with IPv6 for now.
-   (tcp_pcb socket-address tcp_connected_fn) err_t #<<END
-   ip6_addr_t ip6addr;
-   cp_sockaddr_to_ip6_addr(&ip6addr, (struct sockaddr_in6 *) ___arg2);
-   ___result = tcp_connect(___arg1, &ip6addr, ((struct sockaddr_in6 *) ___arg2)->sin6_port, ___arg3);
-END
-))
-
-(define (lwip-tcp-connect pcb u8 port)
-  ((c-lambda
-   ;; FIXME: works only with IPv6 for now.
-   (tcp_pcb scheme-object unsigned-int tcp_connected_fn) err_t #<<END
+   (tcp_pcb scheme-object unsigned-int) err_t #<<END
    ip_addr_t ipaddr;
    ipaddr.type = IPADDR_TYPE_V6;
    ipaddr.u_addr.ip6.zone = 0;
    memcpy(&ipaddr.u_addr.ip6.addr, ___CAST(void *,___BODY_AS(___arg2,___tSUBTYPED)), sizeof(ip6_addr_t));
    gambit_lwipcore_lock("lwip-tcp-connect");
-   ___result = tcp_connect(___arg1, &ipaddr, ___arg3, ___arg4);
+   ___result = tcp_connect(___arg1, &ipaddr, ___arg3, NULL);
    gambit_lwipcore_unlock();
 END
-) pcb u8 port %%on-tcp-connect))
+))
 
-(define lwip-tcp-listen (c-lambda-with-lwip-locked (tcp_pcb) tcp_pcb "" "___result=tcp_listen(___arg1);"))
+(define lwip-tcp-connect lwip-tcp-connect/event)
+
+(define (tcp-set-poll-interval! pcb interval)
+  ((c-lambda-with-lwip-locked
+    (tcp_pcb unsigned-int8) void "" "tcp_poll(___arg1, NULL, ___arg2);")
+   pcb interval))
+
+(define tcp-flags-set! (c-lambda (tcp_pcb unsigned-int) void "tcp_set_flags"))
+
+(define tcp-flags-clear! (c-lambda (tcp_pcb unsigned-int) void "tcp_clear_flags"))
+
+(define tcp-flags-set? (c-lambda (tcp_pcb unsigned-int) bool "tcp_is_flag_set"))
+
+;; TBD Some are missing here
+
+;; To be called by the application to aknowledge that it has read that
+;; much incoming data.
+(define tcp-received!
+  (c-lambda-with-lwip-locked (tcp_pcb unsigned-int16) void "" "tcp_recved(___arg1, ___arg2);"))
+
+(define lwip-tcp-listen
+  ;; NOTE: this deallocates the argument, except when it returns #f.
+  ;;
+  ;; BEWARE: MUST NOT use the ___return macro!
+  (c-lambda-with-lwip-locked (tcp_pcb) tcp_pcb "" "___result = tcp_listen(___arg1);"))
 
 (define tcp_abort (c-lambda-with-lwip-locked (tcp_pcb) void "" "tcp_abort(___arg1);"))
 
@@ -1201,7 +1194,7 @@ END
    gambit_lwipcore_lock("lwip-tcp-flush!");
    ___result = tcp_output(___arg1);
    gambit_lwipcore_unlock();
-   lwip_gambit_lock();
+   lwip_gambit_lock("lwip-tcp-flush!");
 END
 ))
 

@@ -17,14 +17,14 @@
 
 ;; utilitarian garbage
 
-(define (sa->u8 sa)
+(define (sa->u8 caller sa)
   (cond
    ((internet-socket-address? sa) (socket-address->internet-address sa))
    ((internet6-socket-address? sa)
     (receive
       (host port flowinfo scope-id) (socket-address->internet6-address sa)
       (values host port)))
-   (else 'invalid #;(raise 'not-a-valid-socket-address))))
+   (else (error "not-a-valid-socket-address" (debug 'EXIT caller) sa))))
 
 (define (is-ip4-local? ip)
   (and (eqv? (u8vector-length ip) 4)
@@ -63,9 +63,10 @@
    (internet-address->socket-address '#u8(192 168 43 96) 9994)))
 
 (define (contact-earline)
-  (zt-contact-peer
+  (debug 'contact 'earl)
+  (debug 'contacted (zt-contact-peer
    "f3de84af82:0:d6eea42c09e3f91845dd8fdf9e94c048ea5d63bde1108e8369a7cb79a98ca76951c6b80b80c9d596e0d32d83d94ee73de724412a10ae1cda21888b1206bb1461"
-   (internet-address->socket-address '#u8(192 168 43 86) 9994)))
+   (internet-address->socket-address '#u8(192 168 43 86) 9994))))
 
 (define (contact-dave-vm)
   (zt-contact-peer
@@ -298,7 +299,7 @@
 
 (zt-event
  (lambda (node userptr thr event payload)
-   (debug 'soso event)
+   (debug 'ZT-EVENT event)
    (case event
      ((UP)
       (kick!
@@ -330,15 +331,21 @@
     (else #f))))
 
 (zt-wire-packet-send
- (lambda (udp socket remaddr data ttl)
+ (lambda (udp socket remaddr data len ttl)
    ;; (debug 'wire-send-via socket)
    ;; FIXME: allocate IPv6 too!
-   (if (internet-socket-address? remaddr)
-       (cond
-        ((or (use-external) (receive (a p) (sa->u8 remaddr) (is-ip4-local? a)))
-         (debug 'wire-send-via (socket-address->string remaddr))
-         (send-message udp data 0 #f 0 remaddr))
-        (else #;(debug 'wire-send-via/blocked (socket-address->string remaddr)) -1)))))
+   (let ((remaddr (zt->gamsock-socket-address remaddr)))
+     (if (internet-socket-address? remaddr)
+         (receive
+          (addr port) (sa->u8 'zt-wire-packet-send remaddr)
+          (cond
+           ((or (use-external) (is-ip4-local? addr))
+            (debug 'wire-send-via (socket-address->string remaddr))
+            ;;  FIXME: need to copy remaddr too? -- seems not be be the culprit
+            (let ((u8 (make-u8vector len)))
+              (u8vector-copy-from-ptr! u8 0 data 0 len)
+              (send-message udp u8 0 #f 0 remaddr)))
+           (else #;(debug 'wire-send-via/blocked (socket-address->string remaddr)) -1)))))))
 
 (zt-virtual-receive
  ;; API issue: looks like zerotier may just have disassembled a memory
@@ -370,16 +377,18 @@
 (lwip-nd6-get-gateway (lambda (netif dst) dst)) ;; ZT serves a single switch
 
 (lwip-ethernet-send
- (lambda (netif src dst ethertype #;0 bp len)
+ (lambda (netif src dst ethertype #;0 pbuf)
    (let ((src (lwip-mac:network->host src))
          (dst (lwip-mac:network->host dst))
          (ethertype ethertype))
-     (debug 'lwip-ethernet-send-to-zt len)
+     (debug 'lwip-ethernet-send-to-zt pbuf #;(u8vector-length bp))
      (dbgmac 'src src)
      (dbgmac 'dst dst)
      (debug 'EtherType (ethertype/host-decor ethertype))
-     (let ((vlanid 0))
-       (if (debug 'DONE:zt-virtual-send/ptr (zt-virtual-send/ptr (find-nwid-for-nif netif) src dst ethertype vlanid bp len))
+     (let ((vlanid 0)
+           (bp (pbuf->u8vector pbuf))) ;; FIXME: avoid the copy
+       (debug 'Packt-len (u8vector-length bp))
+       (if (debug 'DONE:zt-virtual-send (zt-virtual-send (find-nwid-for-nif netif) src dst ethertype vlanid bp))
            0
            -12)))))
 
@@ -397,7 +406,7 @@
  (lambda (node userptr thr nodeid socket sa)
    (debug 'PATHCHECK (number->string nodeid 16))
    (receive
-    (addr port) (sa->u8 sa)
+    (addr port) (sa->u8 'zt-path-check sa)
     (debug 'PATHCHECK (cons addr port))
     (or (use-external) (is-ip4-local? addr)))))
 
@@ -406,8 +415,13 @@
    ;; (debug 'LOOKUP (number->string nodeid 16))
    (debug 'LOOKUP (hexstr nodeid 12))
    (debug 'LooupFamily family)
-   (debug 'LookupSA (and sa (sa->u8 sa)))
+   #;(debug 'LookupSA (and sa (sa->u8 'zt-path-lookup sa)))
    0))
+
+(zt-maintainance
+ (lambda (prm thunk)
+   #;(debug 'zt-maintainance 'now)
+   thunk))
 
 ;; this will provide an interactive prompt
 
@@ -421,77 +435,54 @@
 
 ;; lwIP TCP
 
-(zt-pre-maintainance
- (lambda (prm)
-   #;(debug 'zt-maintainance 'now)
-   #t))
-
-(define-type tcp-conn
-  pcb
-  thread)
-
 (define (lwip-ok? x) (eqv? x 0))
 
-(on-tcp-accept
- (lambda (ctx connection err)
-   (case err
-     ((0)
-      (let ((tcp (make-tcp-conn connection (make-thread (ctx connection) 'tcp-service))))
-        (tcp-context-set! connection tcp)
-        (thread-start! (tcp-conn-thread tcp))
-        0)) ;; ERR_OK
-     (else -12)))) ;; FIXME
+(define (on-tcp-accept ctx connection err)
+  (debug 'on-tcp-accept ctx)
+  ERR_ABRT)
 
-(on-tcp-receive
- (lambda (ctx connection pbuf err)
-   ;; ERR_IF
-   -12))
+(define (on-tcp-sent ctx connection len)
+  ;; should signal conn free
+  ERR_OK)
 
-(on-tcp-sent
- (lambda (ctx connection len)
-   ;; should signal conn free
-   ;; ERR_OK
-   0))
+(define (on-tcp-receive ctx connection pbuf err)
+  ERR_IF)
 
-(define (c-tcp-poll-interval) 255)
+(define (on-tcp-connect ctx connection err)
+  (case err
+    ((0)
+     (let ()
+       (debug 'CONNECTED connection)
+       (ctx connection)
+       ERR_OK))
+    (else (debug 'on-tcp-connect err)))) ;; FIXME
 
-(on-tcp-poll
- (lambda (ctx connection)
-   (debug 'UpsPOLL connection)
-   (debug 'lwip-tcp-flush! (lwip-err (lwip-tcp-flush! connection)))
-    ERR_OK))
+(define (on-tcp-poll ctx connection)
+  (debug 'UpsPOLL connection)
+  (debug 'lwip-tcp-flush! (lwip-err (lwip-tcp-flush! connection)))
+  ERR_OK)
 
-(on-tcp-error ;; void
- (lambda (ctx err)
-   (debug 'ERROR ctx)
-   (debug 'err (lwip-err err))
-   #f))
+(define (on-tcp-error ctx err)
+  (debug 'ERROR ctx)
+  (debug 'err (lwip-err err))
+  ERR_OK)
 
-(on-tcp-connect
- (lambda (ctx connection err)
-   (case err
-     ((0)
-      (let ()
-        (debug 'CONNECTED connection)
-        (ctx connection)
-        0)) ;; ERR_OK
-     (else (debug 'on-tcp-connect err))))) ;; FIXME
-
-(define (tcp-set-all! pcb) ;; debug
-  (for-each
-   (lambda (x) (x pcb))
-   (list
-    tcp-set-receive!
-    tcp-set-sent!
-    tcp-set-err!
-    tcp-set-accept!
-    (lambda (pcb) (tcp-set-poll! pcb (c-tcp-poll-interval)))
-    )))
+(on-tcp-event
+ (lambda (ctx pcb event pbuf size err)
+   ;; NOTE: This passes along what the lwIP callback API did.
+   (cond
+    ((eq?  LWIP_EVENT_ACCEPT e) (on-tcp-accept ctx pcb err))
+    ((eq?  LWIP_EVENT_SENT e) (on-tcp-sent ctx pcb len))
+    ((eq?  LWIP_EVENT_RECV e) (on-tcp-receive ctx pcb pbuf err))
+    ((eq?  LWIP_EVENT_CONNECTED e) (on-tcp-connect ctx pcb err))
+    ((eq?  LWIP_EVENT_POLL e) (on-tcp-poll ctx pcb))
+    ((eq?  LWIP_EVENT_ERR e) (on-tcp-error ctx err))
+    (else (debug "on-tcp-event: unkown event" event) ERR_ARG))))
 
 (define (lwc)
   (let* ((pcb (tcp-new-ip-type lwip-IPADDR_TYPE_V6))
          (sa (make-6plane-addr (ctnw) (dave-server) (adhoc-port)))
-         (addr (receive (a p) (sa->u8 sa) a)))
+         (addr (receive (a p) (sa->u8 'tcp-set-all! sa) a)))
     (debug "
 
 
@@ -524,9 +515,9 @@
 (wire! lws-listener post: lws-listening!)
 
 (define (lws)
-  (let* ((pcb (tcp-new-ip-type lwip-IPADDR_TYPE_V6))
+  (let* ((srv (tcp-new-ip-type lwip-IPADDR_TYPE_V6))
          (sa (make-6plane-addr (ctnw) (zt-address) (adhoc-port)))
-         (addr (receive (a p) (sa->u8 sa) a)))
+         (addr (receive (a p) (sa->u8 'lws sa) a)))
     (debug "
 
 
@@ -537,18 +528,11 @@
 "  'BEDARF)
     (debug 'lwIP-bind (ip-address->string addr))
     (unless
-     (lwip-ok? (lwip-tcp-bind (debug 'pcb pcb) addr (adhoc-port)))
+     (lwip-ok? (lwip-tcp-bind (debug 'pcb srv) addr (adhoc-port)))
      (error "lwip-tcp-bind failed"))
-    (let ((srv (debug 'listening (lwip-tcp-listen (debug 'listenon pcb)))))
+    (let ((srv (debug 'listening (lwip-tcp-listen (debug 'listenon srv)))))
       (unless srv (error "lwip-listen failed"))
-      (tcp-context-set!
-       srv
-       (lambda (pcb)
-         (lambda ()
-           (debug 'Connected pcb))))
-      (tcp-set-err! srv)
-      (tcp-set-accept! srv)
-      (tcp-set-all! srv)
+      (tcp-context-set! srv #f)
       (lws-listener srv))))
 
 (define tried-to-contact (PIN #f))
@@ -580,6 +564,8 @@
  ;; TBD DEBUG: lws here just does not cut it.
  (lambda () (if (and (*nwif*) (tried-to-contact) (not (lws-listener))) (lws))))
 
+;;; NIXDA |#
+
 (define (system-command-line)
   (let loop ((n (system-cmdargc)) (r '()))
     (if (< n 1) r
@@ -589,6 +575,7 @@
 (define (replloop)
   (with-exception-catcher
    (lambda (e)
+     (##default-display-exception e (current-error-port))
      (for-each display (list (exception->string e) "\n")) #f)
    (lambda () (##repl-debug #f #t)))
   (replloop))

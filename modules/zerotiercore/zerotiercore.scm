@@ -89,7 +89,16 @@ END
 
 (c-define-type zt-node (pointer "ZT_Node"))
 
-(c-define-type socket-address (pointer (struct "sockaddr_storage") socket-address))
+;; (c-define-type socket-address (pointer (struct "sockaddr_storage") socket-address))
+;;
+;; DON't repeat the type with the same tag in different
+;; files. zt-socket-address are read only, managed by ZT.
+(c-define-type zt-socket-address (pointer (struct "sockaddr_storage") zt-socket-address))
+;; From gamsock owned we get another tag - those managed by gambit GC.
+(c-define-type gamsock-socket-address (pointer (struct "sockaddr_storage") socket-address))
+
+(define zt->gamsock-socket-address
+  (c-lambda (zt-socket-address) gamsock-socket-address "___return(___arg1);"))
 
 (c-define-type zt-message (pointer "ZT_UserMessage" zt-message))
 
@@ -107,6 +116,7 @@ END
   `(with-exception-catcher
     (lambda (ex)
       (debug ',location ex)
+      (##default-display-exception ex (current-error-port))
       ,fail)
     (lambda () ,expr)))
 
@@ -140,6 +150,13 @@ END
       (else 'ZT_EVENT_UNKNOWN)))
    (cond
     ((procedure? (zt-event)) (%%checked zt-event ((zt-event) node userptr thr (onevt event) payload) #f)))))
+
+(define (u8vector-copy-from-ptr! u8 u8o ptr ptro len)
+  ;; TBD: Add range checks
+  (c-lambda
+   (scheme-object size_t void* size_t size_t) scheme-object
+   "memcpy(___CAST(char *,___BODY(___arg1)) + ___arg2, ___CAST(char *,___arg3) + ___arg4, ___arg5);
+    ___return(___arg1);"))
 
 (define-custom zt-recv #f) ;; EXPORT HOOK - user messages
 
@@ -271,7 +288,7 @@ c-declare-end
   (define doit
     (c-lambda
      ;; 1     lsock addr           data   7
-     (zt-node int64 socket-address scheme-object size_t) bool #<<END
+     (zt-node int64 zt-socket-address scheme-object size_t) bool #<<END
      int rc = -1;
      rc = ZT_Node_processWirePacket(___arg1, NULL, zt_now(), ___arg2, (void *) ___arg3,
              ___CAST(void *,___BODY_AS(___arg4,___tSUBTYPED)), ___arg5, &nextBackgroundTaskDeadline);
@@ -294,7 +311,7 @@ END
 
 (c-define
  (zt_wire_packet_send node userptr thr socket remaddr data len ttl)
- (zt-node scheme-object void* int socket-address void* size_t unsigned-int)
+ (zt-node scheme-object void* int zt-socket-address void* size_t unsigned-int)
  int "scm_zt_wire_packet_send" "static"
  ;; BEWARE:
  (cond
@@ -304,13 +321,8 @@ END
   ((procedure? (zt-wire-packet-send))
    (%%checked
     zt_wire_packet_send
-    (let ((u8 (make-u8vector len)))
-      ((c-lambda
-        (scheme-object void* size_t) void
-        "memcpy(___CAST(void *,___BODY_AS(___arg1,___tSUBTYPED)), ___arg2, ___arg3);")
-       u8 data len)
-      (let ((udp (zt-prm-udp %%zt-prm)))
-        (if ((zt-wire-packet-send) udp socket remaddr u8 ttl) 0 -1)))
+    (let ((udp (zt-prm-udp %%zt-prm)))
+      (if ((zt-wire-packet-send) udp socket remaddr data len ttl) 0 -1))
     -1))
   (else -1)))
 
@@ -427,7 +439,7 @@ c-declare-end
 
 (c-define
  (zt_path_check node userptr thr nodeid socket sa)
- (zt-node void* void* unsigned-int64 int socket-address)
+ (zt-node void* void* unsigned-int64 int zt-socket-address)
  bool "scm_zt_path_check" "static"
  (if (procedure? (zt-path-check))
      (%%checked
@@ -441,7 +453,7 @@ c-declare-end
 
 (c-define
  (zt_path_lookup node uptr thr nodeid family sa)
- (zt-node void* void* unsigned-int64 int socket-address)
+ (zt-node void* void* unsigned-int64 int zt-socket-address)
  int "scm_zt_path_lookup" "static"
  (if (procedure? (zt-path-lookup))
      (%%checked zt_path_lookup ((zt-path-lookup) node uptr thr nodeid family sa) 0)
@@ -548,9 +560,10 @@ END
 (define-custom zt-maintainance (lambda (prm thunk) thunk)) ;; EXPORT
 
 (define (zt-add-local-interface-address! sa) ;; EXPORT
+  (unless (socket-address? sa) (error "zt-add-local-interface-address!: illegal argument" sa))
   (assert-zt-up! zt-add-local-interface-address)
   ((c-lambda
-    (zt-node socket-address) bool
+    (zt-node gamsock-socket-address) bool
     "___return(ZT_Node_addLocalInterfaceAddress(___arg1, ___arg2));")
    (zt-prm-zt %%zt-prm) sa))
 
@@ -666,12 +679,12 @@ END
 (define (zt-peerpath-address ppp)
   (let ((sockaddr (make-unspecified-socket-address)))
     ((c-lambda
-      (socket-address ZT_PeerPhysicalPath) void #<<END
-      struct sockaddr_storage *sa_st = ___arg1;
-      sa_st->ss_family = AF_INET6;
-      memcpy(sa_st, &___arg2->address, (sizeof(struct sockaddr_storage)));
+      (gamsock-socket-address ZT_PeerPhysicalPath) void #<<END
+      memcpy(___arg1, &___arg2->address, (sizeof(struct sockaddr_storage)));
 END
 ) sockaddr ppp)
+    (unless (or (internet6-socket-address? sockaddr)) ;; DEBUG
+            (error (debug sockaddr "zt-peerpath-address: invalid address encountered") sockaddr))
     sockaddr))
 
 (define zt-peer-info->vector
@@ -929,9 +942,9 @@ c-declare-end
 (define make-6plane-addr
   (let ((set-6plane-addr!
          (c-lambda
-          (socket-address unsigned-int64 unsigned-int64 unsigned-int)
+          (gamsock-socket-address unsigned-int64 unsigned-int64 unsigned-int)
           void
-          "set_6plane_addr((struct sockaddr_in6 *) ___arg1, ___arg2, ___arg3, ___arg4);")))
+          "set_6plane_addr(___arg1, ___arg2, ___arg3, ___arg4);")))
     (lambda (nwid node port)
       (let ((sa (internet6-address->socket-address
                  '#u8(0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0)

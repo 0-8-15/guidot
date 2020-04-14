@@ -3,10 +3,26 @@ struct netif;
 extern const ip6_addr_t *gambit_lwip_nd6_get_gw(struct netif *netif, const ip6_addr_t *dest);
 #define LWIP_HOOK_ND6_GET_GW(netif, dest) gambit_lwip_nd6_get_gw(netif, dest)
 
+// LWIP_CALLBACK_API <=EXCLUSIVE-OR=> LWIP_EVENT_API
+//#define LWIP_CALLBACK_API 1
+#define LWIP_EVENT_API 1
+
 // extern void gambit_lwip_netif_status(struct netif *);
 
 // we SHOULD need LWIP_NETIF_LOOPBACK, but it crashes
 // #define LWIP_NETIF_LOOPBACK 1
+
+//#define MEM_LIBC_MALLOC 1
+/*
+ * MEMP_MEM_MALLOC==1: Use mem_malloc/mem_free instead of the lwip pool allocator.
+ * Especially useful with MEM_LIBC_MALLOC but handle with care regarding execution
+ * speed (heap alloc can be much slower than pool alloc) and usage from interrupts
+ * (especially if your netif driver allocates PBUF_POOL pbufs for received frames
+ * from interrupt)!
+ *
+ * JFW: here only because valgrind reports illegal access.
+ */
+//#define MEMP_MEM_MALLOC 1
 
 /*
 #define LWIP_DEBUG 0xffff
