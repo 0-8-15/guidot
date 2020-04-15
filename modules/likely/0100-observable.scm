@@ -201,12 +201,17 @@
    ;; aware that they are called with the trigger setting in effect.
    ;; Better send asynchronous operations to pre-created threads than
    ;; forking threads from within.
-   (cond
-    ((eq? async #t)
+   (case async
+    ((#t)
      (lambda (l)
        (if ($debug-trace-triggers)
            (stm-log 'stm-trace-triggers "Post transaction async triggers" l))
        (for-each async-consequence! l)))
+    ((kick)
+     (lambda (l)
+       (if ($debug-trace-triggers)
+           (stm-log 'stm-trace-triggers "Post transaction kick triggers" l))
+       (for-each kick! l)))
     (else
      (lambda (l)
        (if ($debug-trace-triggers)
@@ -228,7 +233,7 @@
        thunk)))))
 
 (define kick!
-  (let ((triggers (make-observable-triggers async: #t)))
+  (let ((triggers (make-observable-triggers async: 'kick)))
     (lambda (thunk)
       (parameterize
        ((current-trigger-handler triggers)
