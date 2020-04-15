@@ -458,6 +458,9 @@ static inline u32_t local_sys_timeouts_sleeptime()
 c-declare-end
 )
 
+(define lwip-gambit-lock (c-lambda (char-string) void "lwip_gambit_lock"))
+(define lwip-gambit-unlock (c-lambda () void "lwip_gambit_unlock"))
+
 ;;; Calling lwIP
 
 (define-macro (c-define-with-gambit-locked.0 def type result-type c-name scope TBD-proto TBD-proto-result TBD-exn body)
@@ -713,8 +716,18 @@ END
  int "Xscm_ether_send" "static"
  (let ((handler (lwip-ethernet-send)))
    (cond
-    ((procedure? handler) (handler netif src dst proto #;0 pbuf))
-    (else -12))))
+    ((procedure? handler)
+     ;;
+     #| Catching errors here was not effective.
+      (with-exception-catcher
+      (lambda (ex)
+        (##default-display-exception ex (current-error-port))
+        ERR_IF)
+      (lambda () (debug 'Xscm_ether_send-return (handler netif src dst proto #;0 pbuf))))
+     |#
+     ;; But: maybe we MUST run this asyncrhrouneos right here?
+     (handler netif src dst proto #;0 pbuf))
+    (else ERR_IF))))
 
 #|
 (c-define

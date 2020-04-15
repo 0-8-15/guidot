@@ -4,6 +4,22 @@
 
 (include "observable-notational-conventions.scm")
 
+#|
+(eval
+ '(define-macro (maybe-async expr)
+    `(thread-start! (make-thread (lambda () (debug 'running ',expr) (debug ',expr ,expr)) ',expr))))
+
+(define-macro (maybe-async expr)
+    `(thread-start! (make-thread (lambda () (debug 'running ',expr) (debug ',expr ,expr)) ',expr)))
+|#
+
+(eval
+ '(define-macro (maybe-async expr)
+    `(thread-start! (make-thread (lambda () ,expr (debug ',expr )) ',expr))))
+
+(define-macro (maybe-async expr)
+    `(thread-start! (make-thread (lambda () ,expr (debug ',expr ,expr)) ',expr)))
+
 (define (or-false pred?) (lambda (x) (or (eq? x #f) (pred? x))))
 
 (define (ground) #f)
@@ -51,6 +67,9 @@
 (define testers
   '((Dave)
     (Earline)))
+
+;; FIXME: ZT is not reentrant!  When a second thread tries to
+;; zt-contact-peer the whole thing dies.
 
 (define (contact-whom?)
   (zt-contact-peer
@@ -228,6 +247,7 @@
 (define (find-nwid-for-nif nif) (ctnw))
 
 (define (ds)
+  (lwip-init!)
   (.here 'Dave)
   (zt-start! "/home/u/build/ball/ball/zerotier-server" 9994 background-period: 0.5)
   (zt-add-local-interface-address! (internet-address->socket-address dmeine 0 #;9994))
@@ -235,6 +255,7 @@
   (.zt-started #t))
 
 (define (dc)
+  (lwip-init!)
   (.here 'DaveC)
   (zt-start! "/home/u/build/ball/ball/zerotier-client" 9995 background-period: 0.5)
   (zt-add-local-interface-address! (internet-address->socket-address dmeine 9995))
@@ -242,6 +263,7 @@
   (.zt-started #t))
 
 (define (es)
+  (lwip-init!)
   (.here 'Earline)
   (zt-start! "/home/u/zerotier-server" 9994 background-period: 0.5)
   (zt-add-local-interface-address! (internet-address->socket-address emeine 0 #;9994))
@@ -249,6 +271,7 @@
   (.zt-started #t))
 
 (define (ec)
+  (lwip-init!)
   (zt-start! "/home/u/zerotier-client" 9995 background-period: 0.5)
   (zt-add-local-interface-address! (internet-address->socket-address emeine 9995))
   (zt-join (ctnw))
@@ -270,6 +293,34 @@
         (for-each zt-orbit '(#x183ae34a4c #xc72fe7ef99))
         #t)
       #f))
+
+;;* Locking
+
+(define *zt-mux* (make-mutex 'zt))
+
+#|
+;;; Double Locking gambit as this is recursive.
+(zt-lock
+ (lambda ()
+   #;(debug 'zt-lock (list 'ztmux (mutex-state *zt-mux*) 'from (current-thread)))
+   (lwip-gambit-lock #;"zt" (with-output-to-string (lambda () (display "zt ") (display (current-thread)))))
+   (mutex-lock! *zt-mux*)))
+(zt-unlock
+ (lambda ()
+   (mutex-unlock! *zt-mux*)
+   (lwip-gambit-unlock)))
+|#
+
+(zt-lock
+ (lambda ()
+   ;;(debug 'zt-lock (list 'ztmux (mutex-state *zt-mux*) 'from (current-thread)))
+   (mutex-lock! *zt-mux*)))
+(zt-unlock
+ (lambda ()
+   ;;(debug 'zt-unlock (current-thread))
+   (mutex-unlock! *zt-mux*)))
+
+;; (zt-lock (lambda () #f))  (zt-unlock (lambda () #f)) ;; should die in zt_contact_peer
 
 ;;* EVENTS
 
@@ -304,7 +355,7 @@
      ((UP)
       (kick!
        (lambda ()
-         (zt-up #t)
+         (zt-up (debug 'zt-up #t))
          (use-external #t))) )
      ((ONLINE OFFLINE)
       (kick!
@@ -332,20 +383,33 @@
 
 (zt-wire-packet-send
  (lambda (udp socket remaddr data len ttl)
+   (thread-yield!) ;; KILLER!
    ;; (debug 'wire-send-via socket)
    ;; FIXME: allocate IPv6 too!
-   (let ((remaddr (zt->gamsock-socket-address remaddr)))
+   (let ((remaddr (and remaddr (zt->gamsock-socket-address remaddr))))
      (if (internet-socket-address? remaddr)
          (receive
           (addr port) (sa->u8 'zt-wire-packet-send remaddr)
+          (thread-yield!) ;; KILLER!
+          (##gc)
           (cond
            ((or (use-external) (is-ip4-local? addr))
             (debug 'wire-send-via (socket-address->string remaddr))
             ;;  FIXME: need to copy remaddr too? -- seems not be be the culprit
-            (let ((u8 (make-u8vector len)))
+            (let ((u8 (make-u8vector len))
+                  (remaddr (internet-address->socket-address addr port))
+                  #;(remaddr
+                   (receive
+                    (addr port) (sa->u8 'zt-wire-packet-send2 remaddr)
+                    (internet-address->socket-address addr port))))
               (u8vector-copy-from-ptr! u8 0 data 0 len)
-              (send-message udp u8 0 #f 0 remaddr)))
-           (else #;(debug 'wire-send-via/blocked (socket-address->string remaddr)) -1)))))))
+              #;(thread-yield!) ;; KILLER!
+              #;(debug 'remaddr-is-still-ipv4? (internet-socket-address? remaddr))
+              #;(debug 'wire-send-via (socket-address->string remaddr))
+              #;(eqv? (send-message udp u8 0 #f 0 remaddr) len)
+              (maybe-async (send-message udp u8 0 #f 0 remaddr))
+              #t))
+           (else #;(debug 'wire-send-via/blocked (socket-address->string remaddr)) #f)))))))
 
 (zt-virtual-receive
  ;; API issue: looks like zerotier may just have disassembled a memory
@@ -378,26 +442,27 @@
 
 (lwip-ethernet-send
  (lambda (netif src dst ethertype #;0 pbuf)
+   (thread-yield!) ;; KILLER? - No, Yes.
    (let ((src (lwip-mac:network->host src))
          (dst (lwip-mac:network->host dst))
          (ethertype ethertype))
-     (debug 'lwip-ethernet-send-to-zt pbuf #;(u8vector-length bp))
+     (debug 'lwip-ethernet-send-to-zt pbuf)
      (dbgmac 'src src)
      (dbgmac 'dst dst)
      (debug 'EtherType (ethertype/host-decor ethertype))
      (let ((vlanid 0)
            (bp (pbuf->u8vector pbuf))) ;; FIXME: avoid the copy
        (debug 'Packt-len (u8vector-length bp))
-       (if (debug 'DONE:zt-virtual-send (zt-virtual-send (find-nwid-for-nif netif) src dst ethertype vlanid bp))
-           0
-           -12)))))
+       (maybe-async (debug 'DONE:zt-virtual-send (zt-virtual-send (find-nwid-for-nif netif) src dst ethertype vlanid bp)))
+       ERR_OK))))
 
 ;; Config
 
 (zt-virtual-config
  (lambda (node userptr nwid netptr op config)
+   #;(thread-yield!) ;; KILLER? - No
    (debug 'CONFIG op)
-   ;;(debug 'CFG (zt-virtual-config-base->vector config))
+   (debug 'CFG (zt-virtual-config-base->vector config))
    #t))
 
 ;; Optional
@@ -554,7 +619,8 @@
  (list here zt-online zt-up)
  post:
  (lambda ()
-   (if (or (zt-online) (zt-up))
+   (debug 'CONTACTING (list (here) (zt-online) (zt-up)))
+   (if (and (here) (or (zt-online) (zt-up)))
        (contact-other-party)
        (tried-to-contact #f))))
 

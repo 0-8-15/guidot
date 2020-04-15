@@ -233,7 +233,7 @@
        thunk)))))
 
 (define kick!
-  (let ((triggers (make-observable-triggers async: 'kick)))
+  (let ((triggers (make-observable-triggers async: #t #; 'kick)))
     (lambda (thunk)
       (parameterize
        ((current-trigger-handler triggers)
