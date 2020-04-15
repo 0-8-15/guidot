@@ -1,6 +1,6 @@
 #|
 
-* Thread Model
+* Threat Model
 
 - (zt-send! to type data)  :: ;; EXPORT - send user message (u8vector)
 
@@ -99,6 +99,9 @@ END
 
 (define zt->gamsock-socket-address
   (c-lambda (zt-socket-address) gamsock-socket-address "___return(___arg1);"))
+
+(define gamsock->zt-socket-address
+  (c-lambda (gamsock-socket-address) zt-socket-address "___return(___arg1);"))
 
 (c-define-type zt-message (pointer "ZT_UserMessage" zt-message))
 
@@ -279,6 +282,21 @@ c-declare-end
 
 ;;* ZT Network
 
+(define zt-lock! #!void)
+(define zt-unlock! #!void)
+
+(define (zt-lock thunk) (set! zt-lock! thunk))
+(define (zt-unlock thunk) (set! zt-unlock! thunk))
+
+#;(define zt-unlock!
+  (let ((mux (make-mutex 'zt)))
+    (set! zt-lock! (lambda () (debug 'zt-lock-O (current-thread))
+                           (debug 'zt-lock-state: (mutex-state mux))
+                           (if (eq? (mutex-state mux) (current-thread))
+                               (debug "\nDEAD " 'LOCK))
+                           (mutex-lock! mux) (debug 'zt-lock-P  (current-thread))))
+    (lambda () (debug 'zt-lock-V  (current-thread)) (mutex-unlock! mux))))
+
 ;;** ZT Network Wire
 ;;*** ZT Network Wire Incoming
 
@@ -287,18 +305,22 @@ c-declare-end
 (define (zt-wire-packet-process packet from)
   (define doit
     (c-lambda
-     ;; 1     lsock addr           data   7
-     (zt-node int64 zt-socket-address scheme-object size_t) bool #<<END
+     ;; 1     lsock addr              data          7
+     (zt-node int64 gamsock-socket-address scheme-object size_t) bool #<<END
      int rc = -1;
      rc = ZT_Node_processWirePacket(___arg1, NULL, zt_now(), ___arg2, (void *) ___arg3,
              ___CAST(void *,___BODY_AS(___arg4,___tSUBTYPED)), ___arg5, &nextBackgroundTaskDeadline);
      ___return(rc == ZT_RESULT_OK);
 END
 ))
-  (and
+  (when
    (zt-up?)
-   (or (doit (zt-prm-zt %%zt-prm) 0 from packet (u8vector-length packet))
-       (error "zt-wire-packet-process: failed"))))
+   ((debug 'wirepacket zt-lock!))
+   (debug 'wirepacket 'in)
+   (let ((r (doit (zt-prm-zt %%zt-prm) 0 from #;(gamsock->zt-socket-address from) packet (u8vector-length packet))))
+     (debug 'wirepacket-out r)
+     (zt-unlock!)
+     (or r (error "zt-wire-packet-process: failed")))))
 
 ;;*** ZT Network Wire Outgoing
 
@@ -373,34 +395,41 @@ c-declare-end
 
 ;;
 (define (zt-virtual-send nwid srcmac dstmac ethertype vlanid payload) ;; EXPORT
-  (assert-zt-up! zt-virtual-send)
-  ((c-lambda
-    ;; 1     2 nwid         3 src          4 dst          5 ethertype  6 vlan       7
-    (zt-node unsigned-int64 unsigned-int64 unsigned-int64 unsigned-int unsigned-int scheme-object size_t)
-    bool #<<END
-    ___return(ZT_Node_processVirtualNetworkFrame(___arg1, NULL, zt_now(),
+  (define virtual-send
+    (c-lambda
+     ;; 1     2 nwid         3 src          4 dst          5 ethertype  6 vlan       7
+     (zt-node unsigned-int64 unsigned-int64 unsigned-int64 unsigned-int unsigned-int scheme-object size_t)
+     bool #<<END
+     ___return(ZT_Node_processVirtualNetworkFrame(___arg1, NULL, zt_now(),
                 ___arg2, ___arg3, ___arg4, ___arg5, ___arg6,
                 ___CAST(void *, ___BODY_AS(___arg7, ___tSUBTYPED)), ___arg8,
                 &nextBackgroundTaskDeadline)
               == ZT_RESULT_OK);
 END
-)
-   (zt-prm-zt %%zt-prm) nwid srcmac dstmac ethertype vlanid payload (u8vector-length payload)))
+))
+  (assert-zt-up! zt-virtual-send)
+  (zt-lock!)
+  (let ((r (virtual-send (zt-prm-zt %%zt-prm) nwid srcmac dstmac ethertype vlanid payload (u8vector-length payload))))
+    (zt-unlock!) r))
 
 (define (zt-virtual-send/ptr nwid srcmac dstmac ethertype vlanid data len) ;; EXPORT
-  (assert-zt-up! zt-virtual-send)
-  ((c-lambda
-    ;; 1     2 nwid         3 src          4 dst          5 ethertype  6 vlan       7
-    (zt-node unsigned-int64 unsigned-int64 unsigned-int64 unsigned-int unsigned-int void* size_t)
-    bool #<<END
-    ___return(ZT_Node_processVirtualNetworkFrame(___arg1, NULL, zt_now(),
+  (define doit
+    (c-lambda
+     ;; 1     2 nwid         3 src          4 dst          5 ethertype  6 vlan       7
+     (zt-node unsigned-int64 unsigned-int64 unsigned-int64 unsigned-int unsigned-int void* size_t)
+     bool #<<END
+     ___return(ZT_Node_processVirtualNetworkFrame(___arg1, NULL, zt_now(),
                  ___arg2, ___arg3, ___arg4, ___arg5, ___arg6,
                  ___arg7, ___arg8,
                  &nextBackgroundTaskDeadline)
               == ZT_RESULT_OK);
 END
-)
-   (zt-prm-zt %%zt-prm) nwid srcmac dstmac ethertype vlanid data len))
+))
+  (assert-zt-up! zt-virtual-send)
+  (zt-lock!)
+  (let ((r (doit (zt-prm-zt %%zt-prm) nwid srcmac dstmac ethertype vlanid data len)))
+    (zt-unlock!)
+    r))
 
 ;;* ZT Config
 
@@ -524,7 +553,12 @@ END
 ) (zt-prm-zt %%zt-prm)))
   (define (maintainance-loop)
     (thread-sleep! (max background-period (zt-background-period/lower-limit)))
-    (when (zt-up?) (%%checked maintainance (((zt-maintainance) %%zt-prm maintainance)) #f) (maintainance-loop)))
+    (when
+     (zt-up?)
+     (zt-lock!)
+     (%%checked maintainance (((zt-maintainance) %%zt-prm maintainance)) #f)
+     (zt-unlock!)
+     (maintainance-loop)))
   ;; Should we lock?  No: Better document single-threadyness!
   (if (zt-up?) (error "ZT already running"))
   (let ((prm (make-zt-prm #f udp (make-thread recv-loop 'zt-receiver)))
@@ -546,7 +580,9 @@ END
       (let ((udp (zt-prm-udp %%zt-prm))
             (zt (zt-prm-zt %%zt-prm)))
         (set! %%zt-prm #f)
+        (zt-lock!)
         ((c-lambda (zt-node) void "ZT_Node_delete(___arg1);") zt)
+        (zt-unlock!)
         (close-socket udp))))
 
 (define (zt-up?) (and %%zt-prm #t))
@@ -562,48 +598,66 @@ END
 (define (zt-add-local-interface-address! sa) ;; EXPORT
   (unless (socket-address? sa) (error "zt-add-local-interface-address!: illegal argument" sa))
   (assert-zt-up! zt-add-local-interface-address)
-  ((c-lambda
-    (zt-node gamsock-socket-address) bool
-    "___return(ZT_Node_addLocalInterfaceAddress(___arg1, ___arg2));")
-   (zt-prm-zt %%zt-prm) sa))
+  (zt-lock!)
+  (let ((r ((c-lambda
+             (zt-node gamsock-socket-address) bool
+             "___return(ZT_Node_addLocalInterfaceAddress(___arg1, ___arg2));")
+            (zt-prm-zt %%zt-prm) sa)))
+    (zt-unlock!) r))
 
 (define (zt-clear-local-interface-address!) ;; EXPORT
   (assert-zt-up! zt-clear-local-interface-address!)
-  ((c-lambda (zt-node) void "ZT_Node_clearLocalInterfaceAddresses(___arg1);") (zt-prm-zt %%zt-prm)))
+  (zt-lock!)
+  (let ((r ((c-lambda (zt-node) void "ZT_Node_clearLocalInterfaceAddresses(___arg1);") (zt-prm-zt %%zt-prm))))
+    (zt-unlock!) r))
 
 (define (zt-send! to type data) ;; EXPORT - send user message (u8vector)
-  (assert-zt-up! zt-send!)
-  ((c-lambda
-    (zt-node unsigned-int64 unsigned-int64 scheme-object size_t) bool #<<END
-    void *buf = ___CAST(void *,___BODY_AS(___arg4,___tSUBTYPED));
-    ___return(ZT_Node_sendUserMessage(___arg1, NULL, ___arg2, ___arg3, buf, ___arg5));
+  (define doit
+    (c-lambda
+     (zt-node unsigned-int64 unsigned-int64 scheme-object size_t) bool #<<END
+     void *buf = ___CAST(void *,___BODY_AS(___arg4,___tSUBTYPED));
+     ___return(ZT_Node_sendUserMessage(___arg1, NULL, ___arg2, ___arg3, buf, ___arg5));
 END
-) (zt-prm-zt %%zt-prm) to type data (u8vector-length data)))
+))
+  (assert-zt-up! zt-send!)
+  (zt-lock!)
+  (let ((r (doit (zt-prm-zt %%zt-prm) to type data (u8vector-length data))))
+    (zt-unlock!) r))
 
 (define (zt-orbit moon #!optional (seed 0)) ;; EXPORT
+  (define doit
+    (c-lambda
+     (zt-node unsigned-int64 unsigned-int64) bool
+     "___return(ZT_Node_orbit(___arg1, NULL, ___arg2, ___arg3) == ZT_RESULT_OK);"))
   (assert-zt-up! zt-orbit)
-  ((c-lambda
-   (zt-node unsigned-int64 unsigned-int64) bool
-   "___return(ZT_Node_orbit(___arg1, NULL, ___arg2, ___arg3) == ZT_RESULT_OK);")
-   (zt-prm-zt %%zt-prm) moon seed))
+  (zt-lock!)
+  (let ((r (doit (zt-prm-zt %%zt-prm) moon seed)))
+    (zt-unlock!) r))
 
 (define (zt-deorbit moon) ;; EXPORT
+  (define deorbit
+    (c-lambda
+     (zt-node unsigned-int64) bool
+     "___return(ZT_Node_deorbit(___arg1, NULL, ___arg2));"))
   (assert-zt-up! zt-deorbit)
-  ((c-lambda
-   (zt-node unsigned-int64) bool
-   "___return(ZT_Node_deorbit(___arg1, NULL, ___arg2));")
-   (zt-prm-zt %%zt-prm) moon))
+  (zt-lock!)
+  (let ((r (deorbit (zt-prm-zt %%zt-prm) moon)))
+    (zt-unlock!) r))
 
 (define (zt-join network) ;; EXPORT
   (define dojoin (c-lambda (zt-node unsigned-int64) int "___return(ZT_Node_join(___arg1, ___arg2, NULL, NULL));"))
   (assert-zt-up! zt-join)
+  (zt-lock!)
   (let ((rc (dojoin (zt-prm-zt %%zt-prm) network)))
+    (zt-unlock!)
     (or (eqv? rc 0) (error "zt-join: failed for with rc" network rc))))
 
 (define (zt-leave network) ;; EXPORT
   (define doit (c-lambda (zt-node unsigned-int64) int "___return(ZT_Node_leave(___arg1, ___arg2, NULL, NULL));"))
   (assert-zt-up! zt-leave)
+  (zt-lock!)
   (let ((rc (doit network)))
+    (zt-unlock!)
     (or (eqv? rc 0) (error "zt-leave: failed for with rc" network rc))))
 
 (define (zt-multicast-subscribe network group #!optional (adi 0)) ;; EXPORT
@@ -612,7 +666,9 @@ END
      (zt-node unsigned-int64 unsigned-int64 unsigned-int64) int
      "___return(ZT_Node_multicastSubscribe(___arg1, NULL, ___arg2, ___arg3, ___arg4));"))
   (assert-zt-up! zt-multicast-subscribe)
+  (zt-lock!)
   (let ((rc (doit (zt-prm-zt %%zt-prm) network group adi)))
+    (zt-unlock!)
     (or (eqv? rc 0) (error "zt-multicast-subscribe: failed for with rc" network rc))))
 
 (define (zt-multicast-unsubscribe network group #!optional (adi 0)) ;; EXPORT
@@ -621,7 +677,9 @@ END
      (zt-node unsigned-int64 unsigned-int64 unsigned-int64) int
      "___return(ZT_Node_multicastUnsubscribe(___arg1, ___arg2, ___arg3, ___arg4));"))
   (assert-zt-up! zt-multicast-unsubscribe)
+  (zt-lock!)
   (let ((rc (doit (zt-prm-zt %%zt-prm) network group adi)))
+    (zt-unlock!)
     (or (eqv? rc 0) (error "zt-multicast-unsubscribe: failed for with rc" network rc))))
 
 ;;* Inspection

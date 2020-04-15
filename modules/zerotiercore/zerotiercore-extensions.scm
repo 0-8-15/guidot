@@ -16,6 +16,8 @@ c-declare-end
 
 (define (zt-contact-peer id addr #!optional (lsock 0))
   (assert-zt-up! zt-contact-peer)
+  (zt-lock!)
   ((c-lambda (zt-node int char-string gamsock-socket-address) bool "zt_contact_peer")
    (zt-prm-zt %%zt-prm) lsock id addr)
+  (zt-unlock!)
   addr)
