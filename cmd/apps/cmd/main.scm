@@ -13,12 +13,14 @@
     `(thread-start! (make-thread (lambda () (debug 'running ',expr) (debug ',expr ,expr)) ',expr)))
 |#
 
-(eval
+#;(eval
  '(define-macro (maybe-async expr)
-    `(thread-start! (make-thread (lambda () ,expr (debug ',expr )) ',expr))))
+    `(thread-start! (make-thread (lambda () (debug ',expr ,expr)) ',expr))))
 
 (define-macro (maybe-async expr)
-    `(thread-start! (make-thread (lambda () ,expr (debug ',expr ,expr)) ',expr)))
+    `(thread-start! (make-thread (lambda () (debug ',expr ,expr)) ',expr)))
+
+#;(define-macro (maybe-async expr) expr)
 
 (define (or-false pred?) (lambda (x) (or (eq? x #f) (pred? x))))
 
@@ -247,7 +249,6 @@
 (define (find-nwid-for-nif nif) (ctnw))
 
 (define (ds)
-  (lwip-init!)
   (.here 'Dave)
   (zt-start! "/home/u/build/ball/ball/zerotier-server" 9994 background-period: 0.5)
   (zt-add-local-interface-address! (internet-address->socket-address dmeine 0 #;9994))
@@ -255,7 +256,6 @@
   (.zt-started #t))
 
 (define (dc)
-  (lwip-init!)
   (.here 'DaveC)
   (zt-start! "/home/u/build/ball/ball/zerotier-client" 9995 background-period: 0.5)
   (zt-add-local-interface-address! (internet-address->socket-address dmeine 9995))
@@ -263,7 +263,6 @@
   (.zt-started #t))
 
 (define (es)
-  (lwip-init!)
   (.here 'Earline)
   (zt-start! "/home/u/zerotier-server" 9994 background-period: 0.5)
   (zt-add-local-interface-address! (internet-address->socket-address emeine 0 #;9994))
@@ -271,7 +270,6 @@
   (.zt-started #t))
 
 (define (ec)
-  (lwip-init!)
   (zt-start! "/home/u/zerotier-client" 9995 background-period: 0.5)
   (zt-add-local-interface-address! (internet-address->socket-address emeine 9995))
   (zt-join (ctnw))
@@ -296,31 +294,8 @@
 
 ;;* Locking
 
-(define *zt-mux* (make-mutex 'zt))
-
-#|
-;;; Double Locking gambit as this is recursive.
-(zt-lock
- (lambda ()
-   #;(debug 'zt-lock (list 'ztmux (mutex-state *zt-mux*) 'from (current-thread)))
-   (lwip-gambit-lock #;"zt" (with-output-to-string (lambda () (display "zt ") (display (current-thread)))))
-   (mutex-lock! *zt-mux*)))
-(zt-unlock
- (lambda ()
-   (mutex-unlock! *zt-mux*)
-   (lwip-gambit-unlock)))
-|#
-
-(zt-lock
- (lambda ()
-   ;;(debug 'zt-lock (list 'ztmux (mutex-state *zt-mux*) 'from (current-thread)))
-   (mutex-lock! *zt-mux*)))
-(zt-unlock
- (lambda ()
-   ;;(debug 'zt-unlock (current-thread))
-   (mutex-unlock! *zt-mux*)))
-
-;; (zt-lock (lambda () #f))  (zt-unlock (lambda () #f)) ;; should die in zt_contact_peer
+(define (zt-locks-no) ;; should die in zt_contact_peer
+  (zt-locking-set! (lambda () #f))  (zt-unlock (lambda () #f)))
 
 ;;* EVENTS
 
@@ -403,7 +378,7 @@
                     (addr port) (sa->u8 'zt-wire-packet-send2 remaddr)
                     (internet-address->socket-address addr port))))
               (u8vector-copy-from-ptr! u8 0 data 0 len)
-              #;(thread-yield!) ;; KILLER!
+              (thread-yield!) ;; KILLER!
               #;(debug 'remaddr-is-still-ipv4? (internet-socket-address? remaddr))
               #;(debug 'wire-send-via (socket-address->string remaddr))
               #;(eqv? (send-message udp u8 0 #f 0 remaddr) len)
@@ -471,7 +446,7 @@
  (lambda (node userptr thr nodeid socket sa)
    (debug 'PATHCHECK (number->string nodeid 16))
    (receive
-    (addr port) (sa->u8 'zt-path-check sa)
+    (addr port) (sa->u8 'zt-path-check (zt->gamsock-socket-address sa))
     (debug 'PATHCHECK (cons addr port))
     (or (use-external) (is-ip4-local? addr)))))
 
@@ -547,7 +522,7 @@
 (define (lwc)
   (let* ((pcb (tcp-new-ip-type lwip-IPADDR_TYPE_V6))
          (sa (make-6plane-addr (ctnw) (dave-server) (adhoc-port)))
-         (addr (receive (a p) (sa->u8 'tcp-set-all! sa) a)))
+         (addr (receive (a p) (sa->u8 'lwc sa) a)))
     (debug "
 
 
@@ -563,8 +538,6 @@
          (lambda (connection)
            (debug 'ClientConnected connection)
            (lwip-tcp-close connection)))
-        (tcp-set-err! client)
-        (tcp-set-all! client)
         (unless (lwip-ok? (debug 'conn (lwip-tcp-connect client addr (debug 'connecting (adhoc-port)))))
                 (error "lwip-tcp-connect failed"))
         (unless (lwip-ok? (lwip-tcp-flush! (debug 'lwip-tcp-flush! client)))
