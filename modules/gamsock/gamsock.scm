@@ -403,6 +403,7 @@ ___result = sa_un->sun_path;
    (bitwise-and n 255)))
 
 (define (integer->network-order-vector-32 n)
+  ;; NOTE: roughly 1.5 times of lwip-htonl in first tests [2020-04-13].
   (u8vector
    (bitwise-and (arithmetic-shift n -24) 255)
    (bitwise-and (arithmetic-shift n -16) 255)
@@ -421,16 +422,16 @@ ___result = sa_un->sun_path;
    (arithmetic-shift (u8vector-ref v 2) 8)
    (u8vector-ref v 3)))
 
-(define (raise-not-an-ip-address)
-  (error "not an ip address"))
+(define (raise-not-an-ip-address v)
+  (error "not an ip address" v))
 
 (define (check-ip4-address v)
   (let* ((e raise-not-an-ip-address))
-    (if (not (and (u8vector? v) (= (u8vector-length v) 4))) (e))))
+    (if (not (and (u8vector? v) (= (u8vector-length v) 4))) (e v))))
 
 (define (check-ip6-address v)
   (let* ((e raise-not-an-ip-address))
-    (if (not (and (u8vector? v) (= (u8vector-length v) 16))) (e))))
+    (if (not (and (u8vector? v) (= (u8vector-length v) 16))) (e v))))
 
 ; Some important IPv4 address and port constants.
 
@@ -645,20 +646,24 @@ int soc = ___arg1;
 uint8_t *buf = ___CAST(void *,___BODY_AS(___arg2,___tSUBTYPED));
 size_t bufsiz = ___arg4 - ___arg3;
 int fl = ___CAST(int,___INT(___arg3));
-sa_size = c_sockaddr_size((struct sockaddr_storage *)sa);
-___result = sendto(soc, (void*)(buf+___arg3), bufsiz, fl, (struct sockaddr *)sa,sa_size);
+sa_size = c_sockaddr_size(sa);
+___result = sendto(soc, (void*)(buf+___arg3), bufsiz, fl, sa, sa_size);
 C-END
 ))
 
 (define c-recvfrom
   (c-lambda (int scheme-object int socket-address) int #<<C-END
 struct sockaddr_storage *sa = ___arg4;
-socklen_t sa_size;
+socklen_t sa_size = c_sockaddr_size(sa);
 int soc = ___arg1;
 void *buf = ___CAST(void *,___BODY_AS(___arg2,___tSUBTYPED));
 size_t bufsiz = ___CAST(size_t,___INT(___U8VECTORLENGTH(___arg2)));
 int fl = ___CAST(int,___INT(___arg3));
-___result = recvfrom(soc,buf,bufsiz,fl,(struct sockaddr *)sa,&sa_size);
+___result = recvfrom(soc,buf,bufsiz,fl,sa,&sa_size);
+// debug
+if(___result == -1 && errno == EINVAL) {
+ fprintf(stderr, "EIVAL fd: %d, buf: %p sz: %d, fl: %d sa: %p\n", soc, buf, bufsiz, fl, sa);
+}
 C-END
 ))
 (define c-recv
@@ -848,7 +853,7 @@ C-END
 
 (define (send-message sock vec #!optional (start 0) (end #f) (flags 0)
 		      (addr #f))
-  (let ((end (min (or end (u8vector-length vec) end))))
+  (let ((end (if end (min (u8vector-length vec) end) (u8vector-length vec))))
     (if (not (socket? sock))
 	(##raise-type-exception 0 'socket send-message (list sock vec start end flags addr)))
     (if (not (u8vector? vec))
@@ -887,7 +892,7 @@ C-END
 	    (raise-socket-exception-if-error
 	     (lambda ()
 	       (##wait-input-port (macro-socket-port sock))
-	       (thread-sleep! 0.1) ;; Argh
+	       ;; (thread-sleep! 0.1) ;; Argh
 	       (c-recvfrom (macro-socket-fd sock) vec flags addr))
 	     receive-message)))
       ;; (log-debug "received bytes:" size-actually-recvd)
@@ -909,8 +914,8 @@ C-END
           (let* ((size-actually-recvd
                   (raise-socket-exception-if-error
                    (lambda ()
-                     (##wait-input-port (macro-socket-port sock))
-                     (thread-sleep! 0.1) ;; Argh
+                     (##wait-input-port (debug 'recv-m-wait (macro-socket-port sock)))
+                     ;; (thread-sleep! 0.1) ;; Argh
                      (c-recv fd vec flags))
                    recv-message)))
             ;; (log-debug "received bytes:" size-actually-recvd)
