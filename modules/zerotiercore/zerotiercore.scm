@@ -156,10 +156,11 @@ END
 
 (define (u8vector-copy-from-ptr! u8 u8o ptr ptro len)
   ;; TBD: Add range checks
-  (c-lambda
-   (scheme-object size_t void* size_t size_t) scheme-object
-   "memcpy(___CAST(char *,___BODY(___arg1)) + ___arg2, ___CAST(char *,___arg3) + ___arg4, ___arg5);
-    ___return(___arg1);"))
+  ((c-lambda
+    (scheme-object size_t void* size_t size_t) scheme-object
+    "memcpy(___CAST(char *,___BODY(___arg1)) + ___arg2, ___CAST(char *,___arg3) + ___arg4, ___arg5);
+    ___return(___arg1);")
+   u8 u8o ptr ptro len))
 
 (define-custom zt-recv #f) ;; EXPORT HOOK - user messages
 
@@ -282,11 +283,9 @@ c-declare-end
 
 ;;* ZT Network
 
-(define zt-lock! #!void)
-(define zt-unlock! #!void)
+;;** Sledgehammer LOCKing
 
-(define (zt-lock thunk) (set! zt-lock! thunk))
-(define (zt-unlock thunk) (set! zt-unlock! thunk))
+(define zt-lock! #!void)
 
 #;(define zt-unlock!
   (let ((mux (make-mutex 'zt)))
@@ -297,11 +296,21 @@ c-declare-end
                            (mutex-lock! mux) (debug 'zt-lock-P  (current-thread))))
     (lambda () (debug 'zt-lock-V  (current-thread)) (mutex-unlock! mux))))
 
-(define-macro (begin-zt-exclusive expr)
-  (let ((result (gensym 'result)))
-    `(let ((,result (begin (zt-lock) ,expr)))
-       (zt-unlock!)
-       ,result)))
+(define zt-unlock!
+  (let ((mux (make-mutex 'zt)))
+    (set! zt-lock! (lambda () (mutex-lock! mux)))
+    (lambda () (mutex-unlock! mux))))
+
+(define (zt-locking-set! lck ulk) (set! zt-lock! lck) (set! zt-unlock! ulk))
+
+(cond-expand
+ ((or gambit)  ;; TODO: compile variants
+  (define-macro (begin-zt-exclusive expr)
+    (let ((result (gensym 'result)))
+      `(let ((,result (begin (zt-lock!) ,expr)))
+         (zt-unlock!)
+         ,result))))
+ (else (define-macro (begin-zt-exclusive expr) expr)))
 
 ;;** ZT Network Wire
 ;;*** ZT Network Wire Incoming
@@ -724,7 +733,7 @@ END
       memcpy(___arg1, &___arg2->address, (sizeof(struct sockaddr_storage)));
 END
 ) sockaddr ppp)
-    (unless (or (internet6-socket-address? sockaddr)) ;; DEBUG
+    #;(unless (or (internet6-socket-address? sockaddr) (internet-socket-address? sockaddr)) ;; DEBUG
             (error (debug sockaddr "zt-peerpath-address: invalid address encountered") sockaddr))
     sockaddr))
 
