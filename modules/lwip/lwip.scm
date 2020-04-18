@@ -621,6 +621,10 @@ c-declare-end
      x))
    (else (error "lwip-mac->network illegal argument" x))))
 
+(define lwip-mac-multicast? (c-lambda (unsigned-int64) bool "___return((___arg1 & 0x010000000000ULL) != 0);"))
+(define lwip-mac-broadcast? (c-lambda (unsigned-int64) bool "___return(___arg1 == 0xffffffffffffULL );"))
+(define lwip-mac-locally-administered? (c-lambda (unsigned-int64) bool "___return((___arg1 & 0x020000000000ULL) != 0);"))
+
 (define lwip-htons (c-lambda (unsigned-int16) unsigned-int16 "lwip_htons"))
 (define lwip-htonl (c-lambda (unsigned-int32) unsigned-int32 "lwip_htonl"))
 (define lwip-ntohs (c-lambda (unsigned-int16) unsigned-int16 "lwip_ntohs"))
@@ -827,6 +831,34 @@ END
    ___result = result;
 END
 ))
+
+(c-declare #<<END
+static inline int lwip_netif_ip6addr_count(struct netif* netif)
+{
+ int i, result = 0;
+ for (i = 0; i < LWIP_IPV6_NUM_ADDRESSES; i++) {
+  if(!ip6_addr_isinvalid(netif_ip6_addr_state(netif, i))) result++;
+ }
+ return result;
+}
+
+static inline uint64_t lwip_netif_ip6bc_mach(struct netif *netif, unsigned int idx)
+{
+ uint64_t result;
+ if(idx >= LWIP_IPV6_NUM_ADDRESSES) return 0;
+ u32_t *na = netif_ip6_addr(netif, idx);
+ u8_t *a = (u8_t*)na;
+ result = (0x33ll<<40|0x33ll<<32|0xffll<<24|(uint64_t)(a[13])<<16|(uint64_t)(a[14])<<8|a[15]); //|
+ return result;
+}
+
+END
+)
+
+(define lwip-netif-ip6addr-count (c-lambda (netif*) unsigned-int "lwip_netif_ip6addr_count"))
+
+(define lwip-netif-ip6broadcast-mach
+  (c-lambda (netif* unsigned-int) unsigned-int64 "lwip_netif_ip6bc_mach"))
 
 ;;; Network Interface IO
 
@@ -1131,7 +1163,7 @@ END
 (c-declare #<<end-lwip-tcp-event
 err_t lwip_tcp_event(void *arg, struct tcp_pcb *pcb, enum lwip_event event, struct pbuf *p, u16_t size, err_t err)
 {
- return ERR_ABRT; // lwip_tcp_event((GAME_CONTEXT) arg, pcb, event, p, size, err);
+ return scm_lwip_tcp_event((GAME_CONTEXT) arg, pcb, event, p, size, err);
 }
 end-lwip-tcp-event
 )

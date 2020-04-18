@@ -20,7 +20,11 @@
       -> ...
 |#
 
+;;;* Compile Time Configuration
 
+(define-cond-expand-feature zt-locking)
+
+;;;* Macros
 (define-macro (define-c-constant var type . const)
   (let* ((const (if (not (null? const)) (car const) (symbol->string var)))
 	 (str (string-append "___return(" const ");")))
@@ -285,32 +289,36 @@ c-declare-end
 
 ;;** Sledgehammer LOCKing
 
-(define zt-lock! #!void)
-
-#;(define zt-unlock!
-  (let ((mux (make-mutex 'zt)))
-    (set! zt-lock! (lambda () (debug 'zt-lock-O (current-thread))
-                           (debug 'zt-lock-state: (mutex-state mux))
-                           (if (eq? (mutex-state mux) (current-thread))
-                               (debug "\nDEAD " 'LOCK))
-                           (mutex-lock! mux) (debug 'zt-lock-P  (current-thread))))
-    (lambda () (debug 'zt-lock-V  (current-thread)) (mutex-unlock! mux))))
-
-(define zt-unlock!
-  (let ((mux (make-mutex 'zt)))
-    (set! zt-lock! (lambda () (mutex-lock! mux)))
-    (lambda () (mutex-unlock! mux))))
-
-(define (zt-locking-set! lck ulk) (set! zt-lock! lck) (set! zt-unlock! ulk))
-
 (cond-expand
- ((or gambit)  ;; TODO: compile variants
+ (zt-locking
+  (define zt-features-locking #t)
+  (define zt-lock! #!void)
+
+  #;(define zt-unlock!
+    (let ((mux (make-mutex 'zt)))
+      (set! zt-lock! (lambda () (debug 'zt-lock-O (current-thread))
+                             (debug 'zt-lock-state: (mutex-state mux))
+                             (if (eq? (mutex-state mux) (current-thread))
+                                 (debug "\nDEAD " 'LOCK))
+                             (mutex-lock! mux) (debug 'zt-lock-P  (current-thread))))
+      (lambda () (debug 'zt-lock-V  (current-thread)) (mutex-unlock! mux))))
+
+  (define zt-unlock!
+    (let ((mux (make-mutex 'zt)))
+      (set! zt-lock! (lambda () (mutex-lock! mux)))
+      (lambda () (mutex-unlock! mux))))
+
+  (define (zt-locking-set! lck ulk) (set! zt-lock! lck) (set! zt-unlock! ulk))
+
   (define-macro (begin-zt-exclusive expr)
     (let ((result (gensym 'result)))
       `(let ((,result (begin (zt-lock!) ,expr)))
          (zt-unlock!)
          ,result))))
- (else (define-macro (begin-zt-exclusive expr) expr)))
+ (else
+  (define zt-features-locking #f)
+  (define (zt-locking-set! lck ulk) (debug "zt not compiled for zt-locking" 'ignored))
+  (define-macro (begin-zt-exclusive expr) expr)))
 
 ;;** ZT Network Wire
 ;;*** ZT Network Wire Incoming
@@ -946,6 +954,24 @@ c-declare-end
       "___return(g_zt_mac_hton(___arg1));")
      x))
    (else (error "zt-mac->network illegal argument" x))))
+
+(c-declare #<<c-declare-end
+static inline uint64_t sockaddr_to_multicast_mac(struct sockaddr_storage *sa)
+{
+ uint64_t result;
+ uint8_t *a=&((struct sockaddr_in6 *)sa)->sin6_addr;
+ result = (0x33ll<<40|0x33ll<<32|0xffll<<24|(uint64_t)(a[13])<<16|(uint64_t)(a[14])<<8|a[15]); //|
+ return result;
+}
+
+c-declare-end
+)
+
+(define %%zt-socket-address6->nd6-multicast-mac
+  (c-lambda (zt-socket-address) unsigned-int64 "sockaddr_to_multicast_mac"))
+
+(define gamsock-socket-address->nd6-multicast-mac
+  (c-lambda (gamsock-socket-address) unsigned-int64 "sockaddr_to_multicast_mac"))
 
 (c-declare #<<c-declare-end
 
