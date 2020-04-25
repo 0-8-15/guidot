@@ -232,11 +232,34 @@
        (lambda (ex) (stm-consistency-error "toplevel-execute!" ex))
        thunk)))))
 
-(define kick!
-  (let ((triggers (make-observable-triggers async: #t #; 'kick)))
+#;(define kick!
+  (let ((triggers (make-observable-triggers async: #t)))
     (lambda (thunk)
       (parameterize
        ((current-trigger-handler triggers)
+        #;($stm-retry-limit 0)
+        #;($debug-trace-triggers #t)
+        )
+       ;; before ..??
+       (with-current-transaction thunk)))))
+
+(define %kick-style 'async)
+
+(define $kick-style
+  (case-lambda
+   (() %kick-style)
+   ((x) (set! %kick-style x))))
+
+(define kick!
+  (let ((triggers-async (make-observable-triggers async: #t))
+        (triggers-kick (make-observable-triggers async: 'kick)))
+    (lambda (thunk)
+      (parameterize
+       ((current-trigger-handler
+         (case %kick-style
+           ((async) triggers-async)
+           ((sync) triggers-kick)
+           (else #f)))
         #;($stm-retry-limit 0)
         #;($debug-trace-triggers #t)
         )

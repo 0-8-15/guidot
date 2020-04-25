@@ -66,6 +66,9 @@
   $implicit-current-transactions
   (stm-current-global-clock exported-stm-current-global-clock)
   $debug-trace-triggers
+  ;; Debug & Deprecated
+  ;;
+  $kick-style
   ))
 
 (let ()
