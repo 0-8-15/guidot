@@ -24,9 +24,10 @@ extern const ip6_addr_t *gambit_lwip_nd6_get_gw(struct netif *netif, const ip6_a
  */
 //#define MEMP_MEM_MALLOC 1
 
-/*
+//*
+//#define LWIP_IPV6_SCOPES 0
 #define LWIP_DEBUG 0xffff
-#define LWIP_DBG_TYPES_ON 128
+#define LWIP_DBG_TYPES_ON LWIP_DBG_ON
 #define NETIF_DEBUG LWIP_DBG_ON
 #define API_LIB_DEBUG LWIP_DBG_ON
 #define IP_DEBUG LWIP_DBG_ON
@@ -35,8 +36,11 @@ extern const ip6_addr_t *gambit_lwip_nd6_get_gw(struct netif *netif, const ip6_a
 #define IP6_DEBUG LWIP_DBG_ON
 #define NETIF_DEBUG LWIP_DBG_ON
 #define TCPIP_DEBUG LWIP_DBG_ON
-#define ETHARP_DEBUG LWIP_DBG_ON
+//#define ETHARP_DEBUG LWIP_DBG_ON
 #define SYS_DEBUG LWIP_DBG_ON
+#define ICMP_DEBUG LWIP_DBG_ON
+#define LWIP_IPV6_SCOPES_DEBUG LWIP_DBG_ON
+#define PBUF_DEBUG LWIP_DBG_ON
 //*/
 
 /*
