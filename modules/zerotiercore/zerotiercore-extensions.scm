@@ -16,8 +16,15 @@ c-declare-end
 
 (define (zt-contact-peer id addr #!optional (lsock 0))
   (assert-zt-up! zt-contact-peer)
-  (zt-lock!)
-  ((c-lambda (zt-node int char-string gamsock-socket-address) bool "zt_contact_peer")
-   (zt-prm-zt %%zt-prm) lsock id addr)
-  (zt-unlock!)
+  (begin-zt-exclusive
+   ((c-lambda (zt-node int char-string gamsock-socket-address) bool "zt_contact_peer")
+    (zt-prm-zt %%zt-prm) lsock id addr))
   addr)
+
+(c-declare "extern bool ZT_Node_setConfigItem(ZT_Node* node, uint64_t nwid, int item, uint64_t value);")
+
+(define (zt-set-config-item! nwid item value)
+  (assert-zt-up! zt-set-config-item)
+  (begin-zt-exclusive
+   ((c-lambda (zt-node unsigned-int64 int unsigned-int64) bool "ZT_Node_setConfigItem")
+    (zt-prm-zt %%zt-prm) nwid item value)))

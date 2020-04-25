@@ -459,7 +459,7 @@ END
  (let ((opsym (let ((config-operations '#(#f up update down destroy)))
                 (lambda (op) (vector-ref config-operations op)))))
    ;; TODO: Make sure multicastSubscribe() or other network-modifying
-   ;; methods re disabled while handling is running as it may
+   ;; methods are disabled while handling is running as it may
    ;; deadlock.  Would it actually?
    (if (procedure? (zt-virtual-config))
        (%%checked
@@ -500,11 +500,11 @@ c-declare-end
 (c-define
  (zt_path_lookup node uptr thr nodeid family sa)
  (zt-node void* void* unsigned-int64 int zt-socket-address)
- int "scm_zt_path_lookup" "static"
+ bool "scm_zt_path_lookup" "static"
  (if (procedure? (zt-path-lookup))
      (%%checked zt_path_lookup ((zt-path-lookup) node uptr thr nodeid family sa) 0)
      ;; otherwise nothing returned
-     0))
+     #f))
 
 (c-declare #<<c-declare-end
 static int
@@ -798,6 +798,7 @@ END
 (define zt-virtual-config-bridge (c-lambda (zt-virtual-config*) bool "___return(___arg1->bridge);"))
 (define zt-virtual-config-broadcast (c-lambda (zt-virtual-config*) bool "___return(___arg1->broadcastEnabled);"))
 (define zt-virtual-config-porterror (c-lambda (zt-virtual-config*) int "___return(___arg1->portError);"))
+(define zt-virtual-config-netconf-revision (c-lambda (zt-virtual-config*) int "___return(___arg1->netconfRevision);"))
 (define zt-virtual-config-assigned-address-count
   (c-lambda (zt-virtual-config*) size_t "___return(___arg1->assignedAddressCount);"))
 (define zt-virtual-config-route-count
@@ -817,6 +818,7 @@ END
               zt-virtual-config-bridge
               zt-virtual-config-broadcast
               zt-virtual-config-porterror
+              zt-virtual-config-netconf-revision
               zt-virtual-config-assigned-address-count
               zt-virtual-config-route-count
               zt-virtual-config-multicast-subscription-count
@@ -858,6 +860,7 @@ END
 (define zt-query-network-bridge (make-zt-network-config-query zt-virtual-config-bridge)) ;; EXPORT
 (define zt-query-network-broadcast (make-zt-network-config-query zt-virtual-config-broadcast)) ;; EXPORT
 (define zt-query-network-porterror (make-zt-network-config-query zt-virtual-config-porterror)) ;; EXPORT
+(define zt-query-network-netconf-revision (make-zt-network-config-query zt-virtual-config-netconf-revision)) ;; EXPORT
 (define zt-query-network-assigned-address-count (make-zt-network-config-query zt-virtual-config-assigned-address-count)) ;; EXPORT
 (define zt-query-network-route-count (make-zt-network-config-query zt-virtual-config-route-count)) ;; EXPORT
 (define zt-query-network-multicast-subscription-count (make-zt-network-config-query zt-virtual-config-multicast-subscription-count)) ;; EXPORT
