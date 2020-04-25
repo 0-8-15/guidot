@@ -1,5 +1,17 @@
 (define-macro (XXX-lwip-initial) #t)
 
+(define-macro (define-cond-expand-feature-value v)
+  (let ((v (eval v)))
+    `(define-cond-expand-feature ,v)))
+
+(define-cond-expand-feature soso)
+
+;; ($kick-style 'sync)
+
+#;(cond-expand
+ (soso
+  (display "gaga\n") (exit 0)))
+
 ;; LambdaNative console template
 
 (include "observable-notational-conventions.scm")
@@ -17,10 +29,15 @@
  '(define-macro (maybe-async expr)
     `(thread-start! (make-thread (lambda () (debug ',expr ,expr)) ',expr))))
 
-(define-macro (maybe-async expr)
-    `(thread-start! (make-thread (lambda () (debug ',expr ,expr)) ',expr)))
+(define-macro (mustbe-async expr)
+    `(thread-start! (make-thread (lambda () ,expr #;(debug ',expr ,expr)) ',expr)))
 
+(define-macro (maybe-async expr) `(mustbe-async ,expr))
 #;(define-macro (maybe-async expr) expr)
+
+(define-macro (begin-after-return! expr)
+  ;; Schedule EXPR for execution (one way or another) and return nonsense.
+  `(begin (mustbe-async ,expr) #!void))
 
 (define (or-false pred?) (lambda (x) (or (eq? x #f) (pred? x))))
 
@@ -107,7 +124,7 @@
 
 ;; (zt-peers-info)
 
-;; (.use-external #t)
+;; (.enable-external #t)
 
 (define (dave-server) #x6f318c4783)
 
@@ -125,6 +142,34 @@
     ((2) nng-nw-o)
     ((3) nng-nw-c)
     (else x)))
+
+(define (icmp6-echo-request from to)
+  ;; dave to earline: (icmp6-echo-request #x6f318c4783 #xf3de84af82)
+  (let ((dst (zt-network+node->mac (ctnw) to))
+        (src (zt-network+node->mac (ctnw) from))
+        (p (make-u8vector (+ SIZEOF_ETH_HDR SIZEOF_IP6_HDR SIZEOF_ICMP6_HDR))))
+    (u8vector/n48h-set! p 0 dst)
+    (u8vector/n48h-set! p 6 src)
+    (u8vector/n16h-set! p 12 ETHTYPE_IPV6)
+    (let ((o SIZEOF_ETH_HDR)
+          (ip6src (make-6plane-addr (ctnw) from (adhoc-port)))
+          (ip6dst (make-6plane-addr (ctnw) to (adhoc-port))))
+      (u8vector-set! p (+ o 0) #x60)    ;; IPv6 class 0 upper bit
+      ;; left as zero
+      (u8vector/n16h-set! p (+ o 4) SIZEOF_ICMP6_HDR) ;; Payload
+      (u8vector-set! p (+ o 6) 58)      ;; IPv6-ICMP
+      (u8vector-set! p (+ o 7) 255)     ;; hop limit
+      (receive
+       (addr port) (sa->u8 'icmp-echo-request ip6src)
+       (subu8vector-move! addr 0 (u8vector-length addr) p (+ o 8)))
+      (receive
+       (addr port) (sa->u8 'icmp-echo-request ip6dst)
+       (subu8vector-move! addr 0 (u8vector-length addr) p (+ o 24))))
+    (let ((o (+ SIZEOF_ETH_HDR SIZEOF_IP6_HDR)))
+      ;; ICMP6 Ping
+      (u8vector-set! p (+ o 0) 128) ;; type EREQ
+      )
+    p))
 
 #;(define-sense*
   tnw
@@ -201,14 +246,25 @@
          " at addr " (ip-address->string ip6-addr) " port " (number->string port)
          "\n"))))
    (lambda ()
+     (s)
      (display (iam (ctnw) (adhoc-port)) (current-error-port)))))
 
-(define .use-external
+(define .external-enabled
   (SENSOR
    initial: #f
-   filter: (lambda (o n) #f) ;; BEWARE: forcing #f here!!!
-   name: 'use-external))
-(define use-external (.use-external))
+   filter: (lambda (o n) n)
+   name: 'external-enabled))
+(define .ea
+  .external-enabled) ;; shortcut
+(define external-enabled (.external-enabled))
+
+(define should-use-external (PIN))
+
+(define use-external (PIN))
+
+(wire!
+ (list external-enabled should-use-external)
+ post: (lambda () (use-external (and (external-enabled) (should-use-external)))))
 
 (define .here
   (SENSOR
@@ -243,8 +299,27 @@
     (debug 'lwip-mac-integer->string (lwip-mac-integer->string (lwip-mac:host->network (zt-network+node->mac nwid ndid))))
     (debug 'lwip-mac/host-integer->string (lwip-mac-integer->string (zt-network+node->mac nwid ndid)))
     (debug 'lwip-netif-mac->string (lwip-netif-mac->string nif))
-    (lwip_init_interface_IPv6 nif (make-6plane-addr nwid ndid (adhoc-port)))
+    #;(let ((addr (make-6plane-addr nwid ndid (adhoc-port))))
+      (lwip_init_interface_IPv6 nif addr)
+      (zt-multicast-subscribe nwid (dbgmac 'MCMAC (gamsock-socket-address->nd6-multicast-mac addr))))
+    (begin
+      (lwip_init_interface_IPv6 nif (make-6plane-addr nwid ndid (adhoc-port)))
+      (do ((n (- (debug 'NMacs (lwip-netif-ip6addr-count nif)) 1) (- n 1)))
+          ((= n -1))
+        (zt-multicast-subscribe nwid (dbgmac 'MCMAC (lwip-netif-ip6broadcast-mach nif n)))))
     nif))
+
+(define (nw-send! u8vec)
+  ;; Dave to Earline: (nw-send! (icmp6-echo-request #x6f318c4783 #xf3de84af82))
+  (define netif (*nwif*))
+  (unless netif (error "no network"))
+  (let* ((len (u8vector-length u8vec))
+         (pbuf (or (make-pbuf-raw+ram len) (error "pbuf allocation failed"))))
+    (pbuf-copy-from-u8vector! pbuf 0 u8vec 0 len)
+    (debug 'nw-send!passing-to 'lwip)
+    ;; copy it back once more until this works
+    (display-eth-packet/offset (pbuf->u8vector pbuf) 0 (current-error-port))
+    (lwip-send-ethernet-input/pbuf! netif pbuf)))
 
 (define (find-nwid-for-nif nif) (ctnw))
 
@@ -287,6 +362,10 @@
                    sock)))
         (zt-node-init! udp background-period: background-period))
       (begin
+        (kick!
+         (lambda ()
+           (zt-up (debug 'zt-up #t))
+           (should-use-external #t)))
         ;; maybe manually orbit?
         (for-each zt-orbit '(#x183ae34a4c #xc72fe7ef99))
         #t)
@@ -301,10 +380,13 @@
 
 (zt-recv
  (lambda (from type data)
-   (debug 'RECV-from-type-data (list from type data))
    (case type
-     ((2) (lwc)) ;; tcp test should connect back now
-     (else #f))))
+     ((2) ;; tcp test should connect back now
+      (debug 'RECV-from:test (list from type))
+      (lwc0))
+     (else
+      (debug 'RECV-from-type-data (list from type data))
+      #f))))
 
 #;(define-sense
   zt-online
@@ -325,18 +407,19 @@
 
 (zt-event
  (lambda (node userptr thr event payload)
-   (debug 'ZT-EVENT event)
    (case event
-     ((UP)
-      (kick!
-       (lambda ()
-         (zt-up (debug 'zt-up #t))
-         (use-external #t))) )
+     ((UP) ;; UP comes BEFORE the initialization is completed! Don't use it.
+      (debug 'ZT-EVENT event) )
      ((ONLINE OFFLINE)
+      (debug 'ZT-EVENT event)
       (kick!
        (lambda ()
-         (use-external #f)
-         (zt-online event)))))))
+         #;(should-use-external #f)
+         (zt-online event))))
+     ((TRACE)
+      (debug 'ZT-TRACE ((c-lambda ((pointer void)) char-string "___return(___arg1);") payload))
+      (debug 'ZT-CFG (zt-query-network-config-base->vector (ctnw))))
+     (else (debug 'ZT-EVENT event)))))
 
 #;(zt-wire-packet-send
  (lambda (udp socket remaddr data ttl)
@@ -376,7 +459,9 @@
                   #;(remaddr
                    (receive
                     (addr port) (sa->u8 'zt-wire-packet-send2 remaddr)
-                    (internet-address->socket-address addr port))))
+                  (internet-address->socket-address addr port))))
+              (unless (eqv? (lwip-gambit-locked?) 1) (error "locking issue"))
+              ;; This COULD happen to copy from another threads stack!
               (u8vector-copy-from-ptr! u8 0 data 0 len)
               (thread-yield!) ;; KILLER!
               #;(debug 'remaddr-is-still-ipv4? (internet-socket-address? remaddr))
@@ -393,17 +478,21 @@
  ;; It's (currently) important that LWIP_TCPIP_CORE_LOCKING_INPUT is
  ;; not set.
  (lambda (node userptr thr nwid netptr srcmac dstmac ethertype vlanid payload len)
+   (define ethtp (ethertype/host-decor ethertype))
    (dbgmac 'VRECV-SRCMAC srcmac)
    (dbgmac 'VRECV-DSTMAC dstmac)
-   (debug 'VRECV-ethertype (ethertype/host-decor ethertype))
+   (debug 'VRECV-ethertype ethtp)
    (debug 'VRECV len)
    (debug 'netptr netptr)
+   (if (eq? ethtp 'ETHTYPE_IPV6)
+       (let ((u8p (make-u8vector len)))
+         (u8vector-copy-from-ptr! u8p 0 payload 0 len)
+         (display-ip6-packet/offset u8p 0 (current-error-port))))
    (let ((nif (find-nif dstmac)))
      (if nif
          (lwip-send-ethernet-input! nif (lwip-mac:host->network srcmac) (lwip-mac:host->network dstmac) ethertype payload len)
          (begin
-           (debug 'DROP:VRECV-DSTMAC dstmac)
-           -1)))))
+           (debug 'DROP:VRECV-DSTMAC dstmac))))))
 
 (define (ethertype/host-decor etht)
   (cond
@@ -421,23 +510,40 @@
    (let ((src (lwip-mac:network->host src))
          (dst (lwip-mac:network->host dst))
          (ethertype ethertype))
+     (define ethtp (ethertype/host-decor ethertype))
      (debug 'lwip-ethernet-send-to-zt pbuf)
      (dbgmac 'src src)
      (dbgmac 'dst dst)
-     (debug 'EtherType (ethertype/host-decor ethertype))
+     (debug 'EtherType ethtp)
+     #;(display-eth-packet/offset pbuf 0 (current-error-port))
      (let ((vlanid 0)
-           (bp (pbuf->u8vector pbuf))) ;; FIXME: avoid the copy
+           (bp (pbuf->u8vector pbuf SIZEOF_ETH_HDR))) ;; FIXME: avoid the copy
        (debug 'Packt-len (u8vector-length bp))
+       (cond
+        ((eq? ethtp 'ETHTYPE_IPV6) (display-ip6-packet/offset bp 0 (current-error-port))))
        (maybe-async (debug 'DONE:zt-virtual-send (zt-virtual-send (find-nwid-for-nif netif) src dst ethertype vlanid bp)))
+       (debug 'lwip-ethernet-send 'return-ok)
        ERR_OK))))
 
 ;; Config
+
+(define config-helper
+  (thread-start!
+   (make-thread
+    (lambda ()
+      (let loop ()
+        (thread-receive)
+        (zt-set-config-item! (ctnw) 2 16)
+        (loop))))))
 
 (zt-virtual-config
  (lambda (node userptr nwid netptr op config)
    #;(thread-yield!) ;; KILLER? - No
    (debug 'CONFIG op)
    (debug 'CFG (zt-virtual-config-base->vector config))
+   ;; set multicast limit
+   ;;(thread-send config-helper #t)
+   ;;(if (eqv? nwid (ctnw)) (maybe-async (debug 'set-mc-limit (zt-set-config-item! nwid 2 16))))
    #t))
 
 ;; Optional
@@ -445,22 +551,27 @@
 (zt-path-check
  (lambda (node userptr thr nodeid socket sa)
    (debug 'PATHCHECK (number->string nodeid 16))
+   ;; (debug 'PATHCHECK:gamit-locked? (lwip-gambit-locked?))
+   (unless (eqv? (lwip-gambit-locked?) 1) (error "locking issue, zt-path-check"))
    (receive
     (addr port) (sa->u8 'zt-path-check (zt->gamsock-socket-address sa))
     (debug 'PATHCHECK (cons addr port))
     (or (use-external) (is-ip4-local? addr)))))
 
+
+;; FIXME, CRAZY: Just intercepting here causes havoc under valgrind!
+($kick-style 'sync)
 (zt-path-lookup
  (lambda (node uptr thr nodeid family sa)
    ;; (debug 'LOOKUP (number->string nodeid 16))
    (debug 'LOOKUP (hexstr nodeid 12))
-   (debug 'LooupFamily family)
+   (debug 'LookupFamily family)
    #;(debug 'LookupSA (and sa (sa->u8 'zt-path-lookup sa)))
-   0))
+   #f))
 
 (zt-maintainance
  (lambda (prm thunk)
-   #;(debug 'zt-maintainance 'now)
+   #; (debug 'zt-maintainance (lwip-gambit-locked?))
    thunk))
 
 ;; this will provide an interactive prompt
@@ -499,7 +610,7 @@
 
 (define (on-tcp-poll ctx connection)
   (debug 'UpsPOLL connection)
-  (debug 'lwip-tcp-flush! (lwip-err (lwip-tcp-flush! connection)))
+  ;; (debug 'lwip-tcp-flush! (lwip-err (lwip-tcp-flush! connection)))
   ERR_OK)
 
 (define (on-tcp-error ctx err)
@@ -508,7 +619,7 @@
   ERR_OK)
 
 (on-tcp-event
- (lambda (ctx pcb event pbuf size err)
+ (lambda (ctx pcb e pbuf size err)
    ;; NOTE: This passes along what the lwIP callback API did.
    (cond
     ((eq?  LWIP_EVENT_ACCEPT e) (on-tcp-accept ctx pcb err))
@@ -517,7 +628,11 @@
     ((eq?  LWIP_EVENT_CONNECTED e) (on-tcp-connect ctx pcb err))
     ((eq?  LWIP_EVENT_POLL e) (on-tcp-poll ctx pcb))
     ((eq?  LWIP_EVENT_ERR e) (on-tcp-error ctx err))
-    (else (debug "on-tcp-event: unkown event" event) ERR_ARG))))
+    (else (debug "on-tcp-event: unkown event" e) ERR_ARG))))
+
+(define .connecting (SENSOR))
+(define connecting (.connecting))
+(define (lwc0) (if (connecting) (lwc)))
 
 (define (lwc)
   (let* ((pcb (tcp-new-ip-type lwip-IPADDR_TYPE_V6))
@@ -542,13 +657,13 @@
                 (error "lwip-tcp-connect failed"))
         (unless (lwip-ok? (lwip-tcp-flush! (debug 'lwip-tcp-flush! client)))
                 (error "lwip-tcp-flush! failed"))
-        #;(debug 'lws 'waiting-for-callback)
+        (debug 'lws 'waiting-for-callback)
         #;(lambda () (debug 'lws 'post-post) #f))))
 
 (define lws-listener (PIN))
 
 (define (lws-listening!)
-  (and (lws-listener) (zt-send! (earline-server) 2 (object->u8vector "listening"))))
+  (and (lws-listener) (begin-after-return! (zt-send! (earline-server) 2 (object->u8vector "listening")))))
 
 (wire! lws-listener post: lws-listening!)
 
@@ -588,13 +703,17 @@
       (tried-to-contact #t))
   #!void)
 
+(define .contacting (SENSOR initial: #f pred: boolean?))
+(define contacting (.contacting))
+
 (wire!
- (list here zt-online zt-up)
+ (list here zt-online zt-up contacting)
  post:
  (lambda ()
-   (debug 'CONTACTING (list (here) (zt-online) (zt-up)))
-   (if (and (here) (or (zt-online) (zt-up)))
-       (contact-other-party)
+   (if (and (contacting) (here) (or (zt-online) (zt-up)))
+       (begin
+         (debug 'CONTACTING (list (here) (zt-online) (zt-up)))
+         (begin-after-return! (contact-other-party)))
        (tried-to-contact #f))))
 
 (wire!
@@ -604,6 +723,18 @@
  (lambda () (if (and (*nwif*) (tried-to-contact) (not (lws-listener))) (lws))))
 
 ;;; NIXDA |#
+
+(define (s)
+  (for-each
+   display
+   `(,(here) " started " ,(zt-started) " up " ,(zt-up) " online " ,(zt-online)
+     " nw " ,(number->string (ctnw) 16)
+     ,(if (external-enabled) " external (enabled) using " " external (disabled) using ")
+     ,(use-external)
+     " contacting " ,(contacting)
+     " connecting " ,(connecting)
+     " kick style " ,($kick-style)
+     "\n")))
 
 (define (system-command-line)
   (let loop ((n (system-cmdargc)) (r '()))
@@ -615,7 +746,7 @@
   (with-exception-catcher
    (lambda (e)
      (##default-display-exception e (current-error-port))
-     (for-each display (list (exception->string e) "\n")) #f)
+     #;(for-each display (list (exception->string e) "\n")) #f)
    (lambda () (##repl-debug #f #t)))
   (replloop))
 
