@@ -83,44 +83,7 @@ c-declare-end
     (lambda (nr)
       (vector-ref all (* nr -1)))))
 
-(define-c-constant ETHTYPE_IP unsigned-int)
-(define-c-constant ETHTYPE_ARP unsigned-int)
-(define-c-constant ETHTYPE_WOL unsigned-int)
-(define-c-constant ETHTYPE_RARP unsigned-int)
-(define-c-constant ETHTYPE_VLAN unsigned-int)
-(define-c-constant ETHTYPE_IPV6 unsigned-int)
-(define-c-constant ETHTYPE_PPPOEDISC unsigned-int)
-(define-c-constant ETHTYPE_PPPOE unsigned-int)
-(define-c-constant ETHTYPE_JUMBO unsigned-int)
-(define-c-constant ETHTYPE_PROFINET unsigned-int)
-(define-c-constant ETHTYPE_ETHERCAT unsigned-int) ;; Ethernet for control automation technology
-(define-c-constant ETHTYPE_LLDP unsigned-int)
-(define-c-constant ETHTYPE_SERCOS unsigned-int) ;; Serial real-time communication system
-(define-c-constant ETHTYPE_MRP unsigned-int) ;; Media redundancy protocol
-(define-c-constant ETHTYPE_PTP unsigned-int) ;; Precision time protocol
-(define-c-constant ETHTYPE_QINQ unsigned-int) ;; Q-in-Q, 802.1ad
-
-(define (ethertype/host->symbol x)
-  (cond
-   ((eqv? x ETHTYPE_IP) 'ETHTYPE_IP)
-   ((eqv? x ETHTYPE_ARP) 'ETHTYPE_ARP)
-   ((eqv? x ETHTYPE_WOL) 'ETHTYPE_WOL)
-   ((eqv? x ETHTYPE_RARP) 'ETHTYPE_RARP)
-   ((eqv? x ETHTYPE_VLAN) 'ETHTYPE_VLAN)
-   ((eqv? x ETHTYPE_IPV6) 'ETHTYPE_IPV6)
-   ((eqv? x ETHTYPE_PPPOEDISC) 'ETHTYPE_PPPOEDISC)
-   ((eqv? x ETHTYPE_PPPOE) 'ETHTYPE_PPPOE)
-   ((eqv? x ETHTYPE_JUMBO) 'ETHTYPE_JUMBO)
-   ((eqv? x ETHTYPE_PROFINET) 'ETHTYPE_PROFINET)
-   ((eqv? x ETHTYPE_ETHERCAT) 'ETHTYPE_ETHERCAT)
-   ((eqv? x ETHTYPE_LLDP) 'ETHTYPE_LLDP)
-   ((eqv? x ETHTYPE_SERCOS) 'ETHTYPE_SERCOS)
-   ((eqv? x ETHTYPE_MRP) 'ETHTYPE_MRP)
-   ((eqv? x ETHTYPE_PTP) 'ETHTYPE_PTP)
-   ((eqv? x ETHTYPE_QINQ) 'ETHTYPE_QINQ)
-   (else 'lwip-UNKNOWN)))
-
-(define (ethertype/network->symbol x) (ethertype/host->symbol (lwip-htons x)))
+(include "datastructures.scm")
 
 ;;; C Types
 
@@ -184,6 +147,10 @@ c-declare-end
 
 (c-define-type pbuf (pointer (struct "pbuf") pbuf #;"g_release_pbuf"))  ;; MUST NOT have a release function.
 
+(define pbuf-ref (c-lambda (pbuf size_t) unsigned-int8 "pbuf_get_at"))
+(define pbuf-length (c-lambda (pbuf) unsigned-int16 "___return(___arg1->tot_len);"))
+(define pbuf-references (c-lambda (pbuf) unsigned-int "___return(___arg1->ref);"))
+
 ;;;** pbuf->u8vector
 ;;;
 ;;; return fresh u8vector with a COPY of the pbuf section
@@ -191,8 +158,8 @@ c-declare-end
 (define %lwip-allocate-u8vector-for-pbuf
   ;; FIXME: Performance: How to allocate without useless initialization?
   (c-lambda
-   (pbuf) scheme-object
-   "___SCMOBJ result = ___EXT(___alloc_scmobj) (___PSTATE, ___sU8VECTOR, ___arg1->tot_len);
+   (pbuf size_t int) scheme-object
+   "___SCMOBJ result = ___EXT(___alloc_scmobj) (___PSTATE, ___sU8VECTOR, (___arg3 < 0 ? ___arg1->tot_len : ___arg3) - ___arg2);
 if(___FIXNUMP(result)) { fprintf(stderr, \"OH NOOO\\n\"); ___return(___FAL); }
 ___EXT(___release_scmobj)(result);
 ___return(result);"))
@@ -268,28 +235,41 @@ static inline ___SCMOBJ pbuf_to_u8v_copied(___SCMOBJ to, struct pbuf *from, size
  }
  //*/
  bp = ___CAST(char*, ___BODY(to));
- copy_pbuf_to_ptr(bp, from, offset, limit);
+ pbuf_copy_partial(from, bp, limit, offset);
  return to;
 }
 end-pbuf-cdeclare
 )
 
-(define (pbuf->u8vector pbuf #!optional (offset 0) limit)
-  (let ((result (%lwip-allocate-u8vector-for-pbuf pbuf)))
+(define (pbuf->u8vector pbuf #!optional (offset 0) (limit #f))
+  (let ((result (%lwip-allocate-u8vector-for-pbuf pbuf offset (or limit -1))))
     (unless result (error (debug result "allocation failed"))) ;;; ???
     ((c-lambda (scheme-object pbuf size_t size_t) scheme-object "pbuf_to_u8v_copied")
-     result pbuf offset (if limit (min limit (u8vector-length result)) (u8vector-length result)))))
+     result pbuf offset (u8vector-length result))))
 
 (define pbuf-copy-to-ptr!
   (c-lambda (void* pbuf size_t size_t) void "copy_pbuf_to_ptr"))
 
-(define (make-pbuf-raw+ram size)
-  (let ((result ((c-lambda (size_t) pbuf "___return(pbuf_alloc(PBUF_RAW, ___arg1, PBUF_RAM));") size)))
-    (make-will result (c-lambda (pbuf) scheme-object "g_release_pbuf"))
+(define make-pbuf-raw+ram
+  (c-lambda (size_t) pbuf "___return(pbuf_alloc(PBUF_RAW, ___arg1, PBUF_RAM));"))
+
+(define pbuf-release! (c-lambda (pbuf) scheme-object "g_release_pbuf"))
+
+(define pbuf-add-reference! (c-lambda (pbuf) void "pbuf_ref"))
+
+(define (make-pbuf-raw+ram/will size)
+  (let ((result (make-pbuf-raw+ram size)))
+    (make-will result pbuf-release!)
     result))
 
 (define pbuf-copy-from-ptr!
   (c-lambda (pbuf void* size_t size_t) void "copy_pbuf_from_ptr"))
+
+(define pbuf-copy-from-u8vector!
+  (c-lambda
+   (pbuf size_t scheme-object size_t size_t) bool
+   "size_t pbuf_offset=___arg2, input_offset = ___arg4, len = ___arg5;
+___return(pbuf_take_at(___arg1, ___BODY(___arg3) + input_offset, len, pbuf_offset) == ERR_OK);"))
 
 ;;; LOCKING
 
@@ -461,6 +441,11 @@ c-declare-end
 (define lwip-gambit-lock (c-lambda (char-string) void "lwip_gambit_lock"))
 (define lwip-gambit-unlock (c-lambda () void "lwip_gambit_unlock"))
 
+(define lwip-gambit-locked?
+  (c-lambda
+   () int
+   "___return( the_gambit_owner==0 ? 0 : the_gambit_owner==pthread_self() ? 1 : -1 );"))
+
 ;;; Calling lwIP
 
 (define-macro (c-define-with-gambit-locked.0 def type result-type c-name scope TBD-proto TBD-proto-result TBD-exn body)
@@ -531,8 +516,6 @@ c-declare-end
 (define-c-constant LWIP_TCPIP_CORE_LOCKING int)
 
 (define-c-constant LWIP_NETIF_HWADDRHINT int)
-
-(define-c-constant SIZEOF_ETH_HDR size_t "SIZEOF_ETH_HDR")
 
 (define (lwip-tcp-min-sleep) 0.05)
 
@@ -654,6 +637,19 @@ END
    ___return(result);
 END
 ))
+
+(define (lwip-u8-mac->string u8 #!optional (offset 0))
+  (and (>= (+ (u8vector-length u8) offset) 6)
+       ((c-lambda
+         (scheme-object size_t) char-string #<<END
+         char result[ETH_HWADDR_LEN*3];
+         char *body = ___CAST(char *, ___BODY(___arg1));
+         lwip_fill_mac_string(result, ___CAST(struct eth_addr*, body+___arg2));
+         ___return(result);
+END
+)
+        u8 offset)))
+
 #|
 (define lwip-mac-pointer->string
   (c-lambda
@@ -708,7 +704,7 @@ END
 
 ;;; Network Interfaces
 
-(c-define-type socket-address (pointer (struct "sockaddr_storage") socket-address))
+(c-define-type socket-address (nonnull-pointer (struct "sockaddr_storage") socket-address))
 
 (define (netif? obj) (and (foreign? obj) (let ((f (foreign-tags obj))) (and f (eq? (car f) 'netif)))))
 
@@ -716,27 +712,29 @@ END
 
 (c-define
  (lwip-ethernet-send! ethif src dst proto #;0 pbuf)
- ((pointer (struct "ethernetif")) unsigned-int64 unsigned-int64 unsigned-int16 pbuf)
+ ((nonnull-pointer (struct "ethernetif")) unsigned-int64 unsigned-int64 unsigned-int16 pbuf)
  int "Xscm_ether_send" "static"
  (let ((handler (lwip-ethernet-send)))
    (cond
     ((procedure? handler)
      ;;
-     #| Catching errors here was not effective.
+     ;#| Catching errors here was not effective.
+     (debug
+      'Xscm_ether_send-return
       (with-exception-catcher
-      (lambda (ex)
-        (##default-display-exception ex (current-error-port))
-        ERR_IF)
-      (lambda () (debug 'Xscm_ether_send-return (handler netif src dst proto #;0 pbuf))))
-     |#
-     ;; But: maybe we MUST run this asyncrhrouneos right here?
-     (handler netif src dst proto #;0 pbuf))
+       (lambda (ex)
+         (##default-display-exception ex (current-error-port))
+         ERR_IF)
+       (lambda () (handler netif src dst proto #;0 pbuf))))
+     ;;|#
+     ;; But: maybe we MUST run this asynchrouneos right here?
+     #;(handler netif src dst proto #;0 pbuf))
     (else ERR_IF))))
 
 #|
 (c-define
  (lwip-ethernet-send/raw! ethif src dst proto #;0 bp len)
- ((pointer (struct "ethernetif")) unsigned-int64 unsigned-int64 unsigned-int16 void* size_t)
+ ((nonnull-pointer (struct "ethernetif")) unsigned-int64 unsigned-int64 unsigned-int16 void* size_t)
  int "Xscm_ether_send_raw" "static"
  (let ((handler (lwip-ethernet-send)))
    (cond
@@ -751,7 +749,7 @@ END
 static err_t scm_ether_send(struct ethernetif *nif, struct pbuf *p)
 {
  int got_throw = 0;
- err_t result;
+ err_t result = ERR_ARG;
  struct pbuf *q = q;
  char *bp;
  struct eth_hdr *ethhdr = p->payload; // caller is responsible!
@@ -770,11 +768,21 @@ static err_t scm_ether_send(struct ethernetif *nif, struct pbuf *p)
  //fprintf(stderr, "scm_ether_send gambit locked\n");
    // fprintf(stderr, "lwip_netif_linkoutput: hand over gambit me %d\n", pthread_self());
   ___ON_THROW(result = Xscm_ether_send(nif, src, dst, lwip_ntohs(ethhdr->type), p), got_throw=1);
+  /*
+  { size_t len=p->tot_len;
+    ___SCMOBJ u8buf = ___EXT(___alloc_scmobj) (___PSTATE, ___sU8VECTOR, len);
+    if(!___FIXNUMP(u8buf)) {
+     pbuf_to_u8v_copied(u8buf, p, 0, len);
+     ___ON_THROW(result = Xscm_ether_send(nif, src, dst, lwip_ntohs(ethhdr->type), u8buf), got_throw=1);
+     ___EXT(___release_scmobj)(u8buf);
+    }
+   }//*/
+
  // fprintf(stderr, "scm_ether_send gambit ran\n");
    lwip_gambit_unlock();
  }
  if (got_throw) {
-   fprintf(stderr, "scm_ether_send: threw an exception\n");
+   fprintf(stderr, "scm_ether_send: threw an exception, result: %d\n", result);
    return ERR_IF;
  }
  return result;
@@ -889,49 +897,21 @@ lwip_netif_linkoutput(struct netif *netif, struct pbuf *p)
 }
 
 static err_t
-lwip_send_ethernet_input(struct netif *netif, MACREF from, MACREF to, unsigned int ethertype,
-                 const void *data, unsigned int len)
+lwip_send_ethernet_input(struct netif *netif, struct pbuf* p)
 {
-  struct pbuf *p,*q;
-  struct eth_hdr ethhdr;
   int result;
   // fprintf(stderr, "lwip_send_ethernet_input: interface %p\n", netif);
 #ifdef LWIP_STATS
-  // fprintf(stderr, "lwip_send_ethernet_input: stats\n");
   stats_display();
 #endif
-  if(netif == NULL) {
-    return ERR_ARG;
-  }
-  // input mac addresses are in network order (big-endian)
-  memcpy(&ethhdr.src.addr, &MACDEREF(from), ETH_HWADDR_LEN);
-  memcpy(&ethhdr.dest.addr, &MACDEREF(to), ETH_HWADDR_LEN);
-  ethhdr.type = htons(ethertype);
-  p = pbuf_alloc(PBUF_RAW, len+sizeof(struct eth_hdr), PBUF_RAM);
-  // fprintf(stderr, "lwip_send_ethernet_input: pbuf %p\n", p);
-  if (!p) {
-    // unable to allocate memory
-    return ERR_MEM;
-  }
-  // First pbuf gets ethernet header at start
-  q = p;
-  if (q->len < sizeof(ethhdr)) {
-    pbuf_free(p);
-    // first pbuf smaller than ethernet header
-    return ERR_BUF;
-  }
-  { //**/ fprintf(stderr, "lwip_send_ethernet_input: copy data into pbuf(s)\n");
-    copy_pbuf_from_ptr(p, &ethhdr, 0, sizeof(ethhdr));
-    copy_pbuf_from_ptr(p, data, sizeof(ethhdr), len);
-  }
   //**/fprintf(stderr, "lwip_send_ethernet_input: feed packet into netif->input %p\n", netif->input);
   if(netif->input == NULL) {
-    fprintf(stderr, "lwip_send_ethernet_input: INTERNAL ERROR feed packet into netif->input \n");
+    fprintf(stderr, "lwip_send_ethernet_input: INTERNAL ERROR feeding packet into netif->input \n");
+    pbuf_free(p);
     return ERR_IF;
   }
   if ((result = netif->input(p, netif)) != ERR_OK) {
     fprintf(stderr, "lwip_send_ethernet_input: input failed\n", p);
-    pbuf_free(p);
   } else {
     //**/ fprintf(stderr, "lwip_send_ethernet_input: packet has been read into netif\n", p);
     /*
@@ -1021,7 +1001,7 @@ lwip_init_interface_IPv6(struct netif *nif, struct sockaddr_storage *ip)
   netif_set_up(nif);  // ??
   // fprintf(stderr, "init addr %s\n", ip6addr_ntoa(&ip6addr));  // DEBUG
   netif_ip6_addr_set(nif, 1, &ip6addr);
-  netif_ip6_addr_set_state(nif, 1, IP6_ADDR_PREFERRED); // was IP6_ADDR_TENTATIVE
+  netif_ip6_addr_set_state(nif, 1, IP6_ADDR_TENTATIVE/*IP6_ADDR_PREFERRED*/); // was IP6_ADDR_TENTATIVE
   gambit_lwipcore_unlock();
   // fprintf(stderr, "lwip_init_interface_IPv6 DONE\n");
 }
@@ -1032,15 +1012,36 @@ c-declare-end
 (define lwip_init_interface_IPv6
  (c-lambda (netif* socket-address) void "lwip_init_interface_IPv6"))
 
-(define lwip-send-ethernet-input!
+(define pbuf-fill-ethernet-header!
+  (c-lambda
+   (pbuf unsigned-int64 unsigned-int64 unsigned-int) void #<<END
+   struct eth_hdr *ethhdr = (struct eth_hdr*) ___arg1->payload;
+   u64w from, to;
+   from.n= ___arg2;
+   to.n = ___arg3;
+   memcpy(&ethhdr->src.addr, &MACDEREF(from), ETH_HWADDR_LEN);
+   memcpy(&ethhdr->dest.addr, &MACDEREF(to), ETH_HWADDR_LEN);
+   ethhdr->type = htons(___arg4);
+END
+))
+
+(define lwip-send-ethernet-input/pbuf! (c-lambda (netif* pbuf) err_t "lwip_send_ethernet_input"))
+
+(define (lwip-send-ethernet-input! netif src dst ethertype payload len)
   ;; Compose ethernet frame and send it to @param netif
   ;;
   ;; mac addresses are in network order (big-endian)
   ;;
   ;; (lwip-send-input! nif srcmac dstmac ethertype payload len)
-  (c-lambda
-   (netif* unsigned-int64 unsigned-int64 unsigned-int void* size_t) int
-   "___result = lwip_send_ethernet_input(___arg1, UI64_TO_MACREF(___arg2), UI64_TO_MACREF(___arg3), ___arg4,___arg5, ___arg6);"))
+  (unless netif (error "lwip-send-ethernet-input! network interface required"))
+  (let ((pbuf (or (make-pbuf-raw+ram (+ SIZEOF_ETH_HDR len))
+                  (error "pbuf allocation failed"))))
+    (pbuf-fill-ethernet-header! pbuf src dst ethertype)
+    (pbuf-copy-from-ptr! pbuf payload SIZEOF_ETH_HDR len)
+    (debug 'passing-to 'lwip)
+    (display-eth-packet/offset (pbuf->u8vector pbuf) 0 (current-error-port))
+    (lwip-send-ethernet-input/pbuf! netif pbuf)
+    ERR_OK))
 
 ;;(define lwip-default-netif-poll! (c-lambda () void "default_netif_poll"))
 
@@ -1063,7 +1064,8 @@ c-declare-end
 (define-c-constant lwip-IPADDR_TYPE_V6 int "IPADDR_TYPE_V6")
 (define-c-constant lwip-IPADDR_TYPE_ANY int "IPADDR_TYPE_ANY")
 
-(c-define-type tcp_pcb (pointer (struct "tcp_pcb") tcp-pcb)) ;; MUST NOT have a release function.
+(c-define-type tcp_pcb (nonnull-pointer (struct "tcp_pcb") tcp-pcb)) ;; MUST NOT have a release function.
+(c-define-type new_tcp_pcb (pointer (struct "tcp_pcb") tcp-pcb))
 
 (define (tcp-pcb? obj) (let ((f (foreign-tags obj))) (and f (eq? (car f) 'tcp-pcb))))
 
@@ -1106,8 +1108,8 @@ END
    (tcp_pcb scheme-object unsigned-int) err_t #<<END
    ip_addr_t ipaddr;
    ipaddr.type = IPADDR_TYPE_V6;
-   ipaddr.u_addr.ip6.zone = 0;
    memcpy(&ipaddr.u_addr.ip6.addr, ___CAST(void *,___BODY_AS(___arg2,___tSUBTYPED)), sizeof(ip6_addr_t));
+   ipaddr.u_addr.ip6.zone = 0;
    lwip_gambit_unlock();
    gambit_lwipcore_lock("lwip-tcp-bind");
    ___result = tcp_bind(___arg1, &ipaddr, ___arg3);
@@ -1125,11 +1127,11 @@ END
 END
 ) pcb netif))
 
-(define tcp-new (c-lambda () tcp_pcb "local_lwip_init(); ___return(tcp_new());"))
+(define tcp-new (c-lambda () new_tcp_pcb "local_lwip_init(); ___return(tcp_new());"))
 
 (define tcp-new-ip-type
   (c-lambda
-   (unsigned-int8) tcp_pcb
+   (unsigned-int8) new_tcp_pcb
    "local_lwip_init();
  struct tcp_pcb *result=tcp_new_ip_type(___arg1);
  fprintf(stderr, \"PCB %p\\n\", result);
@@ -1175,7 +1177,7 @@ end-lwip-tcp-event
    (tcp_pcb scheme-object unsigned-int) err_t #<<END
    ip_addr_t ipaddr;
    ipaddr.type = IPADDR_TYPE_V6;
-   ipaddr.u_addr.ip6.zone = 0;
+   ipaddr.u_addr.ip6.zone = IP6_NO_ZONE;
    memcpy(&ipaddr.u_addr.ip6.addr, ___CAST(void *,___BODY_AS(___arg2,___tSUBTYPED)), sizeof(ip6_addr_t));
    gambit_lwipcore_lock("lwip-tcp-connect");
    ___result = tcp_connect(___arg1, &ipaddr, ___arg3, NULL);
@@ -1207,7 +1209,7 @@ END
   ;; NOTE: this deallocates the argument, except when it returns #f.
   ;;
   ;; BEWARE: MUST NOT use the ___return macro!
-  (c-lambda-with-lwip-locked (tcp_pcb) tcp_pcb "" "___result = tcp_listen(___arg1);"))
+  (c-lambda-with-lwip-locked (tcp_pcb) new_tcp_pcb "" "___result = tcp_listen(___arg1);"))
 
 (define tcp_abort (c-lambda-with-lwip-locked (tcp_pcb) void "" "tcp_abort(___arg1);"))
 
