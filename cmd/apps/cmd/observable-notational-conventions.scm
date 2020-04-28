@@ -11,9 +11,13 @@
 
 (define PIN make-pin)
 
-(eval
-'(define-macro (define-pin name . more)
-  `(define ,name (make-pin . ,more))))
+(define-macro (define-macro/rt expr nexpr)
+  `(begin
+     (define-macro ,expr ,nexpr)
+     (eval '(define-macro ,expr ,nexpr))))
+
+(define-macro/rt (define-pin name . more)
+  `(define ,name (make-pin . ,more)))
 
 (define (make-sensor . more)
   (receive
@@ -27,21 +31,12 @@
       (else (error "make-sensor: unexpected case"))))
     (else (error "UNDEFINED")))))
 
-#;(define-macro (define-sense in out val . more)
-  (let ((setter (gensym 'set))
-        (v (gensym 'v)))
+(define-macro/rt (define-sense name . more)
+  (let ((in (string->symbol (string-append "." (symbol->string name)))))
     `(begin
-       (define ,in (make-mval ,val . ,more))
-       (define ,out (call-with-values (lambda() ,in) (lambda (x y) y)))
-       (let ((,setter (call-with-values (lambda() ,in) (lambda (x y) x))))
-         (set! ,in (lambda (,v) (,setter ,v)))))))
+       (define ,in ,(if (null? more) `(make-sensor #f) `(make-sensor . ,more)))
+       (define ,name (,in)))))
 
-(eval
- '(define-macro (define-sense name . more)
-    (let ((in (string->symbol (string-append "." (symbol->string name)))))
-      `(begin
-         (define ,in ,(if (null? more) `(make-sensor #f) `(make-sensor . ,more)))
-         (define ,name (,in))))))
 ;;
 (define (make-sensor* . more)
   (define (make-mval* #!key (initial #!void) (pred #f) (filter #f) (name #f))
@@ -63,18 +58,24 @@
    (lambda () ;; `to` to be set to the value of `from`
      (to (from)))))
 
-(eval
- '(define-macro (define-sense* name val . more)
-    (let ((in (string->symbol (string-append "." (symbol->string name)))))
-      `(begin
-         (define ,in (make-sensor* ,val . ,more))
-         (define ,name (,in))))))
+(define-macro/rt (define-sense* name val . more)
+  (let ((in (string->symbol (string-append "." (symbol->string name)))))
+    `(begin
+       (define ,in (make-sensor* ,val . ,more))
+       (define ,name (,in)))))
 
 (define SENSOR
   (case-lambda
    (() (make-sensor #f))
    ((x) (make-sensor x))
    (args (apply make-sensor* args))))
+
+(define-macro/rt (define-sense* name val . more)
+  (let ((in (string->symbol (string-append "." (symbol->string name)))))
+    `(begin
+       (define ,in (SENSOR ,val . ,more))
+       (define ,name (,in)))))
+
 
 ;;; Not only gambit specific, but runtime-only as well.
 

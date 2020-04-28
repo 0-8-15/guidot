@@ -94,7 +94,7 @@ c-declare-end
 (c-define-type err_t int8)
 
 (c-declare "static ___SCMOBJ release_netif(void *p);")
-(c-define-type netif* (pointer (struct "netif") netif "release_netif"))
+(c-define-type netif* (pointer (struct "netif") netif #;"release_netif")) ;; trying make-will
 
 ;;; LWIP Hooks
 
@@ -133,6 +133,7 @@ const ip6_addr_t *gambit_lwip_nd6_get_gw(struct netif *netif, const ip6_addr_t *
 ip6_addr_t dummy;
 ip6_addr_set(&dummy, dest);
 inet_ntop(AF_INET6, dest->addr, buf, INET6_ADDRSTRLEN);
+dest=NULL;
 fprintf(stderr, "RETURN %p %s\n", dest, buf);
 return dest;
 }
@@ -822,7 +823,10 @@ END
    ___return(nif);
 END
 ))
-    lwip-make-netif))
+    (lambda (mac)
+      (let ((nif (lwip-make-netif mac)))
+        (make-will nif (c-lambda (void*) scheme-object "release_netif"))
+        nif))))
 
 (define lwip-netif-find (c-lambda (char-string) netif* "netif_find"))
 
@@ -869,6 +873,17 @@ END
   (c-lambda (netif* unsigned-int) unsigned-int64 "lwip_netif_ip6bc_mach"))
 
 ;;; Network Interface IO
+
+(define-custom lwip-ip6-send #f) ;; EXPORT HOOK - ethernet output to send
+
+(c-define
+ (lwip-ip6-send! netif pbuf addr)
+ (netif* pbuf void* #;(nonnull-pointer (struct "ip6_addr_t")))
+ int "scm_ip6_send" "static"
+ (let ((handler (lwip-ip6-send)))
+   (cond
+    ((procedure? handler) (handler netif pbuf addr))
+    (else ERR_RTE))))
 
 (c-declare #<<c-declare-end
 
@@ -933,8 +948,14 @@ static err_t
 dbg_ethip6_output(struct netif *netif, struct pbuf *q, const ip6_addr_t *ip6addr)
 {
  err_t r;
- r = ethip6_output(netif, q, ip6addr);
- if(r != ERR_OK) fprintf(stderr, "ethip6_output failed for %p %d\n", netif, r);
+ lwip_gambit_lock("scm_ip6_send");
+ r = scm_ip6_send(netif, q, ip6addr);
+ lwip_gambit_unlock();
+ if(r != ERR_OK) fprintf(stderr, "scm_ip6_output failed for %p %d\n", netif, r);
+ if(r == ERR_RTE) {
+   r = ethip6_output(netif, q, ip6addr);
+   if(r != ERR_OK) fprintf(stderr, "ethip6_output failed for %p %d\n", netif, r);
+ }
  return r;
 }
 
@@ -995,13 +1016,13 @@ lwip_init_interface_IPv6(struct netif *nif, struct sockaddr_storage *ip)
   // fprintf(stderr, "lwip: netif_create_ip6_linklocal_address\n");
   netif_create_ip6_linklocal_address(nif, 1);
   // using default now: netif_ip6_addr_set_state(nif, 0, IP6_ADDR_VALID); // was IP6_ADDR_TENTATIVE
-  nif->ip6_autoconfig_enabled = 1; // ??
+  nif->ip6_autoconfig_enabled = 0; // ??
   netif_set_default(nif);  // ??
   // fprintf(stderr, "lwip: netif_set_up\n");
   netif_set_up(nif);  // ??
   // fprintf(stderr, "init addr %s\n", ip6addr_ntoa(&ip6addr));  // DEBUG
   netif_ip6_addr_set(nif, 1, &ip6addr);
-  netif_ip6_addr_set_state(nif, 1, IP6_ADDR_TENTATIVE/*IP6_ADDR_PREFERRED*/); // was IP6_ADDR_TENTATIVE
+  netif_ip6_addr_set_state(nif, 1, nif->ip6_autoconfig_enabled ? IP6_ADDR_TENTATIVE : IP6_ADDR_VALID /*IP6_ADDR_PREFERRED*/); // was IP6_ADDR_TENTATIVE
   gambit_lwipcore_unlock();
   // fprintf(stderr, "lwip_init_interface_IPv6 DONE\n");
 }
@@ -1156,7 +1177,7 @@ END
 
 (c-define-with-gambit-locked.0
  (%%on-tcp-event ctx pcb event pbuf size err)
- (CONTEXT tcp_pcb unsigned-int8 pbuf unsigned-int16 err_t)
+ (CONTEXT new_tcp_pcb unsigned-int8 pbuf unsigned-int16 err_t)
  err_t "scm_lwip_tcp_event" "static inline"
  "(GAME_CONTEXT ctx, struct tcp_pcb* pcb, enum lwip_event event, struct pbuf* pbuf, u16_t size, err_t err)"
  "err_t" "ERR_IF"

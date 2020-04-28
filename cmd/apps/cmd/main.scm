@@ -84,8 +84,19 @@
 ;; (zt-node-status)
 
 (define testers
-  '((Dave)
-    (Earline)))
+  '((Dave #x6f318c4783)
+    (Earline #xf3de84af82)))
+
+(define (tester-ndid t) (cadr (assq t testers)))
+
+(define (other-party)
+  (case (here)
+    ((Dave) 'Earline)
+    ((Earline) 'Dave)
+    (else #f)))
+
+(define (earline-server) #xf3de84af82)
+
 
 ;; FIXME: ZT is not reentrant!  When a second thread tries to
 ;; zt-contact-peer the whole thing dies.
@@ -126,10 +137,6 @@
 
 ;; (.enable-external #t)
 
-(define (dave-server) #x6f318c4783)
-
-(define (earline-server) #xf3de84af82)
-
 (define (adhoc-port) 7443)
 
 (define nng-nw-o #xa09acf02337b057b)
@@ -143,15 +150,19 @@
     ((3) nng-nw-c)
     (else x)))
 
-(define (icmp6-echo-request from to)
-  ;; dave to earline: (icmp6-echo-request #x6f318c4783 #xf3de84af82)
+(define (eth-ip6-header from to ethertype)
   (let ((dst (zt-network+node->mac (ctnw) to))
         (src (zt-network+node->mac (ctnw) from))
-        (p (make-u8vector (+ SIZEOF_ETH_HDR SIZEOF_IP6_HDR SIZEOF_ICMP6_HDR))))
+        (p (make-u8vector SIZEOF_ETH_HDR)))
     (u8vector/n48h-set! p 0 dst)
     (u8vector/n48h-set! p 6 src)
-    (u8vector/n16h-set! p 12 ETHTYPE_IPV6)
-    (let ((o SIZEOF_ETH_HDR)
+    (u8vector/n16h-set! p 12 ethertype)
+    p))
+
+(define (icmp6-echo-request from to)
+  ;; dave to earline: (icmp6-echo-request #x6f318c4783 #xf3de84af82)
+  (let ((p (make-u8vector (+ SIZEOF_IP6_HDR SIZEOF_ICMP6_HDR))))
+    (let ((o 0)
           (ip6src (make-6plane-addr (ctnw) from (adhoc-port)))
           (ip6dst (make-6plane-addr (ctnw) to (adhoc-port))))
       (u8vector-set! p (+ o 0) #x60)    ;; IPv6 class 0 upper bit
@@ -165,7 +176,7 @@
       (receive
        (addr port) (sa->u8 'icmp-echo-request ip6dst)
        (subu8vector-move! addr 0 (u8vector-length addr) p (+ o 24))))
-    (let ((o (+ SIZEOF_ETH_HDR SIZEOF_IP6_HDR)))
+    (let ((o SIZEOF_IP6_HDR))
       ;; ICMP6 Ping
       (u8vector-set! p (+ o 0) 128) ;; type EREQ
       )
@@ -309,17 +320,29 @@
         (zt-multicast-subscribe nwid (dbgmac 'MCMAC (lwip-netif-ip6broadcast-mach nif n)))))
     nif))
 
-(define (nw-send! u8vec)
-  ;; Dave to Earline: (nw-send! (icmp6-echo-request #x6f318c4783 #xf3de84af82))
+(define (eth-send! u8vec)
   (define netif (*nwif*))
   (unless netif (error "no network"))
   (let* ((len (u8vector-length u8vec))
          (pbuf (or (make-pbuf-raw+ram len) (error "pbuf allocation failed"))))
     (pbuf-copy-from-u8vector! pbuf 0 u8vec 0 len)
-    (debug 'nw-send!passing-to 'lwip)
+    (debug 'eth-send!passing-to 'lwip)
     ;; copy it back once more until this works
     (display-eth-packet/offset (pbuf->u8vector pbuf) 0 (current-error-port))
     (lwip-send-ethernet-input/pbuf! netif pbuf)))
+
+(define (etx-send! src dst u8vec)
+  ;; Dave to Earline: (etx-send! (icmp6-echo-request #x6f318c4783 #xf3de84af82))
+  (display-ip6-packet/offset u8vec 0 (current-error-port))
+  (zt-virtual-send (ctnw) src dst ETHTYPE_IPV6 0 u8vec))
+
+(define (etx-ping! to)
+  ;; Dave to Earline: (etx-ping! #xf3de84af82)
+  ;; Earline to Dave: (etx-ping! #x6f318c4783)
+  (let* ((from (cadr (assq (here) testers)))
+         (dst (zt-network+node->mac (ctnw) to))
+         (src (zt-network+node->mac (ctnw) from)))
+    (etx-send! src dst (icmp6-echo-request from to))))
 
 (define (find-nwid-for-nif nif) (ctnw))
 
@@ -383,7 +406,7 @@
    (case type
      ((2) ;; tcp test should connect back now
       (debug 'RECV-from:test (list from type))
-      (lwc0))
+      (lwc0 from))
      (else
       (debug 'RECV-from-type-data (list from type data))
       #f))))
@@ -525,6 +548,21 @@
        (debug 'lwip-ethernet-send 'return-ok)
        ERR_OK))))
 
+(lwip-ip6-send
+ (lambda (netif pbuf ip6addr)
+   (let ((addr (make-u8vector 16)))
+     (u8vector-copy-from-ptr! addr 0 ip6addr 0 16)
+     (if (eqv? (u8vector-ref addr 0) #xfc)
+         (let ((ndid (quotient (%u8vector/n48h-ref addr 5) 256))
+               (nwid (find-nwid-for-nif netif))
+               (src (lwip-netif-mac netif))
+               (bp (pbuf->u8vector pbuf 0)))
+           (debug 'lwip-ip6-send-to (hexstr ndid 10))
+           (display-ip6-packet/offset bp 0 (current-error-port))
+           (mustbe-async (debug 'DONE:zt-vsend (zt-virtual-send nwid src (zt-network+node->mac nwid ndid) ETHTYPE_IPV6 0 bp)))
+           ERR_OK)
+         ERR_RTE))))
+
 ;; Config
 
 (define config-helper
@@ -610,6 +648,8 @@
 
 (define (on-tcp-poll ctx connection)
   (debug 'UpsPOLL connection)
+  (thread-yield!)
+  (thread-yield!)
   ;; (debug 'lwip-tcp-flush! (lwip-err (lwip-tcp-flush! connection)))
   ERR_OK)
 
@@ -622,21 +662,27 @@
  (lambda (ctx pcb e pbuf size err)
    ;; NOTE: This passes along what the lwIP callback API did.
    (cond
-    ((eq?  LWIP_EVENT_ACCEPT e) (on-tcp-accept ctx pcb err))
-    ((eq?  LWIP_EVENT_SENT e) (on-tcp-sent ctx pcb len))
-    ((eq?  LWIP_EVENT_RECV e) (on-tcp-receive ctx pcb pbuf err))
-    ((eq?  LWIP_EVENT_CONNECTED e) (on-tcp-connect ctx pcb err))
-    ((eq?  LWIP_EVENT_POLL e) (on-tcp-poll ctx pcb))
-    ((eq?  LWIP_EVENT_ERR e) (on-tcp-error ctx err))
-    (else (debug "on-tcp-event: unkown event" e) ERR_ARG))))
+    ((eq? LWIP_EVENT_ACCEPT e) (on-tcp-accept ctx pcb err))
+    ((eq? LWIP_EVENT_SENT e) (on-tcp-sent ctx pcb len))
+    ((eq? LWIP_EVENT_RECV e) (on-tcp-receive ctx pcb pbuf err))
+    ((eq? LWIP_EVENT_CONNECTED e) (on-tcp-connect ctx pcb err))
+    ((eq? LWIP_EVENT_POLL e) (on-tcp-poll ctx pcb))
+    ((eq? LWIP_EVENT_ERR e) (on-tcp-error ctx err))
+    (else (debug "on-tcp-event: unknown event" e) ERR_ARG))))
 
-(define .connecting (SENSOR))
-(define connecting (.connecting))
-(define (lwc0) (if (connecting) (lwc)))
+(define-sense connecting #f) ;; enabled
+
+(define-sense lws-contact-is-listening)
+
+(define (lwc0 from) (.lws-contact-is-listening from))
+
+(wire!
+ (list *nwif* connecting lws-contact-is-listening)
+ post: (lambda () (if (and (*nwif*) (connecting) (lws-contact-is-listening)) (lwc))))
 
 (define (lwc)
   (let* ((pcb (tcp-new-ip-type lwip-IPADDR_TYPE_V6))
-         (sa (make-6plane-addr (ctnw) (dave-server) (adhoc-port)))
+         (sa (make-6plane-addr (ctnw) (lws-contact-is-listening) #;(tester-ndid (other-party)) (adhoc-port)))
          (addr (receive (a p) (sa->u8 'lwc sa) a)))
     (debug "
 
@@ -657,13 +703,15 @@
                 (error "lwip-tcp-connect failed"))
         (unless (lwip-ok? (lwip-tcp-flush! (debug 'lwip-tcp-flush! client)))
                 (error "lwip-tcp-flush! failed"))
-        (debug 'lws 'waiting-for-callback)
+        (debug 'lwc 'waiting-for-callback)
+        (thread-sleep! 30)
         #;(lambda () (debug 'lws 'post-post) #f))))
 
 (define lws-listener (PIN))
 
 (define (lws-listening!)
-  (and (lws-listener) (begin-after-return! (zt-send! (earline-server) 2 (object->u8vector "listening")))))
+  (if (lws-listener)
+      (begin-after-return! (zt-send! (tester-ndid (other-party)) 2 (object->u8vector "listening")))))
 
 (wire! lws-listener post: lws-listening!)
 
@@ -707,12 +755,12 @@
 (define contacting (.contacting))
 
 (wire!
- (list here zt-online zt-up contacting)
+ (list here zt-online zt-started contacting)
  post:
  (lambda ()
-   (if (and (contacting) (here) (or (zt-online) (zt-up)))
+   (if (and (contacting) (here) (or (zt-online) (zt-started)))
        (begin
-         (debug 'CONTACTING (list (here) (zt-online) (zt-up)))
+         (debug 'CONTACTING (list (here) (zt-online) (zt-started)))
          (begin-after-return! (contact-other-party)))
        (tried-to-contact #f))))
 

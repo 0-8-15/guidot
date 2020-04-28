@@ -195,6 +195,13 @@ uint" size_str "_t val = " conv "(___arg3); // TODO just inline the expression
   ;; TODO: get it from /etc/protocols source
   (case nr
     ((0) 'IP)
+    ((1) 'ICMP)
+    ((2) 'IGMP)
+    ((3) 'GGP)
+    ((4) 'IP-ENCAP)
+    ((5) 'ST)
+    ((6) 'TCP)
+    ((17) 'UDP)
     ((41) 'IPv6)
     ((43) 'IPv6-Route)
     ((44) 'IPv6-Frag)
@@ -203,7 +210,7 @@ uint" size_str "_t val = " conv "(___arg3); // TODO just inline the expression
     ((60) 'IPv6-Opts)
     ((139) 'HIP)
     ((140) 'Shim6)
-    (else 'ip-protocol-number-UNKNOWN)))
+    (else (list 'ip-protocol-number-UNKNOWN nr))))
 
 (define (ip6-extension->symbol nr)
   ;; TODO: get it from /etc/protocols source
