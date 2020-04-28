@@ -571,10 +571,9 @@ END
 ) (zt-prm-zt %%zt-prm)))
   (define (maintainance-loop)
     (thread-sleep! (max background-period (zt-background-period/lower-limit)))
-    (when
-     (zt-up?)
-     (begin-zt-exclusive (%%checked maintainance (((zt-maintainance) %%zt-prm maintainance)) #f))
-     (maintainance-loop)))
+    (begin-zt-exclusive
+     (when (zt-up?) (%%checked maintainance (((zt-maintainance) %%zt-prm maintainance)) #f)))
+     (maintainance-loop))
   ;; Should we lock?  No: Better document single-threadyness!
   (if (zt-up?) (error "ZT already running"))
   (let ((prm (make-zt-prm #f udp (make-thread recv-loop 'zt-receiver)))
