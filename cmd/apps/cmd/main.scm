@@ -4,40 +4,40 @@
   (let ((v (eval v)))
     `(define-cond-expand-feature ,v)))
 
-(define-cond-expand-feature soso)
 
+;#|;;;* FEATURE SWITCH lwip-requires-pthread-locks
+(define-cond-expand-feature lwip-requires-pthread-locks)
+;;;|#
+
+(cond-expand
+ (lwip-requires-pthread-locks
+  (when
+   (eqv? lwip-NO_SYS 0)
+   (debug 'lwip-requires-pthread-locks lwip-NO_SYS)
+   (exit 1)))
+ (else
+  (unless
+   (eqv? lwip-NO_SYS 1)
+   (debug 'lwip-requires-check-timeouts lwip-NO_SYS)
+   (exit 1))))
+
+;;;* Notational Conventions
+;;;** Consistency :Notational Conventions:
 ;; ($kick-style 'sync)
-
-#;(cond-expand
- (soso
-  (display "gaga\n") (exit 0)))
-
-;; LambdaNative console template
 
 (include "observable-notational-conventions.scm")
 
-#|
-(eval
- '(define-macro (maybe-async expr)
-    `(thread-start! (make-thread (lambda () (debug 'running ',expr) (debug ',expr ,expr)) ',expr))))
-
-(define-macro (maybe-async expr)
-    `(thread-start! (make-thread (lambda () (debug 'running ',expr) (debug ',expr ,expr)) ',expr)))
-|#
-
-#;(eval
- '(define-macro (maybe-async expr)
-    `(thread-start! (make-thread (lambda () (debug ',expr ,expr)) ',expr))))
-
-(define-macro (mustbe-async expr)
+(define-macro (mustbe-async-when-lwip-requires-pthread-locks expr)
     `(thread-start! (make-thread (lambda () ,expr #;(debug ',expr ,expr)) ',expr)))
 
-(define-macro (maybe-async expr) `(mustbe-async ,expr))
-#;(define-macro (maybe-async expr) expr)
+(define-macro (maybe-async-when-lwip-requires-pthread-locks expr) `(mustbe-async-when-lwip-requires-pthread-locks ,expr))
+#;(define-macro (maybe-async-when-lwip-requires-pthread-locks expr) expr)
 
 (define-macro (begin-after-return! expr)
   ;; Schedule EXPR for execution (one way or another) and return nonsense.
-  `(begin (mustbe-async ,expr) #!void))
+  `(begin (mustbe-async-when-lwip-requires-pthread-locks ,expr) #!void))
+
+;;;** Values :Notational Conventions:
 
 (define (or-false pred?) (lambda (x) (or (eq? x #f) (pred? x))))
 
@@ -50,7 +50,7 @@
 
 (define (async thunk) (lambda () (async! thunk)))
 
-;; utilitarian garbage
+;;;** Utilitarian Garbage :Notational Conventions:
 
 (define (sa->u8 caller sa)
   (cond
@@ -66,6 +66,8 @@
        (eqv? (u8vector-ref ip 0) 192)
        (eqv? (u8vector-ref ip 1) 168)
        (eqv? (u8vector-ref ip 2) 43)))
+
+;;;* Test Environment
 
 (define difaddr "192.168.43.96")
 (define eifaddr "192.168.43.86")
@@ -493,7 +495,7 @@
               #;(debug 'remaddr-is-still-ipv4? (internet-socket-address? remaddr))
               #;(debug 'wire-send-via (socket-address->string remaddr))
               #;(eqv? (send-message udp u8 0 #f 0 remaddr) len)
-              (maybe-async (send-message udp u8 0 #f 0 remaddr))
+              (maybe-async-when-lwip-requires-pthread-locks (send-message udp u8 0 #f 0 remaddr))
               #t))
            (else #;(debug 'wire-send-via/blocked (socket-address->string remaddr)) #f)))))))
 
@@ -547,7 +549,7 @@
        (debug 'Packt-len (u8vector-length bp))
        (cond
         ((eq? ethtp 'ETHTYPE_IPV6) (display-ip6-packet/offset bp 0 (current-error-port))))
-       (maybe-async (debug 'DONE:zt-virtual-send (zt-virtual-send (find-nwid-for-nif netif) src dst ethertype vlanid bp)))
+       (maybe-async-when-lwip-requires-pthread-locks (debug 'DONE:zt-virtual-send (zt-virtual-send (find-nwid-for-nif netif) src dst ethertype vlanid bp)))
        (debug 'lwip-ethernet-send 'return-ok)
        ERR_OK))))
 
@@ -562,7 +564,7 @@
                (bp (pbuf->u8vector pbuf 0)))
            (debug 'lwip-ip6-send-to (hexstr ndid 10))
            (display-ip6-packet/offset bp 0 (current-error-port))
-           (mustbe-async (debug 'DONE:zt-vsend (zt-virtual-send nwid src (zt-network+node->mac nwid ndid) ETHTYPE_IPV6 0 bp)))
+           (mustbe-async-when-lwip-requires-pthread-locks (debug 'DONE:zt-vsend (zt-virtual-send nwid src (zt-network+node->mac nwid ndid) ETHTYPE_IPV6 0 bp)))
            ERR_OK)
          ERR_RTE))))
 
@@ -584,7 +586,7 @@
    (debug 'CFG (zt-virtual-config-base->vector config))
    ;; set multicast limit
    ;;(thread-send config-helper #t)
-   ;;(if (eqv? nwid (ctnw)) (maybe-async (debug 'set-mc-limit (zt-set-config-item! nwid 2 16))))
+   ;;(if (eqv? nwid (ctnw)) (maybe-async-when-lwip-requires-pthread-locks (debug 'set-mc-limit (zt-set-config-item! nwid 2 16))))
    #t))
 
 ;; Optional
@@ -721,7 +723,9 @@
 (define (lws)
   (let* ((srv (tcp-new-ip-type lwip-IPADDR_TYPE_V6))
          (sa (make-6plane-addr (ctnw) (zt-address) (adhoc-port)))
-         (addr (receive (a p) (sa->u8 'lws sa) a)))
+         (addr (if #f
+                   (receive (a p) (sa->u8 'lws sa) a) ;; Bind local/loopback only
+                   '#u8(0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0))))
     (debug "
 
 
@@ -782,9 +786,9 @@
      " nw " ,(number->string (ctnw) 16)
      ,(if (external-enabled) " external (enabled) using " " external (disabled) using ")
      ,(use-external)
-     " contacting " ,(contacting)
-     " connecting " ,(connecting)
-     " kick style " ,($kick-style)
+     " Contacting " ,(contacting)
+     " Connecting " ,(connecting)
+     " Kick style " ,($kick-style)
      ,(if (= lwip-NO_SYS 1) " TCP synchroneous" " TCP in pthread")
      "\n")))
 
