@@ -58,12 +58,6 @@
    (lambda () ;; `to` to be set to the value of `from`
      (to (from)))))
 
-(define-macro/rt (define-sense* name val . more)
-  (let ((in (string->symbol (string-append "." (symbol->string name)))))
-    `(begin
-       (define ,in (make-sensor* ,val . ,more))
-       (define ,name (,in)))))
-
 (define SENSOR
   (case-lambda
    (() (make-sensor #f))
@@ -76,6 +70,14 @@
        (define ,in (SENSOR ,val . ,more))
        (define ,name (,in)))))
 
+(define-macro/rt (define-SENSOR name form)
+  (if (not (eq? (car form) 'SENSOR))
+      (error "define-SENSOR: missuse")
+      (let* ((more (cdr form))
+             (in (string->symbol (string-append "." (symbol->string name)))))
+        `(begin
+           (define ,in (SENSOR . ,more))
+           (define ,name (,in))))))
 
 ;;; Not only gambit specific, but runtime-only as well.
 
