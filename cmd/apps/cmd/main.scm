@@ -208,7 +208,7 @@
          n))
    name: "lwIP enabled"))
 
-(.lwip (XXX-lwip-initial)) ;; do not get cought in the on-time-check
+(.lwip (XXX-lwip-initial)) ;; do not get caught in the on-time-check
 
 #|
 (wire!
@@ -251,14 +251,12 @@
      (s)
      (display (iam (ctnw) (adhoc-port)) (current-error-port)))))
 
-(define .external-enabled
+(define-SENSOR external-enabled
   (SENSOR
    initial: #f
    filter: (lambda (o n) n)
    name: 'external-enabled))
-(define .ea
-  .external-enabled) ;; shortcut
-(define external-enabled (.external-enabled))
+(define .ea .external-enabled) ;; shortcut
 
 (define should-use-external (PIN))
 
@@ -268,11 +266,10 @@
  (list external-enabled should-use-external)
  post: (lambda () (use-external (and (external-enabled) (should-use-external)))))
 
-(define .here
+(define-SENSOR here
   (SENSOR
    initial: #f
    pred: (or-ground (lambda (x) (assq x testers)))))
-(define here (.here))
 
 (define (hexstr id digits)
   (let ((effective (number->string id 16)))
