@@ -277,6 +277,10 @@ ___return(pbuf_take_at(___arg1, ___BODY(___arg3) + input_offset, len, pbuf_offse
 (c-declare
 ;;; This section is the only one, which MAY use {UN}LOCK_TCPIP_CORE
 #<<lwip-core-lock-end
+#if NO_SYS
+#define gambit_lwipcore_lock(x) {}
+#define gambit_lwipcore_unlock() {}
+#else
 //*
 #define LG_TRACELOCK(x) // {fprintf x;}
 #include <pthread.h>
@@ -298,9 +302,14 @@ static inline void gambit_lwipcore_unlock()
    UNLOCK_TCPIP_CORE();
  }
 }
+#endif
 
 #define gambit_lwipcore_lock_bg(x) gambit_lwipcore_lock(NULL)
+#if NO_SYS
+#define gambit_lwipcore_unlock_bg()
+#else
 #define gambit_lwipcore_unlock_bg() UNLOCK_TCPIP_CORE()
+#endif
 //*/
 #ifndef LG_TRACELOCK
 #define LG_TRACELOCK(x) {}
@@ -352,15 +361,19 @@ struct ethernetif {
   // int (*send_packet)(struct ethernetif *nif, uint64_t src, uint64_t dst, int proto, void *buf, size_t len);
 };
 
-#if ! NO_SYS
+#if NO_SYS
+
+#define lwip_gambit_lock(x) {}
+#define lwip_gambit_unlock() {}
+
+#else
+
 static void tcpip_init_done(void *arg)
 {
  sys_sem_signal((sys_sem_t *)arg);
 }
-#endif
 
 #include <pthread.h>
-
 //*
 static sys_mutex_t gambit_lock;
 static pthread_t the_gambit_owner = 0, the_gambit_pthread = 0;
@@ -427,6 +440,23 @@ static int lwip_init_once()
   return 0;
 }
 
+#endif
+
+#if NO_SYS
+static int lwip_init_once()
+{
+  static bool done = false;
+  if(!done) {
+    done=true;
+    fprintf(stderr, "Init NO_SYS: %d LWIP_CALLBACK_API %d\n", NO_SYS, LWIP_CALLBACK_API); // DEBUG
+    lwip_init();
+    // tcpip_init(NULL, NULL);
+    return 1;
+  }
+  return 0;
+}
+#endif
+
 static inline u32_t local_sys_timeouts_sleeptime()
 {
   u32_t result = 0;
@@ -445,7 +475,12 @@ c-declare-end
 (define lwip-gambit-locked?
   (c-lambda
    () int
-   "___return( the_gambit_owner==0 ? 0 : the_gambit_owner==pthread_self() ? 1 : -1 );"))
+   "
+#if NO_SYS
+___return(1);
+#else
+___return( the_gambit_owner==0 ? 0 : the_gambit_owner==pthread_self() ? 1 : -1 );
+#endif"))
 
 ;;; Calling lwIP
 
@@ -498,7 +533,11 @@ c-declare-end
 
 ;;; Init Part II
 
-(define (lwip-gambit-state)
+#;(define-macro (define-cond-expand-feature-value v)
+  (let ((v (eval v)))
+    `(define-cond-expand-feature ,v)))
+
+#;(define (lwip-gambit-state)
   (list
    'Caller: ((c-lambda () unsigned-int64 "___result = pthread_self();"))
    'Onwer: ((c-lambda () unsigned-int64 "___result = the_gambit_owner;"))
@@ -747,6 +786,10 @@ END
 ;;; FIXME: This is only useful now, if we know that the other side is
 ;;; ZT and does NOT want the ethernet header.
 #<<c-declare-end
+
+// PASS_PBUF_ALONG: keep a pbuf reference, seems needed, maybe not
+#define PASS_PBUF_ALONG 0
+
 static err_t scm_ether_send(struct ethernetif *nif, struct pbuf *p)
 {
  int got_throw = 0;
@@ -765,6 +808,7 @@ static err_t scm_ether_send(struct ethernetif *nif, struct pbuf *p)
    memcpy(&src, ethhdr->src.addr, ETH_HWADDR_LEN);
    memcpy(&dst, ethhdr->dest.addr, ETH_HWADDR_LEN);
 //*/
+ //pbuf_ref(p);
  lwip_gambit_lock("scm_ether_send");
  //fprintf(stderr, "scm_ether_send gambit locked\n");
    // fprintf(stderr, "lwip_netif_linkoutput: hand over gambit me %d\n", pthread_self());
@@ -779,9 +823,12 @@ static err_t scm_ether_send(struct ethernetif *nif, struct pbuf *p)
     }
    }//*/
 
- // fprintf(stderr, "scm_ether_send gambit ran\n");
-   lwip_gambit_unlock();
  }
+ // fprintf(stderr, "scm_ether_send gambit ran\n");
+ lwip_gambit_unlock();
+#if PASS_PBUF_ALONG
+ pbuf_free(p); // ref from ethip6_output (below)
+#endif
  if (got_throw) {
    fprintf(stderr, "scm_ether_send: threw an exception, result: %d\n", result);
    return ERR_IF;
@@ -953,6 +1000,9 @@ dbg_ethip6_output(struct netif *netif, struct pbuf *q, const ip6_addr_t *ip6addr
  lwip_gambit_unlock();
  if(r != ERR_OK) fprintf(stderr, "scm_ip6_output failed for %p %d\n", netif, r);
  if(r == ERR_RTE) {
+#if PASS_PBUF_ALONG
+   pbuf_ref(q); // seems needed - freed in scm_ether_send
+#endif
    r = ethip6_output(netif, q, ip6addr);
    if(r != ERR_OK) fprintf(stderr, "ethip6_output failed for %p %d\n", netif, r);
  }
@@ -1010,7 +1060,7 @@ lwip_init_interface_IPv6(struct netif *nif, struct sockaddr_storage *ip)
 
   gambit_lwipcore_lock("lwip_init_interface_IPv6");
   // questionable: passing the state as the old value.  Better don't initialize it?
-  if(!netif_add_noaddr(nif, nif->state, netif_init6, INPUT_HANDLER)) {
+  if(!netif_add_noaddr(nif, nif /*->state*/, netif_init6, INPUT_HANDLER)) {
     fprintf(stderr, "lwip: netif_add_noaddr failed\n");
   }
   // fprintf(stderr, "lwip: netif_create_ip6_linklocal_address\n");

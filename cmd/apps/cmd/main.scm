@@ -315,6 +315,7 @@
       (zt-multicast-subscribe nwid (dbgmac 'MCMAC (gamsock-socket-address->nd6-multicast-mac addr))))
     (begin
       (lwip_init_interface_IPv6 nif (make-6plane-addr nwid ndid (adhoc-port)))
+      ;; this goes south under valgrind (only)
       (do ((n (- (debug 'NMacs (lwip-netif-ip6addr-count nif)) 1) (- n 1)))
           ((= n -1))
         (zt-multicast-subscribe nwid (dbgmac 'MCMAC (lwip-netif-ip6broadcast-mach nif n)))))
@@ -397,7 +398,9 @@
 ;;* Locking
 
 (define (zt-locks-no) ;; should die in zt_contact_peer
-  (zt-locking-set! (lambda () #f))  (zt-unlock (lambda () #f)))
+  (zt-locking-set! (lambda () #f) (lambda () #f)))
+
+;; (zt-locks-no)
 
 ;;* EVENTS
 
@@ -598,7 +601,7 @@
 
 
 ;; FIXME, CRAZY: Just intercepting here causes havoc under valgrind!
-($kick-style 'sync)
+
 (zt-path-lookup
  (lambda (node uptr thr nodeid family sa)
    ;; (debug 'LOOKUP (number->string nodeid 16))
@@ -670,7 +673,7 @@
     ((eq? LWIP_EVENT_ERR e) (on-tcp-error ctx err))
     (else (debug "on-tcp-event: unknown event" e) ERR_ARG))))
 
-(define-sense connecting #f) ;; enabled
+(define-sense connecting #t) ;; enabled
 
 (define-sense lws-contact-is-listening)
 
@@ -782,6 +785,7 @@
      " contacting " ,(contacting)
      " connecting " ,(connecting)
      " kick style " ,($kick-style)
+     ,(if (= lwip-NO_SYS 1) " TCP synchroneous" " TCP in pthread")
      "\n")))
 
 (define (system-command-line)

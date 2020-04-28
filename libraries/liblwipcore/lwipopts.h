@@ -7,6 +7,16 @@ extern const ip6_addr_t *gambit_lwip_nd6_get_gw(struct netif *netif, const ip6_a
 //#define LWIP_CALLBACK_API 1
 #define LWIP_EVENT_API 1
 
+#define NO_SYS 1
+#if NO_SYS
+#define LWIP_NETCONN 0
+#define LWIP_SOCKET 0
+#define LWIP_NETIF_API 0
+#endif
+
+// LWIP_IPV6_SEND_ROUTER_SOLICIT causes apparent double free
+#define LWIP_IPV6_SEND_ROUTER_SOLICIT 0
+
 // extern void gambit_lwip_netif_status(struct netif *);
 
 // we SHOULD need LWIP_NETIF_LOOPBACK, but it crashes
@@ -102,7 +112,6 @@ extern const ip6_addr_t *gambit_lwip_nd6_get_gw(struct netif *netif, const ip6_a
 #define LWIP_PROVIDE_ERRNO              1
 #endif
 // Sockets
-#define LWIP_SOCKET                     1
 #define LWIP_COMPAT_SOCKETS             0
 #define LWIP_POSIX_SOCKETS_IO_NAMES     0
 #define LWIP_SO_SNDTIMEO                1
