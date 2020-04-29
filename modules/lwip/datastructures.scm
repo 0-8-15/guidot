@@ -1,3 +1,5 @@
+;; https://www.codeproject.com/articles/4804/basic-concepts-on-endianness
+
 ;;;* U8Vector Network Encoded
 
 (define-macro (nw-vector-range-assert proc vec offset size)
@@ -76,7 +78,7 @@ uint" size_str "_t val = " conv "(___arg3); // TODO just inline the expression
 (define %u8vector/n48h-set!
   (c-lambda
    (scheme-object size_t unsigned-int64) void
-   "g_lwip_set_mac_ui64h( ___CAST(const uint8_t*, ___BODY(___arg1)) + ___arg2, ___arg3 );"))
+   "g_lwip_set_mac_ui64h( ___CAST(uint8_t*, ___BODY(___arg1)) + ___arg2, ___arg3 );"))
 
 (define (u8vector/n48h-set! vec n mac)
   (nw-vector-range-assert u8vector/n48h-set! vec n 48)
@@ -237,7 +239,8 @@ uint" size_str "_t val = " conv "(___arg3); // TODO just inline the expression
   (show " dst: " IP6H_DST->string)
   (newline port)
   (case (IP6H_NEXTH->sym u8 offset)
-    ((IPv6-ICMP) (display-icmp6-packet/offset u8 (+ offset SIZEOF_IP6_HDR) port)))
+    ((IPv6-ICMP) (display-icmp6-packet/offset u8 (+ offset SIZEOF_IP6_HDR) port))
+    ((TCP) (display-tcp-heaper/offset u8 (+ offset SIZEOF_IP6_HDR) port)))
   u8)
 
 #;(define ip6-header?type/get ;; Horror: this naming convention hints to "dunno"!
@@ -291,3 +294,65 @@ uint" size_str "_t val = " conv "(___arg3); // TODO just inline the expression
   (display (icmp6-type->string (icmp6-type u8 offset)) port)
   (newline port)
   u8)
+
+;;;** TCP
+
+(c-declare "#include \"lwip/prot/tcp.h\"")
+
+(define-c-constant SIZEOF_TCP_HDR size_t "sizeof(struct tcp_hdr);")
+
+(define-macro (define-u8-header-get var type hdr access size)
+  (let ((u8 (gensym 'u8))
+        (offset (gensym 'offset)))
+    `(define ,var
+       (lambda (,u8 ,offset)
+         (if (>= (+ ,offset ,size) (u8vector-length ,u8)) (error "out of range" ',var)) ;; FIXME: offset+off_in_struct
+         ((c-lambda
+           (scheme-object size_t) ,type
+           ,(string-append
+             "___return(" access "(___CAST( struct " hdr " *, ___CAST(char*, ___BODY(___arg1)) + ___arg2) ));"))
+          ,u8 ,offset)))))
+
+(define-u8-header-get TCPH_HDRLEN unsigned-int16 "tcp_hdr" "TCPH_HDRLEN" 2)
+(define-u8-header-get TCPH_FLAGS unsigned-int8 "tcp_hdr" "TCPH_FLAGS" 1)
+
+(define (tcp-flag->symbol idx)
+  (case idx
+    ((#x01) 'FIN)
+    ((#x02) 'SYN)
+    ((#x04) 'RST)
+    ((#x08) 'PSH)
+    ((#x10) 'ACK)
+    ((#x20) 'URG)
+    ((#x40) 'ECE)
+    ((#x80) 'CWR)))
+
+(define (display-tcp-flags flags #!optional (port (current-output-port)))
+  (let ((following #f))
+    (define (df n nm)
+      (when (eq? (bitwise-and flags n) n)
+            (if following (display "|" port) (set! following #t))
+            (display (tcp-flag->symbol n) port)))
+    (df #x01 "FIN")
+    (df #x02 "SYN")
+    (df #x04 "RST")
+    (df #x08 "PSH")
+    (df #x10 "ACK")
+    (df #x20 "URG")
+    (df #x40 "ECE")
+    (df #x80 "CWR")))
+
+(define (display-tcp-heaper/offset u8 offset #!optional (port (current-output-port)))
+  (display "TCP src " port)
+  (display (u8vector/n16h-ref u8 offset) port)
+  (display " dst ")
+  (display (u8vector/n16h-ref u8 (+ offset 2)) port)
+  (display " seqno ")
+  (display (u8vector/n32h-ref u8 (+ offset 4)) port)
+  (display " ackno ")
+  (display (u8vector/n32h-ref u8 (+ offset 8)) port)
+  (display " ")
+  (display-tcp-flags (TCPH_FLAGS u8 offset) port)
+  (display " header length: " port)
+  (display (TCPH_HDRLEN u8 offset) port)
+  (newline port))

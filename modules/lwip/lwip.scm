@@ -905,7 +905,7 @@ static inline uint64_t lwip_netif_ip6bc_mach(struct netif *netif, unsigned int i
 {
  uint64_t result;
  if(idx >= LWIP_IPV6_NUM_ADDRESSES) return 0;
- u32_t *na = netif_ip6_addr(netif, idx);
+ u32_t *na = ___CAST(u32_t*, netif_ip6_addr(netif, idx));
  u8_t *a = (u8_t*)na;
  result = (0x33ll<<40|0x33ll<<32|0xffll<<24|(uint64_t)(a[13])<<16|(uint64_t)(a[14])<<8|a[15]); //|
  return result;
@@ -996,7 +996,7 @@ dbg_ethip6_output(struct netif *netif, struct pbuf *q, const ip6_addr_t *ip6addr
 {
  err_t r;
  lwip_gambit_lock("scm_ip6_send");
- r = scm_ip6_send(netif, q, ip6addr);
+ r = scm_ip6_send(netif, q, (ip6_addr_t *) ip6addr); // no warn const discarded
  lwip_gambit_unlock();
  if(r != ERR_OK) fprintf(stderr, "scm_ip6_output failed for %p %d\n", netif, r);
  if(r == ERR_RTE) {
