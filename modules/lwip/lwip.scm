@@ -1056,6 +1056,7 @@ lwip_init_interface_IPv6(struct netif *nif, struct sockaddr_storage *ip)
   // fprintf(stderr, "lwip_init_interface_IPv6\n");
   // ip6_addr_copy_from_packed(ip6addr, (sa_in6->sin6_addr));
   cp_sockaddr_to_ip6_addr(&ip6addr, sa_in6);
+  ip6_addr_set_zone(&ip6addr, IP6_NO_ZONE);
   // nif->ip6_autoconfig_enabled = 1; // too early
 
   gambit_lwipcore_lock("lwip_init_interface_IPv6");
@@ -1180,7 +1181,7 @@ END
    ip_addr_t ipaddr;
    ipaddr.type = IPADDR_TYPE_V6;
    memcpy(&ipaddr.u_addr.ip6.addr, ___CAST(void *,___BODY_AS(___arg2,___tSUBTYPED)), sizeof(ip6_addr_t));
-   ipaddr.u_addr.ip6.zone = 0;
+   ipaddr.u_addr.ip6.zone = IP6_NO_ZONE;
    lwip_gambit_unlock();
    gambit_lwipcore_lock("lwip-tcp-bind");
    ___result = tcp_bind(___arg1, &ipaddr, ___arg3);
@@ -1249,7 +1250,7 @@ end-lwip-tcp-event
    ip_addr_t ipaddr;
    ipaddr.type = IPADDR_TYPE_V6;
    ipaddr.u_addr.ip6.zone = IP6_NO_ZONE;
-   memcpy(&ipaddr.u_addr.ip6.addr, ___CAST(void *,___BODY_AS(___arg2,___tSUBTYPED)), sizeof(ip6_addr_t));
+   memcpy(&ipaddr.u_addr.ip6.addr, ___CAST(void *,___BODY_AS(___arg2,___tSUBTYPED)), 16);
    gambit_lwipcore_lock("lwip-tcp-connect");
    ___result = tcp_connect(___arg1, &ipaddr, ___arg3, NULL);
    gambit_lwipcore_unlock();
