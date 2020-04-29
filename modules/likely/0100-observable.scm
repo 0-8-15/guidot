@@ -240,8 +240,14 @@
         #;($stm-retry-limit 0)
         #;($debug-trace-triggers #t)
         )
-       ;; before ..??
-       (with-current-transaction thunk)))))
+       (cond
+        ((and (box? x) (let ((t (unbox x))) (and (procedure? t) t))) =>
+         ;; before
+         (lambda (thunk)
+           (if (current-transaction) (stm-consistency-error 'sync-kick-within-transaction thunk)) ;; DEBUG
+           (let ((kicking (thunk)))
+             (if (procedure? kicking) (kick! kicking)))))
+        (else (with-current-transaction thunk)))))))
 
 (define %kick-style 'async)
 
@@ -263,8 +269,14 @@
         #;($stm-retry-limit 0)
         #;($debug-trace-triggers #t)
         )
-       ;; before ..??
-       (with-current-transaction thunk)))))
+       (cond
+        ((and (box? x) (let ((t (unbox x))) (and (procedure? t) t))) =>
+         ;; before
+         (lambda (thunk)
+           (if (current-transaction) (stm-consistency-error 'sync-kick-within-transaction thunk)) ;; DEBUG
+           (let ((kicking (thunk)))
+             (if (procedure? kicking) (kick! kicking)))))
+        (else (with-current-transaction thunk)))))))
 
 ;; Short procedural interface.  NOT recommended for eventual use,
 ;; except as a drop in compatible to parameters. It just hides too
