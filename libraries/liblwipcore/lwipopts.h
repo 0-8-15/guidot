@@ -2945,7 +2945,7 @@ happening sooner than they should.
  * LWIP_HOOK_IP6_ROUTE(src, dest):
  * Called from ip_route() (IPv6)
  * Signature:\code{.c}
- *   struct netif *my_hook(const ip6_addr_t *dest, const ip6_addr_t *src);
+ *   struct netif *my_hook(const ip6_addr_t *src, const ip6_addr_t *dest);
  * \endcode
  * Arguments:
  * - src: source IPv6 address
