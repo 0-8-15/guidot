@@ -5,37 +5,36 @@
     `(define-cond-expand-feature ,v)))
 
 
-;#|;;;* FEATURE SWITCH lwip-requires-pthread-locks
-(define-cond-expand-feature lwip-requires-pthread-locks)
-;;;|#
-
-(cond-expand
- (lwip-requires-pthread-locks
-  (when
-   (eqv? lwip-NO_SYS 0)
-   (debug 'lwip-requires-pthread-locks lwip-NO_SYS)
-   (exit 1)))
- (else
-  (unless
-   (eqv? lwip-NO_SYS 1)
-   (debug 'lwip-requires-check-timeouts lwip-NO_SYS)
-   (exit 1))))
-
 ;;;* Notational Conventions
 ;;;** Consistency :Notational Conventions:
 ;; ($kick-style 'sync)
 
 (include "observable-notational-conventions.scm")
 
-(define-macro (mustbe-async-when-lwip-requires-pthread-locks expr)
+(define-macro (mustbe-async expr)
     `(thread-start! (make-thread (lambda () ,expr #;(debug ',expr ,expr)) ',expr)))
+
+(define-macro (mustbe-async-to-avoid-recursion-to-zt expr) `(mustbe-async ,expr))
+
+(define-macro (mustbe-async-to-avoid-recursion-to-lwip expr) `(mustbe-async ,expr))
+
+(cond-expand
+ (lwip-requires-pthread-locks
+  (define-macro (mustbe-async-when-lwip-requires-pthread-locks expr)
+    `(thread-start! (make-thread (lambda () ,expr #;(debug ',expr ,expr)) ',expr))))
+ (else
+  (define-macro (mustbe-async-when-lwip-requires-pthread-locks expr) expr)))
 
 (define-macro (maybe-async-when-lwip-requires-pthread-locks expr) `(mustbe-async-when-lwip-requires-pthread-locks ,expr))
 #;(define-macro (maybe-async-when-lwip-requires-pthread-locks expr) expr)
 
 (define-macro (begin-after-return! expr)
   ;; Schedule EXPR for execution (one way or another) and return nonsense.
-  `(begin (mustbe-async-when-lwip-requires-pthread-locks ,expr) #!void))
+  `(begin (mustbe-async-to-avoid-recursion-to-zt ,expr) #!void))
+
+(define-macro (maybe-async expr)
+  ;; Schedule EXPR for execution (one way or another) and return nonsense.
+  `(begin (mustbe-async ,expr) #!void))
 
 ;;;** Values :Notational Conventions:
 
@@ -302,8 +301,8 @@
       (zt-multicast-subscribe nwid (dbgmac 'MCMAC (gamsock-socket-address->nd6-multicast-mac addr))))
     (begin
       (lwip_init_interface_IPv6 nif (make-6plane-addr nwid ndid (adhoc-port)))
-      ;; this goes south under valgrind (only)
-      (do ((n (- (debug 'NMacs (lwip-netif-ip6addr-count nif)) 1) (- n 1)))
+      ;; this goes south under valgrind (only) and valgrind will report mem leaks
+      #;(do ((n (- (debug 'NMacs (lwip-netif-ip6addr-count nif)) 1) (- n 1)))
           ((= n -1))
         (zt-multicast-subscribe nwid (dbgmac 'MCMAC (lwip-netif-ip6broadcast-mach nif n)))))
     nif))
@@ -534,7 +533,7 @@
        (debug 'Packt-len (u8vector-length bp))
        (cond
         ((eq? ethtp 'ETHTYPE_IPV6) (display-ip6-packet/offset bp 0 (current-error-port))))
-       (maybe-async-when-lwip-requires-pthread-locks (debug 'DONE:zt-virtual-send (zt-virtual-send (find-nwid-for-nif netif) src dst ethertype vlanid bp)))
+       (mustbe-async-to-avoid-recursion-to-lwip (debug 'DONE:zt-virtual-send (zt-virtual-send (find-nwid-for-nif netif) src dst ethertype vlanid bp)))
        (debug 'lwip-ethernet-send 'return-ok)
        ERR_OK))))
 
@@ -549,7 +548,8 @@
                (bp (pbuf->u8vector pbuf 0)))
            (debug 'lwip-ip6-send-to (hexstr ndid 10))
            (display-ip6-packet/offset bp 0 (current-error-port))
-           (mustbe-async-when-lwip-requires-pthread-locks (debug 'DONE:zt-vsend (zt-virtual-send nwid src (zt-network+node->mac nwid ndid) ETHTYPE_IPV6 0 bp)))
+           (mustbe-async-to-avoid-recursion-to-lwip (debug 'DONE:zt-vsend (zt-virtual-send nwid src (zt-network+node->mac nwid ndid) ETHTYPE_IPV6 0 bp)))
+           (debug 'lwip-ipv6-send 'return-ok)
            ERR_OK)
          ERR_RTE))))
 
@@ -666,13 +666,16 @@
 
 (define (lwc0 from) (.lws-contact-is-listening from))
 
+(define-pin tcp-connections '())
+
+(define ip6addr-any '#u8(0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0))
+
 (wire!
  (list *nwif* connecting lws-contact-is-listening)
- post: (lambda () (if (and (*nwif*) (connecting) (lws-contact-is-listening)) (lwc))))
+ post: (box (lambda () (if (and (*nwif*) (connecting) (lws-contact-is-listening)) #;Kicking lwc))))
 
 (define (lwc)
-  (let* ((pcb (tcp-new-ip-type lwip-IPADDR_TYPE_V6))
-         (sa (make-6plane-addr (ctnw) (lws-contact-is-listening) #;(tester-ndid (other-party)) (adhoc-port)))
+  (let* ((sa (make-6plane-addr (ctnw) (lws-contact-is-listening) #;(tester-ndid (other-party)) (adhoc-port)))
          (addr (receive (a p) (sa->u8 'lwc sa) a)))
     (debug "
 
@@ -682,20 +685,20 @@
 
 
 "  'PLATZ)
-     (let ((client (tcp-new6)))
-        (debug 'client-bound (lwip-tcp-bind/netif client (*nwif*)))
-        (tcp-context-set!
-         client
-         (lambda (connection)
-           (debug 'ClientConnected connection)
-           (lwip-tcp-close connection)))
-        (unless (lwip-ok? (debug 'conn (lwip-tcp-connect client addr (debug 'connecting (adhoc-port)))))
-                (error "lwip-tcp-connect failed"))
-        (unless (lwip-ok? (lwip-tcp-flush! (debug 'lwip-tcp-flush! client)))
-                (error "lwip-tcp-flush! failed"))
-        (debug 'lwc 'waiting-for-callback)
-        (thread-sleep! 30)
-        #;(lambda () (debug 'lws 'post-post) #f))))
+    (let* ((client (tcp-new6))
+           (rcv
+            (lambda (connection)
+              (debug (list 'ClientConnected (current-thread)) connection)
+              (mustbe-async-to-avoid-recursion-to-lwip (%%lwip-tcp-close connection))
+              ERR_OK)))
+      (%%tcp-context-set! client (debug 'clientcontext rcv))
+      (debug 'client-bound (lwip-tcp-bind client ip6addr-any 0))
+      (unless (lwip-ok? (debug 'conn (lwip-tcp-connect client addr (debug 'connecting (adhoc-port)))))
+              (error "lwip-tcp-connect failed"))
+      (unless (lwip-ok? (lwip-tcp-flush! (debug 'lwip-tcp-flush! client)))
+              (error "lwip-tcp-flush! failed"))
+      (debug 'lwc 'waiting-for-callback)
+      #;Kicking: (lambda () (tcp-connections (cons rcv (tcp-connections)))))))
 
 (define lws-listener (PIN))
 
@@ -710,7 +713,7 @@
          (sa (make-6plane-addr (ctnw) (zt-address) (adhoc-port)))
          (addr (if #f
                    (receive (a p) (sa->u8 'lws sa) a) ;; Bind local/loopback only
-                   '#u8(0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0))))
+                   ip6addr-any)))
     (debug "
 
 
@@ -725,13 +728,13 @@
      (error "lwip-tcp-bind failed"))
     (let ((srv (debug 'listening (lwip-tcp-listen (debug 'listenon srv)))))
       (unless srv (error "lwip-listen failed"))
-      (tcp-context-set! srv #f)
+      (%%tcp-context-set! srv #f)
       (lws-listener srv))))
 
 (define tried-to-contact (PIN #f))
 
 (define (report-contact-attempt-later)
-  (thread-sleep! 10)
+  (thread-sleep! 5)
   (kick! (lambda () (tried-to-contact #t))))
 
 (define (contact-other-party)
