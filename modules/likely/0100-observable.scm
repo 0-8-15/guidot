@@ -158,7 +158,7 @@
      ((procedure? x) (thread-start! (make-thread (lambda () (kick! x)) 'consequence)))
      ((and (box? x) (let ((t (unbox x))) (and (procedure? t) t))) =>
       (lambda (thunk)
-        (stm-log 'atomic-with-consequence "running" thunk)
+        (stm-log 'atomic-with-consequence " starting new thread" thunk)
         (thread-start!
          (make-thread
           (lambda ()
@@ -232,23 +232,6 @@
        (lambda (ex) (stm-consistency-error "toplevel-execute!" ex))
        thunk)))))
 
-#;(define kick!
-  (let ((triggers (make-observable-triggers async: #t)))
-    (lambda (thunk)
-      (parameterize
-       ((current-trigger-handler triggers)
-        #;($stm-retry-limit 0)
-        #;($debug-trace-triggers #t)
-        )
-       (cond
-        ((and (box? x) (let ((t (unbox x))) (and (procedure? t) t))) =>
-         ;; before
-         (lambda (thunk)
-           (if (current-transaction) (stm-consistency-error 'sync-kick-within-transaction thunk)) ;; DEBUG
-           (let ((kicking (thunk)))
-             (if (procedure? kicking) (kick! kicking)))))
-        (else (with-current-transaction thunk)))))))
-
 (define %kick-style 'async)
 
 (define $kick-style
@@ -259,7 +242,14 @@
 (define kick!
   (let ((triggers-async (make-observable-triggers async: #t))
         (triggers-kick (make-observable-triggers async: 'kick)))
-    (lambda (thunk)
+    (define (%passive thunk)
+      (let ((kicking (thunk)))
+        (cond
+         ((procedure? kicking) (kick! kicking)))))
+    (define (%passive/check thunk)
+      (if (current-transaction) (stm-consistency-error 'kick-passive-within-transaction thunk)) ;; DEBUG
+      (%passive thunk))
+    (define (%kick! thunk)
       (parameterize
        ((current-trigger-handler
          (case %kick-style
@@ -269,14 +259,12 @@
         #;($stm-retry-limit 0)
         #;($debug-trace-triggers #t)
         )
-       (cond
-        ((and (box? x) (let ((t (unbox x))) (and (procedure? t) t))) =>
-         ;; before
-         (lambda (thunk)
-           (if (current-transaction) (stm-consistency-error 'sync-kick-within-transaction thunk)) ;; DEBUG
-           (let ((kicking (thunk)))
-             (if (procedure? kicking) (kick! kicking)))))
-        (else (with-current-transaction thunk)))))))
+       (with-current-transaction thunk)))
+    (lambda (thunk)
+      (cond
+       ((and (box? thunk) (let ((t (unbox thunk))) (and (procedure? t) t))) => %passive/check) ;; before
+       ((current-transaction) (%passive thunk))
+       (else (%kick! thunk))))))
 
 ;; Short procedural interface.  NOT recommended for eventual use,
 ;; except as a drop in compatible to parameters. It just hides too
