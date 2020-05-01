@@ -1,3 +1,7 @@
+#|;;;* FEATURE SWITCH lwip-requires-pthread-locks
+(define-cond-expand-feature lwip-requires-pthread-locks)
+;;;|#
+
 (define-macro (define-c-constant var type . const)
   (let* ((const (if (not (null? const)) (car const) (symbol->string var)))
 	 (str (string-append "___result = " const ";")))
@@ -551,6 +555,18 @@ ___return( the_gambit_owner==0 ? 0 : the_gambit_owner==pthread_self() ? 1 : -1 )
 
 (define-c-constant lwip-NO_SYS size_t "NO_SYS")
 
+(cond-expand
+ (lwip-requires-pthread-locks
+  (when
+   (eqv? lwip-NO_SYS 0)
+   (debug 'lwip-requires-pthread-locks lwip-NO_SYS)
+   (exit 1)))
+ (else
+  (unless
+   (eqv? lwip-NO_SYS 1)
+   (debug 'lwip-requires-check-timeouts lwip-NO_SYS)
+   (exit 1))))
+
 (define-c-constant LWIP_TCPIP_CORE_LOCKING_INPUT int)
 
 (define-c-constant LWIP_TCPIP_CORE_LOCKING int)
@@ -719,8 +735,8 @@ END
 |#
 ;;; Timeout Handling
 
-(define (lwip-check-timeouts #!optional (timeout -1))
- ((c-lambda (int32) int32 #<<END
+(define %%lwip-check-timeouts
+  (c-lambda (int32) int32 #<<END
 #if NO_SYS
   /* handle timers (already done in tcpip.c when NO_SYS=0) */
   sys_check_timeouts();
@@ -739,8 +755,16 @@ END
   ___return(result);
 #endif
 END
-)
-  timeout))
+))
+
+(define (lwip-check-timeouts #!optional (timeout -1))
+  (cond-expand
+   (lwip-requires-pthread-locks (%%lwip-check-timeouts timeout))
+   (else
+    (mutex-lock! *lwip-mutex*)
+    (let ((result (%%lwip-check-timeouts timeout)))
+      (mutex-unlock! *lwip-mutex*)
+      result))))
 
 ;;; Network Interfaces
 
@@ -886,7 +910,7 @@ END
   (c-lambda
    (netif*) char-string #<<END
    char result[18];
-   lwip_fill_mac_string(result,___arg1->hwaddr);
+   lwip_fill_mac_string(result,___CAST(struct eth_addr* ,___arg1->hwaddr));
    ___result = result;
 END
 ))
@@ -1059,7 +1083,7 @@ lwip_init_interface_IPv6(struct netif *nif, struct sockaddr_storage *ip)
   ip6_addr_set_zone(&ip6addr, IP6_NO_ZONE);
   // nif->ip6_autoconfig_enabled = 1; // too early
 
-  gambit_lwipcore_lock("lwip_init_interface_IPv6");
+  // now in macro: gambit_lwipcore_lock("lwip_init_interface_IPv6");
   // questionable: passing the state as the old value.  Better don't initialize it?
   if(!netif_add_noaddr(nif, nif /*->state*/, netif_init6, INPUT_HANDLER)) {
     fprintf(stderr, "lwip: netif_add_noaddr failed\n");
@@ -1074,15 +1098,40 @@ lwip_init_interface_IPv6(struct netif *nif, struct sockaddr_storage *ip)
   // fprintf(stderr, "init addr %s\n", ip6addr_ntoa(&ip6addr));  // DEBUG
   netif_ip6_addr_set(nif, 1, &ip6addr);
   netif_ip6_addr_set_state(nif, 1, nif->ip6_autoconfig_enabled ? IP6_ADDR_TENTATIVE : IP6_ADDR_VALID /*IP6_ADDR_PREFERRED*/); // was IP6_ADDR_TENTATIVE
-  gambit_lwipcore_unlock();
+  // now in macro: gambit_lwipcore_unlock();
   // fprintf(stderr, "lwip_init_interface_IPv6 DONE\n");
 }
 
 c-declare-end
 )
 
+(cond-expand
+ (lwip-requires-pthread-locks
+  (define-macro (c-lambda-with-lwip-locked formals types ret code)
+    ;; BEWARE: MUST NOT use the ___return macro!  But assign to
+    ;; ___result
+    `(c-lambda
+      ,types ,ret
+      ,(string-append
+        "\ngambit_lwipcore_lock(" (with-output-to-string (lambda () (write code))) ");\n"
+        code
+        "\ngambit_lwipcore_unlock();\n"))))
+ (else
+  (define *lwip-mutex* (make-mutex '*lwip*))
+  (define-macro (c-lambda-with-lwip-locked formals types ret code)
+    ;; BEWARE: MUST NOT use the ___return macro!  But assign to
+    ;; ___result
+    (let ((result (gensym 'result)))
+      `(lambda ,formals
+         (mutex-lock! *lwip-mutex*)
+         (let ((,result ((c-lambda ,types ,ret ,code) . ,formals)))
+           (mutex-unlock! *lwip-mutex*)
+           ,result))))
+  )) ;; cond-expand
+
 (define lwip_init_interface_IPv6
- (c-lambda (netif* socket-address) void "lwip_init_interface_IPv6"))
+  (c-lambda-with-lwip-locked
+   (nif addr) (netif* socket-address) void "lwip_init_interface_IPv6(___arg1, ___arg2);"))
 
 (define pbuf-fill-ethernet-header!
   (c-lambda
@@ -1097,7 +1146,8 @@ c-declare-end
 END
 ))
 
-(define lwip-send-ethernet-input/pbuf! (c-lambda (netif* pbuf) err_t "lwip_send_ethernet_input"))
+(define lwip-send-ethernet-input/pbuf!
+  (c-lambda-with-lwip-locked (nif pbuf) (netif* pbuf) err_t "___result=lwip_send_ethernet_input(___arg1, ___arg2);"))
 
 (define (lwip-send-ethernet-input! netif src dst ethertype payload len)
   ;; Compose ethernet frame and send it to @param netif
@@ -1117,13 +1167,12 @@ END
 
 ;;(define lwip-default-netif-poll! (c-lambda () void "default_netif_poll"))
 
-
 ;;; ND6, Routing
 
 (define lwip-nd6-find-route
-  (c-lambda
+  (c-lambda-with-lwip-locked
    ;; TODO: check for IPv6 address.
-   (socket-address) netif*
+   (addr) (socket-address) netif*
    "ip6_addr_t a; cp_sockaddr_to_ip6_addr(&a,(struct sockaddr_in6*) ___arg1); ___result = nd6_find_route(&a);"))
 
 ;;;* TCP API
@@ -1141,17 +1190,6 @@ END
 
 (define (tcp-pcb? obj) (let ((f (foreign-tags obj))) (and f (eq? (car f) 'tcp-pcb))))
 
-(define-macro (c-lambda-with-lwip-locked formals ret pre code)
-   ;; BEWARE: MUST NOT use the ___return macro!  But assign to
-   ;; ___result
-  `(c-lambda
-    ,formals ,ret
-    ,(string-append
-      pre
-      "\ngambit_lwipcore_lock(" (with-output-to-string (lambda () (write code))) ");\n"
-      code
-      "\ngambit_lwipcore_unlock();\n")))
-
 (define-macro (custom-handler name default . args)
   ;; FIXME: We better check from c-define-with-gambit-locked.0 for the
   ;; handler BEFORE we lock the core and provide defaults in plain C!
@@ -1166,7 +1204,7 @@ END
 #;(define lwip-tcp-bind/socket-address
   (c-lambda-with-lwip-locked
    ;; FIXME: works only with IPv6 for now., does not at all, misses locking
-   (tcp_pcb socket-address) err_t "" #<<END
+   (tcp_pcb socket-address) err_t #<<END
    ip_addr_t ipaddr = IPADDR6_INIT(0,0,0,0);
    cp_sockaddr_to_ip6_addr(&ipaddr.u_addr.ip6, (struct sockaddr_in6 *) ___arg2);
    ___result = tcp_bind(___arg1, &ipaddr, ((struct sockaddr_in6 *) ___arg2)->sin6_port);
@@ -1174,9 +1212,10 @@ END
 ))
 
 (define (lwip-tcp-bind pcb u8 port)
-  ;; FIXME: works only with IPv6 for now.
-  (unless (eqv? (u8vector-length u8) 16) (error "lwip-tcp-bind: currently only IPv6"))
-  ((c-lambda
+ ;; FIXME: works only with IPv6 for now.
+ (unless (eqv? (u8vector-length u8) 16) (error "lwip-tcp-bind: currently only IPv6"))
+ ((c-lambda-with-lwip-locked
+   (pcb addr port)
    (tcp_pcb scheme-object unsigned-int) err_t #<<END
    ip_addr_t ipaddr;
    ipaddr.type = IPADDR_TYPE_V6;
@@ -1191,7 +1230,8 @@ END
 ) pcb u8 port))
 
 (define (lwip-tcp-bind/netif pcb netif)
-  ((c-lambda
+  ((c-lambda-with-lwip-locked
+   (pcb netif)
    (tcp_pcb netif*) void #<<END
    gambit_lwipcore_lock("lwip-tcp-bind/netif");
    tcp_bind_netif(___arg1, ___arg2);
@@ -1202,8 +1242,8 @@ END
 (define tcp-new (c-lambda () new_tcp_pcb "local_lwip_init(); ___return(tcp_new());"))
 
 (define tcp-new-ip-type
-  (c-lambda
-   (unsigned-int8) new_tcp_pcb
+  (c-lambda-with-lwip-locked
+   (type) (unsigned-int8) new_tcp_pcb
    "local_lwip_init();
  struct tcp_pcb *result=tcp_new_ip_type(___arg1);
  fprintf(stderr, \"PCB %p\\n\", result);
@@ -1211,9 +1251,32 @@ END
 
 (define (tcp-new6) (tcp-new-ip-type lwip-IPADDR_TYPE_V6))
 
-(define tcp-context-set!
+#;(define tcp-context-set!
   (c-lambda-with-lwip-locked
-   (tcp_pcb CONTEXT) void "" "tcp_arg(___arg1, (void*)___arg2);"))
+   (pcb ctx) (tcp_pcb CONTEXT) void "tcp_arg(___arg1, (void*)___arg2);"))
+
+(define tcp-context-set!
+  (c-lambda
+   (tcp_pcb CONTEXT) void "tcp_arg(___arg1, (void*)___arg2);"))
+
+(define tcp-context
+  (c-lambda
+   (tcp_pcb) CONTEXT "___return(___CAST(GAME_CONTEXT ,___arg1->callback_arg));"))
+
+#|
+(define-type tcp-connection macros: prefix: % ctx pcb)
+
+(define (make-tcpip-connection type context)
+  (let ((pcb
+         (tcp-new-ip-type
+          (case type
+            ((IPv6) lwip-IPADDR_TYPE_V6)
+            ((IPv4) lwip-IPADDR_TYPE_V4)
+            ((*) lwip-IPADDR_TYPE_ANY)
+            (else type)))))
+    (tcp-context-set! pcb context)
+    (%make-tcp-connection pcb context)))
+|#
 
 ;;;** TCP Event API
 
@@ -1237,6 +1300,9 @@ END
 (c-declare #<<end-lwip-tcp-event
 err_t lwip_tcp_event(void *arg, struct tcp_pcb *pcb, enum lwip_event event, struct pbuf *p, u16_t size, err_t err)
 {
+#if NO_SYS
+// if(event == LWIP_EVENT_POLL) return ERR_OK;
+#endif
  return scm_lwip_tcp_event((GAME_CONTEXT) arg, pcb, event, p, size, err);
 }
 end-lwip-tcp-event
@@ -1244,8 +1310,9 @@ end-lwip-tcp-event
 
 (define lwip-tcp-connect/event
   ;; EVENT API version, NULL connect function (unused)
-  (c-lambda
+  (c-lambda-with-lwip-locked
    ;; FIXME: works only with IPv6 for now.
+   (pcb u8addr port)
    (tcp_pcb scheme-object unsigned-int) err_t #<<END
    ip_addr_t ipaddr;
    ipaddr.type = IPADDR_TYPE_V6;
@@ -1261,7 +1328,7 @@ END
 
 (define (tcp-set-poll-interval! pcb interval)
   ((c-lambda-with-lwip-locked
-    (tcp_pcb unsigned-int8) void "" "tcp_poll(___arg1, NULL, ___arg2);")
+    (pcb interval) (tcp_pcb unsigned-int8) void "tcp_poll(___arg1, NULL, ___arg2);")
    pcb interval))
 
 (define tcp-flags-set! (c-lambda (tcp_pcb unsigned-int) void "tcp_set_flags"))
@@ -1275,40 +1342,40 @@ END
 ;; To be called by the application to aknowledge that it has read that
 ;; much incoming data.
 (define tcp-received!
-  (c-lambda-with-lwip-locked (tcp_pcb unsigned-int16) void "" "tcp_recved(___arg1, ___arg2);"))
+  (c-lambda-with-lwip-locked (pcb amount) (tcp_pcb unsigned-int16) void "tcp_recved(___arg1, ___arg2);"))
 
 (define lwip-tcp-listen
   ;; NOTE: this deallocates the argument, except when it returns #f.
   ;;
   ;; BEWARE: MUST NOT use the ___return macro!
-  (c-lambda-with-lwip-locked (tcp_pcb) new_tcp_pcb "" "___result = tcp_listen(___arg1);"))
+  (c-lambda-with-lwip-locked (listen-pcb) (tcp_pcb) new_tcp_pcb "___result = tcp_listen(___arg1);"))
 
-(define tcp_abort (c-lambda-with-lwip-locked (tcp_pcb) void "" "tcp_abort(___arg1);"))
+(define tcp_abort (c-lambda-with-lwip-locked (abort-pcb) (tcp_pcb) void "tcp_abort(___arg1);"))
 
 (define (lwip-tcp-close pcb)
-  (let ((r ((c-lambda-with-lwip-locked (tcp_pcb) err_t "" "___result=tcp_close(___arg1);") pcb)))
+  (let ((r ((c-lambda-with-lwip-locked (close-pcb) (tcp_pcb) err_t "___result=tcp_close(___arg1);") pcb)))
     (if (eqv? r ERR_OK) r
         (begin
-          (tcp_abort pcb)
-          (debug 'lwip-tcp-close r)))))
+          (debug 'lwip-tcp-close r)
+          (tcp_abort pcb)))))
 
 (define lwip-tcp_shutdown
   (c-lambda-with-lwip-locked
-   (tcp_pcb bool bool) err_t "" "___result=tcp_shutdown(___arg1, ___arg2, ___arg3);"))
+   (pcb shtin shtou) (tcp_pcb bool bool) err_t "___result=tcp_shutdown(___arg1, ___arg2, ___arg3);"))
 
 (define lwip-tcp_write
   (c-lambda-with-lwip-locked
-   (tcp_pcb void* unsigned-int16 unsigned-int8) err_t ""
+   (pcb data sz x) (tcp_pcb void* unsigned-int16 unsigned-int8) err_t
    "___result = tcp_write(___arg1, ___arg2, ___arg3, ___arg4);"))
 
 (define lwip-tcp-prio-set!
-  (c-lambda-with-lwip-locked (tcp_pcb unsigned-int8) void "" "tcp_setprio(___arg1, ___arg2);"))
+  (c-lambda-with-lwip-locked (pcb prio) (tcp_pcb unsigned-int8) void "tcp_setprio(___arg1, ___arg2);"))
 
-(define lwip-tcp-flush!1 (c-lambda-with-lwip-locked (tcp_pcb) err_t "" "___result = tcp_output(___arg1);"))
+(define lwip-tcp-flush!1 (c-lambda-with-lwip-locked (flush-pcb) (tcp_pcb) err_t "___result = tcp_output(___arg1);"))
 (define lwip-tcp-flush!
   ;; FIXME: so far it did not call back.  Could it?
-  (c-lambda
-   (tcp_pcb) err_t #<<END
+  (c-lambda-with-lwip-locked
+   (flush-pcb) (tcp_pcb) err_t #<<END
    lwip_gambit_unlock();
    gambit_lwipcore_lock("lwip-tcp-flush!");
    ___result = tcp_output(___arg1);

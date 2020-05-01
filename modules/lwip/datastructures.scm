@@ -12,7 +12,7 @@
     `(c-lambda
       (scheme-object size_t) ,(string->symbol (string-append "unsigned-int" size_str))
       ,(string-append
-       "const char *cptr = ___BODY(___arg1);
+       "const char *cptr = ___CAST(uint8_t*, ___BODY(___arg1));
 uint" size_str "_t result, val = *(uint" size_str "_t*)(cptr+___arg2);
 result = " conv "(val); // TODO just inline the expression
 ___return(result);"))))
@@ -22,7 +22,7 @@ ___return(result);"))))
     `(c-lambda
       (scheme-object size_t ,(string->symbol (string-append "unsigned-int" size_str))) void
       ,(string-append
-       "const char *cptr = ___BODY(___arg1);
+       "const char *cptr = ___CAST(uint8_t*, ___BODY(___arg1));
 uint" size_str "_t val = " conv "(___arg3); // TODO just inline the expression
 *(uint" size_str "_t*)(cptr+___arg2) = val;"))))
 
