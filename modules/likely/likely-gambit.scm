@@ -68,6 +68,7 @@
   $debug-trace-triggers
   ;; Debug & Deprecated
   ;;
+  stm-atomic?
   $kick-style
   ))
 
