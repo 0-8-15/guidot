@@ -39,11 +39,13 @@
          ,tmp))))
 
 (define-macro (delayed-until-after-return? expr) `(procedure? ,expr))
-(define-macro (%zt-post result)
-  `(if (delayed-until-after-return? ,result)
-       (begin
-         (##safe-lambda-post! ,result) ZT_RESULT_OK)
-       (if ,result ZT_RESULT_OK -1)))
+(define-macro (%zt-post expr)
+  (let ((result (gensym '%zt-post)))
+    `(let ((,result ,expr))
+       (if (delayed-until-after-return? ,result)
+           (begin
+             (##safe-lambda-post! ,result) ZT_RESULT_OK)
+           (if ,result ZT_RESULT_OK -1)))))
 
 (define-macro (define-c-constant var type . const)
   (let* ((const (if (not (null? const)) (car const) (symbol->string var)))
