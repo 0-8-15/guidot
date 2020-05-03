@@ -83,6 +83,10 @@
                 (##raise-safe-lambda-exception '##foreign-safe-thread-start! (debug 'thread-start! "not locked")))
             (thread-start! thread))))))
 
+;; This overwrite appears to fix the issue.
+(define (##overwrite-thread-start!-forsafe-lambda!)
+  (set! thread-start! ##foreign-safe-thread-start!))
+
 ;; FIXME: kill issue via overwrite (set! thread-start! ##foreign-safe-thread-start!)
 
 ;;;** Syntax Exports
