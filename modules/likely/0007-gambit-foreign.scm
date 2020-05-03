@@ -74,6 +74,7 @@
 ;;; wrt. threads started from callbacks.
 
 (define ##foreign-safe-thread-start!
+  ;; Did suddenly not work as good anymore.
   (let ((thread-start! thread-start!))
     (lambda (thread)
       (let ((mux-state (mutex-state ##safe-lambda-mutex)))
@@ -82,6 +83,15 @@
                 (##safe-lambda-post! (delay-until-after-return (thread-start! thread)))
                 (##raise-safe-lambda-exception '##foreign-safe-thread-start! (debug 'thread-start! "not locked")))
             (thread-start! thread))))))
+
+#;(define ##foreign-safe-thread-start!
+  (let ((thread-start! thread-start!))
+    (define starter
+      (thread-start!
+       (make-thread
+        (lambda () (do () (#f) (thread-start! (thread-receive))))
+        'thread-starter)))
+    (lambda (thread) (thread-send starter thread))))
 
 ;; This overwrite appears to fix the issue.
 (define (##overwrite-thread-start!-for-safe-lambda!)
