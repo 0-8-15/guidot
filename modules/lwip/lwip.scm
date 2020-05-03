@@ -2,6 +2,22 @@
 (define-cond-expand-feature lwip-requires-pthread-locks)
 ;;;|#
 
+;;;* Global Syntax Imports
+
+(define-macro (c-safe-lambda formals return c-code)
+  (let ((tmp (gensym 'c-safe-lambda-result))
+        (argument-names
+         (map
+          (lambda (n) (string->symbol (string-append "arg" (number->string n))))
+          (iota (length formals)))))
+    `(lambda ,argument-names
+       (##safe-lambda-lock! ,c-code)
+       (let ((,tmp ((c-lambda ,formals ,return ,c-code) . ,argument-names)))
+         (##safe-lambda-unlock! ,c-code)
+         ,tmp))))
+
+;;;* Local Syntax
+
 (define-macro (define-c-constant var type . const)
   (let* ((const (if (not (null? const)) (car const) (symbol->string var)))
 	 (str (string-append "___result = " const ";")))
@@ -321,6 +337,64 @@ static inline void gambit_lwipcore_unlock()
 lwip-core-lock-end
 )
 
+(define-macro (delayed-until-after-return? expr) `(procedure? ,expr))
+
+(cond-expand
+ (lwip-requires-pthread-locks
+  (define-macro (c-lambda-with-lwip-locked formals types ret code)
+    ;; BEWARE: MUST NOT use the ___return macro!  But assign to
+    ;; ___result
+    `(c-lambda
+      ,types ,ret
+      ,(string-append
+        "\ngambit_lwipcore_lock(" (with-output-to-string (lambda () (write code))) ");\n"
+        code
+        "\ngambit_lwipcore_unlock();\n"))))
+ (define (%lwip-post! promise)
+   (error "%lwip-post! NYI for lwip-requires-pthread-locks"))
+ (quasi-template
+  (define *lwip-mutex* (make-mutex '*lwip*))
+  (mutex-specific-set! *lwip-mutex* '())
+  (define (%lwip-lock!)
+    (if (eq? (debug (list 'lwIP-O (current-thread)) (mutex-state *lwip-mutex*)) (current-thread))
+        (error (debug 'DEAD "lwIP: DEADLOCK") (current-thread)))
+    (mutex-lock! *lwip-mutex*)
+    (debug (list 'lwIP-P (current-thread)) (mutex-state *lwip-mutex*)))
+  (define (%lwip-unlock!)
+    (let ((post (mutex-specific *lwip-mutex*)))
+      (mutex-specific-set! *lwip-mutex* '())
+      (debug (list 'lwIP-V (current-thread)) (mutex-state *lwip-mutex*))
+      (mutex-unlock! *lwip-mutex*)
+      (for-each force post)))
+  (define (%lwip-post! result)
+    (if (delayed-until-after-return? result)
+        (begin
+          (mutex-specific-set! *lwip-mutex* (cons result (mutex-specific *lwip-mutex*)))
+          ERR_OK)
+        result))
+  (define-macro (c-lambda-with-lwip-locked formals types ret code)
+    ;; BEWARE: MUST NOT use the ___return macro!  But assign to
+    ;; ___result
+    (let ((result (gensym 'result)))
+      `(lambda ,formals
+         (%lwip-lock!)
+         (let ((,result ((c-lambda ,types ,ret ,code) . ,formals)))
+           (%lwip-unlock!)
+           ,result))))
+  )
+ (else
+  (define-macro (%lwip-lock!) '(##safe-lambda-lock! '%lwip-lock!))
+  (define-macro (%lwip-unlock!) '(##safe-lambda-unlock! '%lwip-unlock!))
+  (define-macro (%lwip-post! result)
+    `(if (delayed-until-after-return? ,result)
+         (begin
+           (##safe-lambda-post! ,result)
+           ERR_OK)
+         ,result))
+  (define-macro (c-lambda-with-lwip-locked unused-backward-compatible-formals types ret code)
+    `(c-safe-lambda ,types ,ret ,code))
+  )) ;; cond-expand
+
 (c-declare
 ;;; Basic Data Types, Initialization, lwip->gambit calling/locking
  #<<c-declare-end
@@ -532,7 +606,7 @@ ___return( the_gambit_owner==0 ? 0 : the_gambit_owner==pthread_self() ? 1 : -1 )
  return result;\n}\n"))))
             (string-append decl local p body v final))))
     `(begin
-       (c-define ,def ,type ,result-type ,locked-c-part ,scope ,body)
+       (c-define ,def ,type ,result-type ,locked-c-part ,scope (%lwip-post! ,body))
        (c-declare ,within-gambit))))
 
 ;;; Init Part II
@@ -761,9 +835,9 @@ END
   (cond-expand
    (lwip-requires-pthread-locks (%%lwip-check-timeouts timeout))
    (else
-    (mutex-lock! *lwip-mutex*)
+    (%lwip-lock!)
     (let ((result (%%lwip-check-timeouts timeout)))
-      (mutex-unlock! *lwip-mutex*)
+      (%lwip-unlock!)
       result))))
 
 ;;; Network Interfaces
@@ -780,19 +854,7 @@ END
  int "Xscm_ether_send" "static"
  (let ((handler (lwip-ethernet-send)))
    (cond
-    ((procedure? handler)
-     ;;
-     ;#| Catching errors here was not effective.
-     (debug
-      'Xscm_ether_send-return
-      (with-exception-catcher
-       (lambda (ex)
-         (##default-display-exception ex (current-error-port))
-         ERR_IF)
-       (lambda () (handler netif src dst proto #;0 pbuf))))
-     ;;|#
-     ;; But: maybe we MUST run this asynchrouneos right here?
-     #;(handler netif src dst proto #;0 pbuf))
+    ((procedure? handler) (%lwip-post! (handler netif src dst proto #;0 pbuf)))
     (else ERR_IF))))
 
 #|
@@ -895,8 +957,10 @@ END
 END
 ))
     (lambda (mac)
+      (%lwip-lock!)
       (let ((nif (lwip-make-netif mac)))
-        (make-will nif (c-lambda (void*) scheme-object "release_netif"))
+        (make-will nif (c-lambda-with-lwip-locked (nif) (void*) scheme-object "release_netif"))
+        (%lwip-unlock!)
         nif))))
 
 (define lwip-netif-find (c-lambda (char-string) netif* "netif_find"))
@@ -953,7 +1017,7 @@ END
  int "scm_ip6_send" "static"
  (let ((handler (lwip-ip6-send)))
    (cond
-    ((procedure? handler) (handler netif pbuf addr))
+    ((procedure? handler) (%lwip-post! (handler netif pbuf addr)))
     (else ERR_RTE))))
 
 (c-declare #<<c-declare-end
@@ -1105,30 +1169,6 @@ lwip_init_interface_IPv6(struct netif *nif, struct sockaddr_storage *ip)
 c-declare-end
 )
 
-(cond-expand
- (lwip-requires-pthread-locks
-  (define-macro (c-lambda-with-lwip-locked formals types ret code)
-    ;; BEWARE: MUST NOT use the ___return macro!  But assign to
-    ;; ___result
-    `(c-lambda
-      ,types ,ret
-      ,(string-append
-        "\ngambit_lwipcore_lock(" (with-output-to-string (lambda () (write code))) ");\n"
-        code
-        "\ngambit_lwipcore_unlock();\n"))))
- (else
-  (define *lwip-mutex* (make-mutex '*lwip*))
-  (define-macro (c-lambda-with-lwip-locked formals types ret code)
-    ;; BEWARE: MUST NOT use the ___return macro!  But assign to
-    ;; ___result
-    (let ((result (gensym 'result)))
-      `(lambda ,formals
-         (mutex-lock! *lwip-mutex*)
-         (let ((,result ((c-lambda ,types ,ret ,code) . ,formals)))
-           (mutex-unlock! *lwip-mutex*)
-           ,result))))
-  )) ;; cond-expand
-
 (define lwip_init_interface_IPv6
   (c-lambda-with-lwip-locked
    (nif addr) (netif* socket-address) void "lwip_init_interface_IPv6(___arg1, ___arg2);"))
@@ -1146,24 +1186,8 @@ c-declare-end
 END
 ))
 
-(define lwip-send-ethernet-input/pbuf!
+(define lwip-send-ethernet-input!
   (c-lambda-with-lwip-locked (nif pbuf) (netif* pbuf) err_t "___result=lwip_send_ethernet_input(___arg1, ___arg2);"))
-
-(define (lwip-send-ethernet-input! netif src dst ethertype payload len)
-  ;; Compose ethernet frame and send it to @param netif
-  ;;
-  ;; mac addresses are in network order (big-endian)
-  ;;
-  ;; (lwip-send-input! nif srcmac dstmac ethertype payload len)
-  (unless netif (error "lwip-send-ethernet-input! network interface required"))
-  (let ((pbuf (or (make-pbuf-raw+ram (+ SIZEOF_ETH_HDR len))
-                  (error "pbuf allocation failed"))))
-    (pbuf-fill-ethernet-header! pbuf src dst ethertype)
-    (pbuf-copy-from-ptr! pbuf payload SIZEOF_ETH_HDR len)
-    (debug 'passing-to 'lwip)
-    (display-eth-packet/offset (pbuf->u8vector pbuf) 0 (current-error-port))
-    (lwip-send-ethernet-input/pbuf! netif pbuf)
-    ERR_OK))
 
 ;;(define lwip-default-netif-poll! (c-lambda () void "default_netif_poll"))
 

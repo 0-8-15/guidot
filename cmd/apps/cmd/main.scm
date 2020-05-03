@@ -11,12 +11,60 @@
 
 (include "observable-notational-conventions.scm")
 
+;; Fails in callbacks:
+;; (define-macro (mustbe-async expr) `(thread-start! (make-thread (lambda () ,expr #;(debug ',expr ,expr)) ',expr)))
+
+(define thread-starter
+  (thread-start!
+   (make-thread
+    (lambda ()
+      (do () (#f)
+        (thread-start! (make-thread (thread-receive)))))
+    'thread-starter)))
+
+(define-macro (delay-until-after-return expr) `(lambda () ,expr))
+
+(define-macro (after-safe-return expr)
+  ;; Schedule EXPR for execution (one way or another) and return nonsense.
+  `(if (##in-safe-callback?) (delay-until-after-return ,expr) ,expr))
+
+(define-macro (after-safe-return+post expr)
+  ;; Schedule EXPR for execution (one way or another) and return nonsense.
+  `(if (##in-safe-callback?) (##safe-lambda-post! (delay-until-after-return ,expr)) ,expr))
+
 (define-macro (mustbe-async expr)
-    `(thread-start! (make-thread (lambda () ,expr #;(debug ',expr ,expr)) ',expr)))
+  `(if (or (eq? ($kick-style) 'sync)
+           (not (stm-atomic?)))
+       (thread-send thread-starter (lambda () ,expr #;(debug ',expr ,expr)) ',expr)
+       ,expr))
+
+(define-macro (mustbe-async-kick proc)
+  `(if (or (eq? ($kick-style) 'sync)
+           (not (stm-atomic?)))
+       (begin (thread-start! (make-thread ,proc ',proc)) #!void)
+       ,proc))
 
 (define-macro (mustbe-async-to-avoid-recursion-to-zt expr) `(mustbe-async ,expr))
 
+(define-macro (lwip/after-safe-return expr)
+  ;; Schedule EXPR for execution (one way or another) and return nonsense.
+  `(if (##in-safe-callback?) (delay-until-after-return ,expr) ,expr))
+
+(define-macro (zt/after-safe-return expr)
+  ;; Schedule EXPR for execution (one way or another) and return nonsense.
+  `(after-safe-return+post ,expr))
+
+#;(define-macro (lwip/after-safe-return expr)
+  ;; doesnt like to fail
+  `(if (##in-safe-callback?) (begin (thread-send thread-starter (lambda () ,expr)) ERR_OK) ,expr))
+
+
+#;(define-macro (lwip/after-safe-return expr)
+  ;; This fails pretty sure
+  `(if (##in-safe-callback?) (begin (mustbe-async ,expr) (thread-sleep! 0.2) ERR_OK) ,expr))
+
 (define-macro (mustbe-async-to-avoid-recursion-to-lwip expr) `(mustbe-async ,expr))
+;;(define-macro (mustbe-async-to-avoid-recursion-to-lwip expr) `(lwip/after-safe-return ,expr))
 
 (cond-expand
  (lwip-requires-pthread-locks
@@ -34,7 +82,7 @@
 
 (define-macro (maybe-async expr)
   ;; Schedule EXPR for execution (one way or another) and return nonsense.
-  `(begin (mustbe-async ,expr) #!void))
+  `(mustbe-async ,expr))
 
 ;;;** Values :Notational Conventions:
 
@@ -364,8 +412,8 @@
   (if (zt-up?) (error "zt-start!: already running"))
   (receive
    (get put) (zt-make-default-state-handlers (zt-state-file-generator 0 path))
-   (zt-state-get get)
-   (zt-state-put put))
+   (on-zt-state-get get)
+   (on-zt-state-put put))
   (if (let ((udp (let* ((addr (internet-address->socket-address ip-address/any port))
                         (sock (create-socket address-family/internet socket-type/datagram)))
                    (bind-socket sock addr)
@@ -388,14 +436,19 @@
 
 ;; (zt-locks-no)
 
+(define (zt-locks-safe-lambda)
+  (zt-locking-set! (lambda () (##safe-lambda-lock! 'ZT)) (lambda () (##safe-lambda-unlock! 'ZT))))
+
+(zt-locks-safe-lambda)
+
 ;;* EVENTS
 
-(zt-recv
+(on-zt-recv
  (lambda (from type data)
    (case type
      ((2) ;; tcp test should connect back now
       (debug 'RECV-from:test (list from type))
-      (lwc0 from))
+      (after-safe-return+post (lwc0 (debug 'lwc0 from))))
      (else
       (debug 'RECV-from-type-data (list from type data))
       #f))))
@@ -417,7 +470,7 @@
 
 (define zt-up (PIN))
 
-(zt-event
+(on-zt-event
  (lambda (node userptr thr event payload)
    (case event
      ((UP) ;; UP comes BEFORE the initialization is completed! Don't use it.
@@ -433,7 +486,7 @@
       (debug 'ZT-CFG (zt-query-network-config-base->vector (ctnw))))
      (else (debug 'ZT-EVENT event)))))
 
-#;(zt-wire-packet-send
+#;(on-zt-wire-packet-send
  (lambda (udp socket remaddr data ttl)
    ;;(debug 'wire-send-via socket)
    (cond
@@ -451,7 +504,7 @@
      #t)
     (else #f))))
 
-(zt-wire-packet-send
+(on-zt-wire-packet-send
  (lambda (udp socket remaddr data len ttl)
    (thread-yield!) ;; KILLER!
    ;; (debug 'wire-send-via socket)
@@ -479,11 +532,19 @@
               #;(debug 'remaddr-is-still-ipv4? (internet-socket-address? remaddr))
               #;(debug 'wire-send-via (socket-address->string remaddr))
               #;(eqv? (send-message udp u8 0 #f 0 remaddr) len)
-              (maybe-async-when-lwip-requires-pthread-locks (send-message udp u8 0 #f 0 remaddr))
+(debug 'S 4)
+              (debug 'RetFromWireSend (maybe-async (debug 'wire-sent ((debug 'actuallysending send-message) udp u8 0 #f 0 remaddr))))
               #t))
            (else #;(debug 'wire-send-via/blocked (socket-address->string remaddr)) #f)))))))
 
-(zt-virtual-receive
+(define (assemble-ethernet-pbuf src dst ethertype payload len)
+  (let ((pbuf (or (make-pbuf-raw+ram (+ SIZEOF_ETH_HDR len))
+                  (error "pbuf allocation failed"))))
+    (pbuf-fill-ethernet-header! pbuf (lwip-mac:host->network src) (lwip-mac:host->network dst) ethertype)
+    (pbuf-copy-from-ptr! pbuf payload SIZEOF_ETH_HDR len)
+    pbuf))
+
+(on-zt-virtual-receive
  ;; API issue: looks like zerotier may just have disassembled a memory
  ;; segment which we now must copy bytewise.  If that's the case we
  ;; better had an interface to pass the underlying pointer.  NOTE:
@@ -502,7 +563,8 @@
          (display-ip6-packet/offset u8p 0 (current-error-port))))
    (let ((nif (find-nif dstmac)))
      (if nif
-         (lwip-send-ethernet-input! nif (lwip-mac:host->network srcmac) (lwip-mac:host->network dstmac) ethertype payload len)
+         (let ((pbuf (assemble-ethernet-pbuf srcmac dstmac ethertype payload len)))
+           (zt/after-safe-return (lwip-send-ethernet-input! nif pbuf)))
          (begin
            (debug 'DROP:VRECV-DSTMAC dstmac))))))
 
@@ -533,9 +595,7 @@
        (debug 'Packt-len (u8vector-length bp))
        (cond
         ((eq? ethtp 'ETHTYPE_IPV6) (display-ip6-packet/offset bp 0 (current-error-port))))
-       (mustbe-async-to-avoid-recursion-to-lwip (debug 'DONE:zt-virtual-send (zt-virtual-send (find-nwid-for-nif netif) src dst ethertype vlanid bp)))
-       (debug 'lwip-ethernet-send 'return-ok)
-       ERR_OK))))
+       (debug 'lwip-ethernet-send (lwip/after-safe-return (debug 'DONE:zt-virtual-send ((debug 'calling zt-virtual-send) (find-nwid-for-nif netif) src dst ethertype vlanid bp))))))))
 
 (lwip-ip6-send
  (lambda (netif pbuf ip6addr)
@@ -548,9 +608,7 @@
                (bp (pbuf->u8vector pbuf 0)))
            (debug 'lwip-ip6-send-to (hexstr ndid 10))
            (display-ip6-packet/offset bp 0 (current-error-port))
-           (mustbe-async-to-avoid-recursion-to-lwip (debug 'DONE:zt-vsend (zt-virtual-send nwid src (zt-network+node->mac nwid ndid) ETHTYPE_IPV6 0 bp)))
-           (debug 'lwip-ipv6-send 'return-ok)
-           ERR_OK)
+           (debug 'lwip-ipv6-send (lwip/after-safe-return (debug 'DONE:zt-vsend (zt-virtual-send nwid src (zt-network+node->mac nwid ndid) ETHTYPE_IPV6 0 bp)))))
          ERR_RTE))))
 
 ;; Config
@@ -564,7 +622,7 @@
         (zt-set-config-item! (ctnw) 2 16)
         (loop))))))
 
-(zt-virtual-config
+(on-zt-virtual-config
  (lambda (node userptr nwid netptr op config)
    #;(thread-yield!) ;; KILLER? - No
    (debug 'CONFIG op)
@@ -576,7 +634,7 @@
 
 ;; Optional
 
-(zt-path-check
+(on-zt-path-check
  (lambda (node userptr thr nodeid socket sa)
    (debug 'PATHCHECK (number->string nodeid 16))
    ;; (debug 'PATHCHECK:gamit-locked? (lwip-gambit-locked?))
@@ -589,7 +647,7 @@
 
 ;; FIXME, CRAZY: Just intercepting here causes havoc under valgrind!
 
-(zt-path-lookup
+(on-zt-path-lookup
  (lambda (node uptr thr nodeid family sa)
    ;; (debug 'LOOKUP (number->string nodeid 16))
    (debug 'LOOKUP (hexstr nodeid 12))
@@ -597,7 +655,7 @@
    #;(debug 'LookupSA (and sa (sa->u8 'zt-path-lookup sa)))
    #f))
 
-(zt-maintainance
+(on-zt-maintainance
  (lambda (prm thunk)
    #; (debug 'zt-maintainance (lwip-gambit-locked?))
    thunk))
@@ -618,7 +676,7 @@
 
 (define (on-tcp-accept ctx connection err)
   (debug 'on-tcp-accept ctx)
-  ERR_ABRT)
+  (lwip/after-safe-return (%%lwip-tcp-close connection)))
 
 (define (on-tcp-sent ctx connection len)
   ;; should signal conn free
@@ -632,8 +690,8 @@
     ((0)
      (let ()
        (debug 'CONNECTED connection)
-       (ctx connection)
-       ERR_OK))
+       (debug 'CONCTX ctx)
+       (lwip/after-safe-return (ctx connection))))
     (else (debug 'on-tcp-connect err)))) ;; FIXME
 
 (define (on-tcp-poll ctx connection)
@@ -648,8 +706,32 @@
   (debug 'err (lwip-err err))
   ERR_OK)
 
+#;(define (%%tcp-context-set! pcb ctx)
+  (tcp-context-set! pcb ctx))
+
+;#|;; BEWARE: it appeares to be illegal to store the context directly in
+;;;; the pcb, even if we kept another reference to it around.
+(define tcp-conn-nr
+  (let ((n 1))
+    (lambda () (let ((r n)) (set! n (+ n 1)) r))))
+
+(define tcp-contexts (make-table hash: equal?-hash weak-keys: #f))
+
+(define (%%lwip-tcp-close pcb)
+  (define table-remove! table-set!)
+  (table-remove! tcp-contexts (tcp-context pcb))
+  (lwip-tcp-close pcb))
+
+(define (%%tcp-context-set! pcb ctx)
+  #;(tcp-context-set! pcb ctx)
+  (let ((n (tcp-conn-nr)))
+    (tcp-context-set! pcb n)
+    (table-set! tcp-contexts n ctx)))
+;;|#
+
 (on-tcp-event
  (lambda (ctx pcb e pbuf size err)
+   (set! ctx (table-ref tcp-contexts ctx #f)) ;;; ENABLE if conns are counted above
    ;; NOTE: This passes along what the lwIP callback API did.
    (cond
     ((eq? LWIP_EVENT_ACCEPT e) (on-tcp-accept ctx pcb err))
@@ -672,7 +754,8 @@
 
 (wire!
  (list *nwif* connecting lws-contact-is-listening)
- post: (box (lambda () (if (and (*nwif*) (connecting) (lws-contact-is-listening)) #;Kicking lwc))))
+ post: (box (lambda () (if (and (*nwif*) (connecting) (lws-contact-is-listening))
+                           #;Kicking (mustbe-async-kick lwc)))))
 
 (define (lwc)
   (let* ((sa (make-6plane-addr (ctnw) (lws-contact-is-listening) #;(tester-ndid (other-party)) (adhoc-port)))
@@ -689,8 +772,7 @@
            (rcv
             (lambda (connection)
               (debug (list 'ClientConnected (current-thread)) connection)
-              (mustbe-async-to-avoid-recursion-to-lwip (%%lwip-tcp-close connection))
-              ERR_OK)))
+              (lwip/after-safe-return (%%lwip-tcp-close connection)))))
       (%%tcp-context-set! client (debug 'clientcontext rcv))
       (debug 'client-bound (lwip-tcp-bind client ip6addr-any 0))
       (unless (lwip-ok? (debug 'conn (lwip-tcp-connect client addr (debug 'connecting (adhoc-port)))))

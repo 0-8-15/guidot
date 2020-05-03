@@ -22,9 +22,22 @@
 
 ;;;* Compile Time Configuration
 
-(define-cond-expand-feature zt-locking)
+;; (define-cond-expand-feature zt-locking)
+(define-cond-expand-feature zt-safe-locking)
 
 ;;;* Macros
+(define-macro (c-safe-lambda formals return c-code)
+  (let ((tmp (gensym 'c-safe-lambda-result))
+        (argument-names
+         (map
+          (lambda (n) (string->symbol (string-append "arg" (number->string n))))
+          (iota (length formals)))))
+    `(lambda ,argument-names
+       (##safe-lambda-lock! ,c-code)
+       (let ((,tmp ((c-lambda ,formals ,return ,c-code) . ,argument-names)))
+         (##safe-lambda-unlock! ,c-code)
+         ,tmp))))
+
 (define-macro (define-c-constant var type . const)
   (let* ((const (if (not (null? const)) (car const) (symbol->string var)))
 	 (str (string-append "___return(" const ");")))
@@ -138,7 +151,7 @@ END
 (define-c-constant ZT_EVENT_USER_MESSAGE int "ZT_EVENT_USER_MESSAGE")
 (define-c-constant ZT_EVENT_REMOTE_TRACE int "ZT_EVENT_REMOTE_TRACE")
 
-(define-custom zt-event #f) ;; EXPORT HOOK - network events
+(define-custom on-zt-event #f) ;; EXPORT HOOK - network events
 
 (c-define
  (zt-event-cb node userptr thr event payload)
@@ -156,7 +169,7 @@ END
       ((eqv? ZT_EVENT_REMOTE_TRACE e) 'REMOTE_TRACE)
       (else 'ZT_EVENT_UNKNOWN)))
    (cond
-    ((procedure? (zt-event)) (%%checked zt-event ((zt-event) node userptr thr (onevt event) payload) #f)))))
+    ((procedure? (on-zt-event)) (%%checked on-zt-event ((on-zt-event) node userptr thr (onevt event) payload) #f)))))
 
 (define (u8vector-copy-from-ptr! u8 u8o ptr ptro len)
   ;; TBD: Add range checks
@@ -166,14 +179,14 @@ END
     ___return(___arg1);")
    u8 u8o ptr ptro len))
 
-(define-custom zt-recv #f) ;; EXPORT HOOK - user messages
+(define-custom on-zt-recv #f) ;; EXPORT HOOK - user messages
 
 (c-define
  (zt_recv node userptr thr payload)
  (zt-node void* void* zt-message)
  void "scm_zt_recv" "static"
  (cond
-  ((procedure? (zt-recv))
+  ((procedure? (on-zt-recv))
    (let ((size ((c-lambda (zt-message) size_t "___return(___arg1->length);") payload))
          (from ((c-lambda (zt-message) size_t "___return(___arg1->origin);") payload))
          (type ((c-lambda (zt-message) size_t "___return(___arg1->typeId);") payload)))
@@ -182,7 +195,7 @@ END
          (scheme-object zt-message) void
          "memcpy(___CAST(void *,___BODY_AS(___arg1,___tSUBTYPED)), ___arg2->data, ___arg2->length);")
         data payload)
-       (%%checked zt-recv ((zt-recv) from type data) #t))))))
+       (%%checked on-zt-recv ((on-zt-recv) from type data) #t))))))
 
 (c-declare #<<c-declare-end
 static void
@@ -206,7 +219,7 @@ c-declare-end
 (define-c-constant ZT_STATE_OBJECT_PEER int "ZT_STATE_OBJECT_PEER") ;; optional
 (define-c-constant ZT_STATE_OBJECT_NETWORK_CONFIG int "ZT_STATE_OBJECT_NETWORK_CONFIG") ;; required
 
-(define-custom zt-state-get #f) ;; EXPORT HOOK - read state
+(define-custom on-zt-state-get #f) ;; EXPORT HOOK - read state
 
 (define (zt-state-id->symbol e) ;; EXPORT
   (cond
@@ -222,8 +235,8 @@ c-declare-end
  (zt_state_get node userptr thr objtype objid into len)
  (zt-node void* void* int unsigned-int64 void* size_t)
  int "scm_zt_state_get" "static"
- (if (procedure? (zt-state-get))
-     (let ((v ((zt-state-get) objtype objid)))
+ (if (procedure? (on-zt-state-get))
+     (let ((v ((on-zt-state-get) objtype objid)))
        (if (u8vector? v)
            (let ((n (min (u8vector-length v) len)))
              ((c-lambda
@@ -234,19 +247,19 @@ c-declare-end
            -1))
      -1))
 
-(define-custom zt-state-put #f) ;; EXPORT HOOK - set state
+(define-custom on-zt-state-put #f) ;; EXPORT HOOK - set state
 
 (c-define
  (zt_state_put node userptr thr objtype objid from len)
  (zt-node void* void* int unsigned-int64 void* size_t)
  void "scm_zt_state_put" "static"
- (if (procedure? (zt-state-put))
+ (if (procedure? (on-zt-state-put))
      (let ((data (make-u8vector len)))
        ((c-lambda
          (scheme-object void* size_t) void
          "memcpy(___CAST(void *,___BODY_AS(___arg1,___tSUBTYPED)), ___arg2, ___arg3);")
         data from len)
-       ((zt-state-put) objtype objid data))))
+       ((on-zt-state-put) objtype objid data))))
 
 (c-declare #<<c-declare-end
 
@@ -290,11 +303,30 @@ c-declare-end
 ;;** Sledgehammer LOCKing
 
 (cond-expand
+ (zt-safe-locking
+  ;; Needs to protect against: a) reentrance b) thread switch in
+  ;; gambit which could cause other c(-safe)-lambda to be called
+  ;; causing havoc.
+  (define zt-lock!
+    (case-lambda
+     (() (##safe-lambda-lock! 'ZT))
+     ((location) (##safe-lambda-lock! location))))
+
+  (define zt-unlock!
+    (case-lambda
+     (() (##safe-lambda-unlock! 'ZT))
+     ((location) (##safe-lambda-unlock! location))))
+
+  (define (zt-locking-set! lck ulk) (debug "zt compied for c-safe-lambda" 'ignored))
+  (define-macro (ZT-c-safe-lambda formals result code)
+    `(c-safe-lambda ,formals ,result ,code))
+  (define-macro (begin-zt-exclusive expr) expr))
  (zt-locking
+  ;; exposes race condition
   (define zt-features-locking #t)
   (define zt-lock! #!void)
 
-  #;(define zt-unlock!
+  (define zt-unlock!
     (let ((mux (make-mutex 'zt)))
       (set! zt-lock! (lambda () (debug 'zt-lock-O (current-thread))
                              (debug 'zt-lock-state: (mutex-state mux))
@@ -303,12 +335,15 @@ c-declare-end
                              (mutex-lock! mux) (debug 'zt-lock-P  (current-thread))))
       (lambda () (debug 'zt-lock-V  (current-thread)) (mutex-unlock! mux))))
 
-  (define zt-unlock!
+  #;(define zt-unlock!
     (let ((mux (make-mutex 'zt)))
       (set! zt-lock! (lambda () (mutex-lock! mux)))
       (lambda () (mutex-unlock! mux))))
 
   (define (zt-locking-set! lck ulk) (set! zt-lock! lck) (set! zt-unlock! ulk))
+
+  (define-macro (ZT-c-safe-lambda formals result code)
+    `(c-lambda ,formals ,result ,code))
 
   (define-macro (begin-zt-exclusive expr)
     (let ((result (gensym 'result)))
@@ -318,6 +353,7 @@ c-declare-end
  (else
   (define zt-features-locking #f)
   (define (zt-locking-set! lck ulk) (debug "zt not compiled for zt-locking" 'ignored))
+  (define-macro (ZT-c-safe-lambda formals result code) `(c-lambda ,formals ,result ,code))
   (define-macro (begin-zt-exclusive expr) expr)))
 
 ;;** ZT Network Wire
@@ -327,7 +363,7 @@ c-declare-end
 ;; Standard use is from the packet receiving thread.
 (define (zt-wire-packet-process packet from)
   (define doit
-    (c-lambda
+    (c-safe-lambda
      ;; 1     lsock addr              data          7
      (zt-node int64 gamsock-socket-address scheme-object size_t) bool #<<END
      int rc = -1;
@@ -349,8 +385,8 @@ END
 ;; for debugging.)  Maybe we should at least have a decent default
 ;; here.
 
-(define-custom zt-wire-packet-send #f) ;; EXPORT?? HOOK - send via UDP
-(define-custom zt-wire-packet-send-complex #f) ;; EXPORT?? - send via UDP - MUST NOT raise exceptions
+(define-custom on-zt-wire-packet-send #f) ;; EXPORT?? HOOK - send via UDP
+(define-custom on-zt-wire-packet-send-complex #f) ;; EXPORT?? - send via UDP - MUST NOT raise exceptions
 
 (c-define
  (zt_wire_packet_send node userptr thr socket remaddr data len ttl)
@@ -359,13 +395,13 @@ END
  ;; BEWARE:
  (cond
   ((not (zt-up?)) -1)
-  ((procedure? (zt-wire-packet-send-complex))
-   ((zt-wire-packet-send-complex) node userptr thr socket remaddr data len ttl))
-  ((procedure? (zt-wire-packet-send))
+  ((procedure? (on-zt-wire-packet-send-complex))
+   ((on-zt-wire-packet-send-complex) node userptr thr socket remaddr data len ttl))
+  ((procedure? (on-zt-wire-packet-send))
    (%%checked
     zt_wire_packet_send
     (let ((udp (zt-prm-udp %%zt-prm)))
-      (if ((zt-wire-packet-send) udp socket remaddr data len ttl) 0 -1))
+      (if ((on-zt-wire-packet-send) udp socket remaddr data len ttl) 0 -1))
     -1))
   (else -1)))
 
@@ -387,16 +423,16 @@ c-declare-end
 ;;** ZT Network Virtual
 
 ;;*** ZT Network Virtual Incoming
-(define-custom zt-virtual-receive #f) ;; EXPORT HOOK
+(define-custom on-zt-virtual-receive #f) ;; EXPORT HOOK
 
 (c-define
  (zt_virtual_receive node userptr thr nwid netptr srcmac dstmac ethertype vlanid payload len)
  (zt-node void* void* unsigned-int64 void** unsigned-int64 unsigned-int64 unsigned-int unsigned-int void* size_t)
  void "scm_zt_virtual_recv" "static"
- (if (procedure? (zt-virtual-receive))
+ (if (procedure? (on-zt-virtual-receive))
      (%%checked
       zt_virtual_receive
-      ((zt-virtual-receive) node userptr thr nwid netptr srcmac dstmac ethertype vlanid payload len)
+      ((on-zt-virtual-receive) node userptr thr nwid netptr srcmac dstmac ethertype vlanid payload len)
       #f)))
 
 (c-declare #<<c-declare-end
@@ -417,7 +453,7 @@ c-declare-end
 ;;
 (define (zt-virtual-send nwid srcmac dstmac ethertype vlanid payload) ;; EXPORT
   (define virtual-send
-    (c-lambda
+    (c-safe-lambda
      ;; 1     2 nwid         3 src          4 dst          5 ethertype  6 vlan       7
      (zt-node unsigned-int64 unsigned-int64 unsigned-int64 unsigned-int unsigned-int scheme-object size_t)
      bool #<<END
@@ -434,7 +470,7 @@ END
 
 (define (zt-virtual-send/ptr nwid srcmac dstmac ethertype vlanid data len) ;; EXPORT
   (define doit
-    (c-lambda
+    (c-safe-lambda
      ;; 1     2 nwid         3 src          4 dst          5 ethertype  6 vlan       7
      (zt-node unsigned-int64 unsigned-int64 unsigned-int64 unsigned-int unsigned-int void* size_t)
      bool #<<END
@@ -450,7 +486,7 @@ END
 
 ;;* ZT Config
 
-(define-custom zt-virtual-config #f) ;; EXPORT
+(define-custom on-zt-virtual-config #f) ;; EXPORT
 
 (c-define
  (zt_virtual_config0 node userptr thr nwid netptr op config)
@@ -461,10 +497,10 @@ END
    ;; TODO: Make sure multicastSubscribe() or other network-modifying
    ;; methods are disabled while handling is running as it may
    ;; deadlock.  Would it actually?
-   (if (procedure? (zt-virtual-config))
+   (if (procedure? (on-zt-virtual-config))
        (%%checked
         zt_virtual_config
-        (if ((zt-virtual-config) node userptr nwid netptr (opsym op) config) 0 -1)
+        (if ((on-zt-virtual-config) node userptr nwid netptr (opsym op) config) 0 -1)
         0)
        0)))
 
@@ -481,28 +517,28 @@ c-declare-end
 
 ;; ZT Path
 
-(define-custom zt-path-check #f)
+(define-custom on-zt-path-check #f)
 
 (c-define
  (zt_path_check node userptr thr nodeid socket sa)
  (zt-node void* void* unsigned-int64 int zt-socket-address)
  bool "scm_zt_path_check" "static"
- (if (procedure? (zt-path-check))
+ (if (procedure? (on-zt-path-check))
      (%%checked
       zt_path_check
-      ((zt-path-check) node userptr thr nodeid socket sa)
+      ((on-zt-path-check) node userptr thr nodeid socket sa)
       #f)
      ;; otherwise use it
      #t))
 
-(define-custom zt-path-lookup #f)
+(define-custom on-zt-path-lookup #f)
 
 (c-define
  (zt_path_lookup node uptr thr nodeid family sa)
  (zt-node void* void* unsigned-int64 int zt-socket-address)
  bool "scm_zt_path_lookup" "static"
- (if (procedure? (zt-path-lookup))
-     (%%checked zt_path_lookup ((zt-path-lookup) node uptr thr nodeid family sa) 0)
+ (if (procedure? (on-zt-path-lookup))
+     (%%checked zt_path_lookup ((on-zt-path-lookup) node uptr thr nodeid family sa) 0)
      ;; otherwise nothing returned
      #f))
 
@@ -537,11 +573,16 @@ c-declare-end
 
 (define zt-background-period/lower-limit (make-parameter 0.60))
 
+;; zt-pre-maintainance is a hook/predicate.  Should be used to add to mainainace.
+;; RETURN: #t to run or #f to suppress running the ZT background tasks.
+
+(define-custom on-zt-maintainance (lambda (prm thunk) thunk)) ;; EXPORT
+
 (define-structure zt-prm zt udp incoming-thread)
 (define %%zt-prm #f) ;; keep a scheme pointer to auxillary stuff
 (define (zt-node-init! udp #!key (now (zt-now)) (background-period 5))
   (define (init zt now)
-    ((c-lambda
+    ((c-safe-lambda
       (scheme-object (pointer void) int64) zt-node #<<END
 nextBackgroundTaskDeadline = ___arg3;
 static ZT_Node *zt_node = NULL;
@@ -561,7 +602,7 @@ END
                (call-with-values (lambda () (receive-message (zt-prm-udp prm) 3000)) zt-wire-packet-process)))
             (recv-loop))))
   (define (maintainance)
-    ((c-lambda
+    ((c-safe-lambda
       (zt-node) bool #<<END
       uint64_t now = zt_now();
       int rc = nextBackgroundTaskDeadline <= now ?
@@ -572,7 +613,7 @@ END
   (define (maintainance-loop)
     (thread-sleep! (max background-period (zt-background-period/lower-limit)))
     (begin-zt-exclusive
-     (when (zt-up?) (%%checked maintainance (((zt-maintainance) %%zt-prm maintainance)) #f)))
+     (when (zt-up?) (%%checked maintainance (((on-zt-maintainance) %%zt-prm maintainance)) #f)))
      (maintainance-loop))
   ;; Should we lock?  No: Better document single-threadyness!
   (if (zt-up?) (error "ZT already running"))
@@ -595,7 +636,7 @@ END
       (let ((udp (zt-prm-udp %%zt-prm))
             (zt (zt-prm-zt %%zt-prm)))
         (set! %%zt-prm #f)
-        (begin-zt-exclusive ((c-lambda (zt-node) void "ZT_Node_delete(___arg1);") zt))
+        (begin-zt-exclusive ((c-safe-lambda (zt-node) void "ZT_Node_delete(___arg1);") zt))
         (close-socket udp))))
 
 (define (zt-up?) (and %%zt-prm #t))
@@ -603,16 +644,11 @@ END
 (define (zt-address) ;; EXPORT
   (and (zt-up?) ((c-lambda (zt-node) unsigned-int64 "___return(ZT_Node_address(___arg1));") (zt-prm-zt %%zt-prm))))
 
-;; zt-pre-maintainance is a hook/predicate.  Should be used to add to mainainace.
-;; RETURN: #t to run or #f to suppress running the ZT background tasks.
-
-(define-custom zt-maintainance (lambda (prm thunk) thunk)) ;; EXPORT
-
 (define (zt-add-local-interface-address! sa) ;; EXPORT
   (unless (socket-address? sa) (error "zt-add-local-interface-address!: illegal argument" sa))
   (assert-zt-up! zt-add-local-interface-address)
   (begin-zt-exclusive
-   ((c-lambda
+   ((ZT-c-safe-lambda
      (zt-node gamsock-socket-address) bool
      "___return(ZT_Node_addLocalInterfaceAddress(___arg1, ___arg2));")
     (zt-prm-zt %%zt-prm) sa)))
@@ -620,11 +656,11 @@ END
 (define (zt-clear-local-interface-address!) ;; EXPORT
   (assert-zt-up! zt-clear-local-interface-address!)
   (begin-zt-exclusive
-   ((c-lambda (zt-node) void "ZT_Node_clearLocalInterfaceAddresses(___arg1);") (zt-prm-zt %%zt-prm))))
+   ((ZT-c-safe-lambda (zt-node) void "ZT_Node_clearLocalInterfaceAddresses(___arg1);") (zt-prm-zt %%zt-prm))))
 
 (define (zt-send! to type data) ;; EXPORT - send user message (u8vector)
   (define doit
-    (c-lambda
+    (ZT-c-safe-lambda
      (zt-node unsigned-int64 unsigned-int64 scheme-object size_t) bool #<<END
      void *buf = ___CAST(void *,___BODY_AS(___arg4,___tSUBTYPED));
      ___return(ZT_Node_sendUserMessage(___arg1, NULL, ___arg2, ___arg3, buf, ___arg5));
@@ -636,7 +672,7 @@ END
 
 (define (zt-orbit moon #!optional (seed 0)) ;; EXPORT
   (define doit
-    (c-lambda
+    (ZT-c-safe-lambda
      (zt-node unsigned-int64 unsigned-int64) bool
      "___return(ZT_Node_orbit(___arg1, NULL, ___arg2, ___arg3) == ZT_RESULT_OK);"))
   (assert-zt-up! zt-orbit)
@@ -644,28 +680,28 @@ END
 
 (define (zt-deorbit moon) ;; EXPORT
   (define deorbit
-    (c-lambda
+    (ZT-c-safe-lambda
      (zt-node unsigned-int64) bool
      "___return(ZT_Node_deorbit(___arg1, NULL, ___arg2));"))
   (assert-zt-up! zt-deorbit)
   (begin-zt-exclusive (deorbit (zt-prm-zt %%zt-prm) moon)))
 
 (define (zt-join network) ;; EXPORT
-  (define dojoin (c-lambda (zt-node unsigned-int64) int "___return(ZT_Node_join(___arg1, ___arg2, NULL, NULL));"))
+  (define dojoin (ZT-c-safe-lambda (zt-node unsigned-int64) int "___return(ZT_Node_join(___arg1, ___arg2, NULL, NULL));"))
   (assert-zt-up! zt-join)
   (or
    (eqv? (begin-zt-exclusive (dojoin (zt-prm-zt %%zt-prm) network)) 0)
    (error "zt-join: failed for with rc" network rc)))
 
 (define (zt-leave network) ;; EXPORT
-  (define doit (c-lambda (zt-node unsigned-int64) int "___return(ZT_Node_leave(___arg1, ___arg2, NULL, NULL));"))
+  (define doit (ZT-c-safe-lambda (zt-node unsigned-int64) int "___return(ZT_Node_leave(___arg1, ___arg2, NULL, NULL));"))
   (assert-zt-up! zt-leave)
   (or (eqv? (begin-zt-exclusive (doit network)) 0)
       (error "zt-leave: failed for with rc" network rc)))
 
 (define (zt-multicast-subscribe network group #!optional (adi 0)) ;; EXPORT
   (define doit
-    (c-lambda
+    (ZT-c-safe-lambda
      (zt-node unsigned-int64 unsigned-int64 unsigned-int64) int
      "___return(ZT_Node_multicastSubscribe(___arg1, NULL, ___arg2, ___arg3, ___arg4));"))
   (assert-zt-up! zt-multicast-subscribe)
@@ -674,7 +710,7 @@ END
 
 (define (zt-multicast-unsubscribe network group #!optional (adi 0)) ;; EXPORT
   (define doit
-    (c-lambda
+    (ZT-c-safe-lambda
      (zt-node unsigned-int64 unsigned-int64 unsigned-int64) int
      "___return(ZT_Node_multicastUnsubscribe(___arg1, ___arg2, ___arg3, ___arg4));"))
   (assert-zt-up! zt-multicast-unsubscribe)
