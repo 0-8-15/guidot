@@ -317,7 +317,7 @@ c-declare-end
      (() (##safe-lambda-unlock! 'ZT))
      ((location) (##safe-lambda-unlock! location))))
 
-  (define (zt-locking-set! lck ulk) (debug "zt compied for c-safe-lambda" 'ignored))
+  (define (zt-locking-set! lck ulk) (debug "zt compiled for c-safe-lambda" 'ignored))
   (define-macro (ZT-c-safe-lambda formals result code)
     `(c-safe-lambda ,formals ,result ,code))
   (define-macro (begin-zt-exclusive expr) expr))
