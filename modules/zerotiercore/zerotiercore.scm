@@ -38,6 +38,13 @@
          (##safe-lambda-unlock! ,c-code)
          ,tmp))))
 
+(define-macro (delayed-until-after-return? expr) `(procedure? ,expr))
+(define-macro (%zt-post result)
+  `(if (delayed-until-after-return? ,result)
+       (begin
+         (##safe-lambda-post! ,result) ZT_RESULT_OK)
+       (if ,result ZT_RESULT_OK -1)))
+
 (define-macro (define-c-constant var type . const)
   (let* ((const (if (not (null? const)) (car const) (symbol->string var)))
 	 (str (string-append "___return(" const ");")))
@@ -138,7 +145,7 @@ END
       (debug ',location ex)
       (##default-display-exception ex (current-error-port))
       ,fail)
-    (lambda () ,expr)))
+    (lambda () (%zt-post ,expr))))
 
 ;; ZT event callback (zt-event node userptr thr event payload)
 
@@ -396,12 +403,12 @@ END
  (cond
   ((not (zt-up?)) -1)
   ((procedure? (on-zt-wire-packet-send-complex))
-   ((on-zt-wire-packet-send-complex) node userptr thr socket remaddr data len ttl))
+   (%zt-post ((on-zt-wire-packet-send-complex) node userptr thr socket remaddr data len ttl)))
   ((procedure? (on-zt-wire-packet-send))
    (%%checked
     zt_wire_packet_send
     (let ((udp (zt-prm-udp %%zt-prm)))
-      (if ((on-zt-wire-packet-send) udp socket remaddr data len ttl) 0 -1))
+      (or ((on-zt-wire-packet-send) udp socket remaddr data len ttl) -1))
     -1))
   (else -1)))
 
@@ -500,7 +507,7 @@ END
    (if (procedure? (on-zt-virtual-config))
        (%%checked
         zt_virtual_config
-        (if ((on-zt-virtual-config) node userptr nwid netptr (opsym op) config) 0 -1)
+        (or ((on-zt-virtual-config) node userptr nwid netptr (opsym op) config) -1)
         0)
        0)))
 
