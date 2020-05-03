@@ -13,55 +13,33 @@
 
 ;; Fails in callbacks:
 ;; (define-macro (mustbe-async expr) `(thread-start! (make-thread (lambda () ,expr #;(debug ',expr ,expr)) ',expr)))
-
-(define thread-starter
-  (thread-start!
-   (make-thread
-    (lambda ()
-      (do () (#f)
-        (thread-start! (make-thread (thread-receive)))))
-    'thread-starter)))
+;; until this overwrite is used
+;;(##overwrite-thread-start!-for-safe-lambda!)
 
 (define-macro (delay-until-after-return expr) `(lambda () ,expr))
 
 (define-macro (after-safe-return expr)
   ;; Schedule EXPR for execution (one way or another) and return nonsense.
-  `(if (##in-safe-callback?) (delay-until-after-return ,expr) ,expr))
+  `(if (##in-safe-callback?)
+       (delay-until-after-return ,expr)
+       (begin (debug 'after-safe-return:not-in-callback ',expr) ,expr)))
 
 (define-macro (after-safe-return+post expr)
   ;; Schedule EXPR for execution (one way or another) and return nonsense.
-  `(if (##in-safe-callback?) (##safe-lambda-post! (delay-until-after-return ,expr)) ,expr))
+  `(if (##in-safe-callback?) (##safe-lambda-post! (delay-until-after-return ,expr))
+       (begin (debug 'after-safe-return+post:not-in-callback ',expr) ,expr)))
 
 (define-macro (mustbe-async expr)
   `(if (or (eq? ($kick-style) 'sync)
            (not (stm-atomic?)))
-       (thread-send thread-starter (lambda () ,expr #;(debug ',expr ,expr)) ',expr)
-       ,expr))
-
-(define-macro (mustbe-async-kick proc)
-  `(if (or (eq? ($kick-style) 'sync)
-           (not (stm-atomic?)))
-       (begin (thread-start! (make-thread ,proc ',proc)) #!void)
-       ,proc))
-
-(define-macro (mustbe-async-to-avoid-recursion-to-zt expr) `(mustbe-async ,expr))
+       (thread-start! (make-thread (lambda () ,expr #;(debug ',expr ,expr)) ',expr))
+       (begin (debug 'mustbe-async:not-async ',expr) ,expr)))
 
 (define-macro (lwip/after-safe-return expr)
-  ;; Schedule EXPR for execution (one way or another) and return nonsense.
-  `(if (##in-safe-callback?) (delay-until-after-return ,expr) ,expr))
+  `(after-safe-return ,expr))
 
 (define-macro (zt/after-safe-return expr)
-  ;; Schedule EXPR for execution (one way or another) and return nonsense.
-  `(after-safe-return+post ,expr))
-
-#;(define-macro (lwip/after-safe-return expr)
-  ;; doesnt like to fail
-  `(if (##in-safe-callback?) (begin (thread-send thread-starter (lambda () ,expr)) ERR_OK) ,expr))
-
-
-#;(define-macro (lwip/after-safe-return expr)
-  ;; This fails pretty sure
-  `(if (##in-safe-callback?) (begin (mustbe-async ,expr) (thread-sleep! 0.2) ERR_OK) ,expr))
+  `(after-safe-return #;+post ,expr))
 
 (define-macro (mustbe-async-to-avoid-recursion-to-lwip expr) `(mustbe-async ,expr))
 ;;(define-macro (mustbe-async-to-avoid-recursion-to-lwip expr) `(lwip/after-safe-return ,expr))
@@ -78,11 +56,17 @@
 
 (define-macro (begin-after-return! expr)
   ;; Schedule EXPR for execution (one way or another) and return nonsense.
-  `(begin (mustbe-async-to-avoid-recursion-to-zt ,expr) #!void))
+  `(begin (mustbe-async ,expr) #!void))
+
+(define-macro (begin-after-return! expr)
+  ;; Schedule EXPR for execution (one way or another) and return nonsense.
+  `(after-safe-return ,expr))
 
 (define-macro (maybe-async expr)
   ;; Schedule EXPR for execution (one way or another) and return nonsense.
   `(mustbe-async ,expr))
+
+(define-macro (maybe-async expr) expr)
 
 ;;;** Values :Notational Conventions:
 
@@ -439,7 +423,7 @@
 (define (zt-locks-safe-lambda)
   (zt-locking-set! (lambda () (##safe-lambda-lock! 'ZT)) (lambda () (##safe-lambda-unlock! 'ZT))))
 
-(zt-locks-safe-lambda)
+;;(zt-locks-safe-lambda)
 
 ;;* EVENTS
 
@@ -448,7 +432,7 @@
    (case type
      ((2) ;; tcp test should connect back now
       (debug 'RECV-from:test (list from type))
-      (after-safe-return+post (lwc0 (debug 'lwc0 from))))
+      (zt/after-safe-return (lwc0 (debug 'lwc0 from))))
      (else
       (debug 'RECV-from-type-data (list from type data))
       #f))))
@@ -477,10 +461,11 @@
       (debug 'ZT-EVENT event) )
      ((ONLINE OFFLINE)
       (debug 'ZT-EVENT event)
-      (kick!
-       (lambda ()
-         #;(should-use-external #f)
-         (zt-online event))))
+      (zt/after-safe-return
+       (kick!
+        (lambda ()
+          #;(should-use-external #f)
+          (zt-online event)))))
      ((TRACE)
       (debug 'ZT-TRACE ((c-lambda ((pointer void)) char-string "___return(___arg1);") payload))
       (debug 'ZT-CFG (zt-query-network-config-base->vector (ctnw))))
@@ -532,9 +517,7 @@
               #;(debug 'remaddr-is-still-ipv4? (internet-socket-address? remaddr))
               #;(debug 'wire-send-via (socket-address->string remaddr))
               #;(eqv? (send-message udp u8 0 #f 0 remaddr) len)
-(debug 'S 4)
-              (debug 'RetFromWireSend (maybe-async (debug 'wire-sent ((debug 'actuallysending send-message) udp u8 0 #f 0 remaddr))))
-              #t))
+              (zt/after-safe-return (maybe-async (debug 'wire-sent (send-message udp u8 0 #f 0 remaddr))))))
            (else #;(debug 'wire-send-via/blocked (socket-address->string remaddr)) #f)))))))
 
 (define (assemble-ethernet-pbuf src dst ethertype payload len)
@@ -595,7 +578,7 @@
        (debug 'Packt-len (u8vector-length bp))
        (cond
         ((eq? ethtp 'ETHTYPE_IPV6) (display-ip6-packet/offset bp 0 (current-error-port))))
-       (debug 'lwip-ethernet-send (lwip/after-safe-return (debug 'DONE:zt-virtual-send ((debug 'calling zt-virtual-send) (find-nwid-for-nif netif) src dst ethertype vlanid bp))))))))
+       (lwip/after-safe-return (zt-virtual-send (find-nwid-for-nif netif) src dst ethertype vlanid bp))))))
 
 (lwip-ip6-send
  (lambda (netif pbuf ip6addr)
@@ -608,7 +591,7 @@
                (bp (pbuf->u8vector pbuf 0)))
            (debug 'lwip-ip6-send-to (hexstr ndid 10))
            (display-ip6-packet/offset bp 0 (current-error-port))
-           (debug 'lwip-ipv6-send (lwip/after-safe-return (debug 'DONE:zt-vsend (zt-virtual-send nwid src (zt-network+node->mac nwid ndid) ETHTYPE_IPV6 0 bp)))))
+           (lwip/after-safe-return (zt-virtual-send nwid src (zt-network+node->mac nwid ndid) ETHTYPE_IPV6 0 bp)))
          ERR_RTE))))
 
 ;; Config
@@ -755,7 +738,7 @@
 (wire!
  (list *nwif* connecting lws-contact-is-listening)
  post: (box (lambda () (if (and (*nwif*) (connecting) (lws-contact-is-listening))
-                           #;Kicking (mustbe-async-kick lwc)))))
+                           #;Kicking lwc))))
 
 (define (lwc)
   (let* ((sa (make-6plane-addr (ctnw) (lws-contact-is-listening) #;(tester-ndid (other-party)) (adhoc-port)))
