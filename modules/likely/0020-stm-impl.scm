@@ -100,7 +100,7 @@
   `(let ((t (current-transaction)))
     (or (not t) (and (%stmtnx? t) (null? (%stmtnx-refs t))))))
 
-(define (stm-atomic?) `(not (current-transaction)))
+(define (stm-atomic?) (not (current-transaction)))
 
 (define current-trigger-handler (make-parameter #f))
 

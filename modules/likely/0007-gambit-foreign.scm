@@ -84,7 +84,7 @@
             (thread-start! thread))))))
 
 ;; This overwrite appears to fix the issue.
-(define (##overwrite-thread-start!-forsafe-lambda!)
+(define (##overwrite-thread-start!-for-safe-lambda!)
   (set! thread-start! ##foreign-safe-thread-start!))
 
 ;; FIXME: kill issue via overwrite (set! thread-start! ##foreign-safe-thread-start!)
