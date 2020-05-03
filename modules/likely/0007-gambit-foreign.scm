@@ -81,10 +81,7 @@
             (if (eq? mux-state (current-thread))
                 (##safe-lambda-post! (delay-until-after-return (thread-start! thread)))
                 (##raise-safe-lambda-exception '##foreign-safe-thread-start! (debug 'thread-start! "not locked")))
-            (thread-start! thread)))
-      (if (##in-safe-callback?)
-          (##safe-lambda-post! (delay-until-after-return (thread-start! thread)))
-          ))))
+            (thread-start! thread))))))
 
 ;; FIXME: kill issue via overwrite (set! thread-start! ##foreign-safe-thread-start!)
 
