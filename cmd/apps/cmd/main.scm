@@ -584,7 +584,7 @@
  (lambda (netif pbuf ip6addr)
    (let ((addr (make-u8vector 16)))
      (u8vector-copy-from-ptr! addr 0 ip6addr 0 16)
-     (if (eqv? (u8vector-ref addr 0) #xfc)
+     (if #t ;; (eqv? (u8vector-ref addr 0) #xfc)
          (let ((ndid (quotient (%u8vector/n48h-ref addr 5) 256))
                (nwid (find-nwid-for-nif netif))
                (src (lwip-netif-mac netif))
