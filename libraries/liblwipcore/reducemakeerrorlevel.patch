@@ -1,0 +1,11 @@
+--- contrib/ports/Common.allports.mk~	2018-07-12 21:24:16.000000000 +0200
++++ contrib/ports/Common.allports.mk	2020-05-06 13:31:45.742414090 +0200
+@@ -43,7 +43,7 @@
+ #	-Wconversion -Wsign-compare -Wmissing-include-dirs
+ 
+ ifeq (,$(findstring clang,$(CC)))
+-CFLAGS+= -Wlogical-op -Wc90-c99-compat -Wtrampolines
++CFLAGS+= -Wlogical-op -Wtrampolines
+ # if GCC is newer than 4.8/4.9 you may use:
+ #CFLAGS:=$(CFLAGS) -fsanitize=address -fstack-protector -fstack-check -fsanitize=undefined -fno-sanitize=alignment
+ else

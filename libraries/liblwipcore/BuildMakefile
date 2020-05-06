@@ -1,0 +1,23 @@
+.PHONY: all clean
+
+#CONTRIBDIR=../../../lwip-contrib
+CONTRIBDIR=contrib
+LWIPDIR=src
+include $(CONTRIBDIR)/$(LWIP_PORT)/Common.mk
+
+CFLAGS+=$(LWIP_PORT_DEF)
+
+all: $(LWIPLIBCOMMON)
+
+clean:
+	rm -f *.o $(LWIPLIBCOMMON) $(APPLIB) lwip_fuzz *.s .depend* *.core core
+
+depend dep: .depend
+
+include .depend
+
+.depend: $(LWIPFILES) # $(APPFILES)
+	$(CCDEP) $(CFLAGS) -MM $^ > .depend || rm -f .depend
+
+lwip_fuzz: .depend $(LWIPLIBCOMMON) $(APPLIB) fuzz.o
+	$(CC) $(CFLAGS) -o lwip_fuzz fuzz.o $(APPLIB) $(LWIPLIBCOMMON) $(LDFLAGS)

@@ -101,10 +101,10 @@ extern const ip6_addr_t *gambit_lwip_nd6_get_gw(struct netif *netif, const ip6_a
 // Misc
 #define LWIP_STATS_LARGE                1
 #define LWIP_NOASSERT                   1
-#if __ANDROID__
+#if defined(__ANDROID__) && __ANDROID__
 #define LWIP_DONT_PROVIDE_BYTEORDER_FUNCTIONS 0
 #endif
-#if __ANDROID__
+#if defined(__ANDROID__) && __ANDROID__
 #define LWIP_PROVIDE_ERRNO              1
 #define SOCKLEN_T_DEFINED
 #elif !defined(_MSC_VER)

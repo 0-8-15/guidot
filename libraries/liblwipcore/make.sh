@@ -37,15 +37,7 @@ else
  : #  cd lwip-$VERSION
 fi
 
-linkintoone()
-{
-  mkdir .tmp
-  cd .tmp
-  $SYS_AR -x $1/$3
-  $SYS_AR r $1/$2 *.o
-}
-
-lwip_build() # trick the abdomination going by the name cmake into compiling the thing
+lwip_build() # build using plain make
 {
     echo "Executing task: " "(" $1 ")"
     OSNAME=$(uname | tr '[A-Z]' '[a-z]')
@@ -54,15 +46,6 @@ lwip_build() # trick the abdomination going by the name cmake into compiling the
     BUILD_TMP=${D0}/tmp
     # rm -rf ${BUILD_TMP}
     NORMALIZED_OSNAME=$OSNAME
-    case $OSNAME in
-        *"darwin"* )
-            DYNAMIC_LIB_NAME="lwip.dylib"
-            NORMALIZED_OSNAME="macos"
-            ;;
-        *"linux"* )
-            DYNAMIC_LIB_NAME="lwip.so"
-            ;;
-    esac
     lncc=`echo $SYS_CC| cut -d ' ' -f 1`
     EXTRACONF="$EXTRACONF -DCMAKE_C_COMPILER=${lncc}"
     EXTRACONF="$EXTRACONF -DCMAKE_CXX_COMPILER=${lncc}"
@@ -71,70 +54,39 @@ lwip_build() # trick the abdomination going by the name cmake into compiling the
     case $SYS_PLATFORM in
         linux)
             EXTRACONF="$EXTRACONF -DCMAKE_SYSTEM_NAME=Linux"
+            LWIP_PORT_DEF=""
             LWIP_PORT_TARGET=lwipcontribportunix
             LWIP_PORT_I=contrib/ports/unix/port
-            LWIP_PORT=contrib/ports/unix;;
+            LWIP_PORT=ports/unix;;
         android)
             EXTRACONF="$EXTRACONF -DCMAKE_SYSTEM_NAME=Android -DCMAKE_ANDROID_API=${ANDROIDAPI} -DCMAKE_ANDROID_STANDALONE_TOOLCHAIN=${android_customtoolchain}"
+            LWIP_PORT_DEF=""
             LWIP_PORT_TARGET=lwipcontribportunix
             LWIP_PORT_I=contrib/ports/unix/port
-            LWIP_PORT=contrib/ports/unix
+            LWIP_PORT=ports/unix
             TCCONF="-DCMAKE_TOOLCHAIN_FILE=/usr/local/android-ndk-r20/build/cmake/android.toolchain.cmake -DANDROID_ABI=$ABI -DANDROID_NATIVE_API_LEVEL=${SYS_ANDROIDAPI}" ;;
         win32)
+            LWIP_PORT_DEF=""
             EXTRACONF="$EXTRACONF -DCMAKE_SYSTEM_NAME=Win32"
             LWIP_PORT_TARGET=lwipcontribportwindows
             LWIP_PORT_I=contrib/ports/win32
-            LWIP_PORT=contrib/ports/win32 ;;
+            LWIP_PORT=ports/win32 ;;
         *) echo lwip/make.sh unhandled target platform '"'$SYS_PLATFORM'"' ;;
     esac
-    # CMake build files
-    BUILD_DIR=${D0}/tmp/${NORMALIZED_OSNAME}-${LWIP_ARCH}-${cmake_type}
-    echo mkdir -p $BUILD_DIR
     # Where to place results
-    BIN_OUTPUT_DIR=${D0}/bin/${cmake_type}/${NORMALIZED_OSNAME}-${LWIP_ARCH}
-    mkdir -p $BIN_OUTPUT_DIR
-    rm -rf $BIN_OUTPUT_DIR/*
-    LIB_OUTPUT_DIR=${D0}/lib/${cmake_type}/${NORMALIZED_OSNAME}-${LWIP_ARCH}
-    mkdir -p $LIB_OUTPUT_DIR
-    rm -rf $LIB_OUTPUT_DIR/lwip.a $LIB_OUTPUT_DIR/$DYNAMIC_LIB_NAME $LIB_OUTPUT_DIR/lwipcore.a
-    # Prepare cmake - maybe that should be a patch?
-    grep -q LWIP_PORT CMakeLists.txt || echo 'include(${LWIP_PORT}/Filelists.cmake)' >> CMakeLists.txt
-    # Build
-    # lnccflags0="${lnccflags0} -DSA_FAMILY_T_DEFINED"
-    cmake -H. -B$BUILD_DIR $TCCONF $EXTRACONF -DCMAKE_INSTALL_PREFIX=$SYS_PREFIX \
-          "-DCMAKE_C_FLAGS_INIT=${lnccflags0} -I${D0}/src/include -I ${D0}/${LWIP_PORT_I}/include" \
-          -DLWIP_CONTRIB_DIR=contrib -DLWIP_PORT=${LWIP_PORT} \
-          -DCMAKE_VERBOSE_MAKEFILE=TRUE -DCMAKE_BUILD_TYPE=${cmake_type} \
-    # echo Time to check;  exit 1
-    case $SYS_PLATFORM in
-    android)
-        find $BUILD_DIR -name link.txt -exec sed -i "-es/-lpthread//g" '{}' \;
-        ;;
-    esac
     test -f ${D0}/src/include/lwip/lwipopts.h || cp $libdir/lwipopts.h ${D0}/src/include/lwip/
-    cmake --build $BUILD_DIR $BUILD_CONCURRENCY  --target lwipcore
-    cmake --build $BUILD_DIR $BUILD_CONCURRENCY  --target ${LWIP_PORT_TARGET}
-    rmifexists .tmp
-    ( linkintoone $BUILD_DIR liblwipcore.a lib${LWIP_PORT_TARGET}.a ) || exit 1
-    rm -rf .tmp
-    # install: half of it!
+# TODO make ...
+    cp $libdir/BuildMakefile ${D0}/Makefile
+    make -C ${D0} LWIPARCH=${LWIP_PORT_I} LWIP_PORT=${LWIP_PORT} CC=${lncc} "LWIP_PORT_DEF=${LWIP_PORT_DEF}" # $EXTRACONF
+    # install
     cp -ar ${D0}/${LWIP_PORT_I}/include/* $SYS_PREFIX/include/
-    # Move and clean up
-    # mv $BUILD_DIR/bin/* $BIN_OUTPUT_DIR
-    # mv $BUILD_DIR/lib/* $LIB_OUTPUT_DIR
+    cp -ar src/include/* $SYS_PREFIX/include/
+    # We need to rename it.
+    cp liblwipcommon.a $SYS_PREFIX/lib/liblwipcore.a
 }
 
+
 ( lwip_build ${LWIP_BUILD} `pwd` ) || exit 1
-
-# install
-
-if [ -f tmp/*-${SYS_ARCH}-${LWIP_BUILD}/liblwipcore.a ]; then
-    cp tmp/*-${SYS_ARCH}-${LWIP_BUILD}/liblwipcore.a $SYS_PREFIX/lib
-else
-    cp tmp/*-${SYS_ARCH}-${LWIP_BUILD}/liblwipcore.a $SYS_PREFIX/lib
-fi
-
-cp -ar src/include/* $SYS_PREFIX/include/
 
 # echo warte; exit 1
 

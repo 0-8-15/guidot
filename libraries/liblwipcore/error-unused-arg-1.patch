@@ -1,0 +1,10 @@
+--- src/core/ipv6/nd6.c~	2018-10-24 20:32:36.000000000 +0200
++++ src/core/ipv6/nd6.c	2020-05-06 14:06:39.148427586 +0200
+@@ -2425,6 +2425,7 @@
+ void
+ nd6_restart_netif(struct netif *netif)
+ {
++  LWIP_UNUSED_ARG(netif);
+ #if LWIP_IPV6_SEND_ROUTER_SOLICIT
+   /* Send Router Solicitation messages (see RFC 4861, ch. 6.3.7). */
+   netif->rs_count = LWIP_ND6_MAX_MULTICAST_SOLICIT;
