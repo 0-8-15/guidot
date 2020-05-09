@@ -7,6 +7,11 @@
            #;(error  "out of range" ',proc (u8vector-length ,vec) ,offset ,size)
            (##raise-range-exception 2 ',proc (u8vector-length ,vec) ,offset ,size)))
 
+(define-macro (nw-vector-range-assert-1 proc vec offset size)
+  `(unless (>= (u8vector-length ,vec) (+ ,offset ,size))
+           #;(error  "out of range" ',proc (u8vector-length ,vec) ,offset ,size)
+           (##raise-range-exception 2 ',proc (u8vector-length ,vec) ,offset ,size)))
+
 (define-macro (%u8v-ref size conv)
   (let ((size_str (number->string size)))
     `(c-lambda
@@ -83,6 +88,16 @@ uint" size_str "_t val = " conv "(___arg3); // TODO just inline the expression
 (define (u8vector/n48h-set! vec n mac)
   (nw-vector-range-assert u8vector/n48h-set! vec n 48)
   (%u8vector/n48h-set! vec n mac))
+
+(define (u8vector-copy-from-string! to off from #!optional (start 0) (end (string-length from)))
+  (let ((len (- end start)))
+    (nw-vector-range-assert-1 u8vector-copy-from-string! to off len)
+    (do ((off off (+ off 1)) (n start (+ n 1)))
+        ((= n len))
+      (u8vector-set! to off (char->integer (string-ref from n))))))
+
+(define (u8vector-copy-from-u8vector! to off from #!optional (start 0) (end (string-length from)))
+  (subu8vector-move! from start end to off))
 
 ;;;* Ethernet
 (define-c-constant SIZEOF_ETH_HDR size_t "SIZEOF_ETH_HDR")
