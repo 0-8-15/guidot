@@ -372,13 +372,17 @@
 
 (define (observable-connect!
          params #!key
+         ;; FIXME: sort these by phase/use
          (critical #f)
          (extern #f)
          (check #f)
          (check-values #f)
+         (sequence #f)
          (post-changes #f)
          (post #f)
          (switchable #f))
+  (when (and sequence post-changes)
+        (error "observable-connect! : use either sequence: or post-changes:" params))
   (let* ((all-checks
           (cond
            ((procedure? check-values)
@@ -397,15 +401,29 @@
                     (lambda () (all-checks) #f)
                     #f))))
          (post-changes
-          (and (procedure? post-changes)
-               (lambda () ;; save old values while we have both
-                 (let ((ov (map (lambda (v) (%observable-value v)) params)) ;; out
-                       (nv (map observable-deref params)))
-                   (lambda ()
-                     ;; defer over critical phase - not boxed => in dyn scope
-                     (lambda ()
-                       ;; defer to post phase
-                       (apply (apply post-changes ov) nv)))))))
+          (cond
+           ((procedure? post-changes)
+            (lambda () ;; save old values while we have both
+              (let ((ov (map (lambda (v) (%observable-value v)) params)) ;; out
+                    (nv (map observable-deref params)))
+                (lambda ()
+                  ;; defer over critical phase - not boxed => in dyn scope
+                  (lambda ()
+                    ;; defer to post phase
+                    (apply (apply post-changes ov) nv))))))
+           ((procedure? sequence)
+            (lambda () ;; save old values while we have both
+              (let ((ov (map (lambda (v) (%observable-value v)) params)) ;; out
+                    (nv (map observable-deref params)))
+                (lambda ()
+                  ;; defer over critical phase - not boxed => in dyn scope
+                  (lambda ()
+                    ;; defer to post phase
+                    (let ((alt (let loop ((ov ov) (nv nv))
+                                 (if (null? ov) '()
+                                     (cons (car ov) (cons (car nv) (loop (cdr ov) (cdr nv))))))))
+                      (apply sequence alt)))))))
+           (else #f)))
          (thunk (checks
                  (if (procedure? extern)
                      extern
