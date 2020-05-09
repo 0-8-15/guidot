@@ -45,7 +45,7 @@
        (if (delayed-until-after-return? ,result)
            (begin
              (##safe-lambda-post! ,result) ZT_RESULT_OK)
-           (if ,result ZT_RESULT_OK -1)))))
+           ,result))))
 
 (define-macro (define-c-constant var type . const)
   (let* ((const (if (not (null? const)) (car const) (symbol->string var)))
@@ -547,7 +547,7 @@ c-declare-end
  (zt-node void* void* unsigned-int64 int zt-socket-address)
  bool "scm_zt_path_lookup" "static"
  (if (procedure? (on-zt-path-lookup))
-     (%%checked zt_path_lookup ((on-zt-path-lookup) node uptr thr nodeid family sa) 0)
+     (%%checked zt_path_lookup ((on-zt-path-lookup) node uptr thr nodeid family sa) #f)
      ;; otherwise nothing returned
      #f))
 
