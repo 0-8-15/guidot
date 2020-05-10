@@ -6,6 +6,11 @@
 
 
 ;;;* Notational Conventions
+
+(define (handle-replloop-exception e)
+  (##default-display-exception e (current-error-port))
+  #!void)
+
 ;;;** Consistency :Notational Conventions:
 ;; ($kick-style 'sync)
 
@@ -24,9 +29,14 @@
        (delay-until-after-return ,expr)
        (begin (debug 'after-safe-return:not-in-callback ',expr) ,expr)))
 
-(define-macro (after-safe-return+post expr)
+(define-macro (in-safe-context expr)
+  `(if (##in-safe-callback?)
+       (begin (debug 'in-safe-context:NOT-SAFE! ',expr) (delay-until-after-return ,expr) #!void)
+       (begin ,expr )))
+
+(define-macro (after-safe-return+post r0 expr)
   ;; Schedule EXPR for execution (one way or another) and return nonsense.
-  `(if (##in-safe-callback?) (##safe-lambda-post! (delay-until-after-return ,expr))
+  `(if (##in-safe-callback?) (begin (##safe-lambda-post! (delay-until-after-return ,expr)) ,r0)
        (begin (debug 'after-safe-return+post:not-in-callback ',expr) ,expr)))
 
 (define-macro (mustbe-async expr)
@@ -38,8 +48,8 @@
 (define-macro (lwip/after-safe-return expr)
   `(after-safe-return ,expr))
 
-(define-macro (zt/after-safe-return expr)
-  `(after-safe-return #;+post ,expr))
+(define-macro (zt/after-safe-return r0 expr)
+  `(after-safe-return+post ,r0 ,expr))
 
 (define-macro (mustbe-async-to-avoid-recursion-to-lwip expr) `(mustbe-async ,expr))
 ;;(define-macro (mustbe-async-to-avoid-recursion-to-lwip expr) `(lwip/after-safe-return ,expr))
@@ -60,7 +70,7 @@
 
 (define-macro (begin-after-return! expr)
   ;; Schedule EXPR for execution (one way or another) and return nonsense.
-  `(after-safe-return ,expr))
+  `(in-safe-context ,expr))
 
 (define-macro (maybe-async expr)
   ;; Schedule EXPR for execution (one way or another) and return nonsense.
@@ -425,6 +435,36 @@
 
 ;;(zt-locks-safe-lambda)
 
+;;* SOCKS
+
+(define-sense socks-port #f)
+
+(wire!
+ socks-port
+ sequence:
+ (lambda (old new)
+   (if old (tcp-service-unregister! old))
+   (if new (tcp-service-register! new socks-server))))
+
+(wire!
+;; Boah - what a dangerous thing!
+ socks-port
+ sequence:
+ (lambda (old new)
+   (if old (lwip-tcp-service-unregister! old))
+   (if new (lwip-tcp-service-register! new socks-server))))
+
+
+(.socks-port 9051)
+
+#;(with-exception-catcher
+ (lambda (ex)
+   (handle-replloop-exception ex)
+   (exit 23))
+ (lambda ()
+   (load "apps/cmd/socks.scm")
+   (debug 'socks 'done)))
+
 ;;* EVENTS
 
 (on-zt-recv
@@ -432,7 +472,7 @@
    (case type
      ((2) ;; tcp test should connect back now
       (debug 'RECV-from:test (list from type))
-      (zt/after-safe-return (lwc0 (debug 'lwc0 from))))
+      (zt/after-safe-return #t (lwc0 (debug 'lwc0 from))))
      (else
       (debug 'RECV-from-type-data (list from type data))
       #f))))
@@ -462,6 +502,7 @@
      ((ONLINE OFFLINE)
       (debug 'ZT-EVENT event)
       (zt/after-safe-return
+       #f
        (kick!
         (lambda ()
           #;(should-use-external #f)
@@ -495,30 +536,32 @@
    ;; (debug 'wire-send-via socket)
    ;; FIXME: allocate IPv6 too!
    (let ((remaddr (and remaddr (zt->gamsock-socket-address remaddr))))
-     (if (internet-socket-address? remaddr)
-         (receive
-          (addr port) (sa->u8 'zt-wire-packet-send remaddr)
-          (thread-yield!) ;; KILLER!
-          (##gc)
-          (cond
-           ((or (use-external) (is-ip4-local? addr))
-            (debug 'wire-send-via (socket-address->string remaddr))
-            ;;  FIXME: need to copy remaddr too? -- seems not be be the culprit
-            (let ((u8 (make-u8vector len))
-                  (remaddr (internet-address->socket-address addr port))
-                  #;(remaddr
-                   (receive
-                    (addr port) (sa->u8 'zt-wire-packet-send2 remaddr)
-                  (internet-address->socket-address addr port))))
-              (unless (eqv? (lwip-gambit-locked?) 1) (error "locking issue"))
-              ;; This COULD happen to copy from another threads stack!
-              (u8vector-copy-from-ptr! u8 0 data 0 len)
-              (thread-yield!) ;; KILLER!
-              #;(debug 'remaddr-is-still-ipv4? (internet-socket-address? remaddr))
-              #;(debug 'wire-send-via (socket-address->string remaddr))
-              #;(eqv? (send-message udp u8 0 #f 0 remaddr) len)
-              (zt/after-safe-return (maybe-async (debug 'wire-sent (send-message udp u8 0 #f 0 remaddr))))))
-           (else #;(debug 'wire-send-via/blocked (socket-address->string remaddr)) #f)))))))
+     (cond
+      ((internet-socket-address? remaddr)
+       (receive
+        (addr port) (sa->u8 'zt-wire-packet-send remaddr)
+        (thread-yield!) ;; KILLER!
+        (##gc)
+        (cond
+         ((or (use-external) (is-ip4-local? addr))
+          (debug 'wire-send-via (socket-address->string remaddr))
+          ;;  FIXME: need to copy remaddr too? -- seems not be be the culprit
+          (let ((u8 (make-u8vector len))
+                (remaddr (internet-address->socket-address addr port))
+                #;(remaddr
+                (receive
+                (addr port) (sa->u8 'zt-wire-packet-send2 remaddr)
+                (internet-address->socket-address addr port))))
+            (unless (eqv? (lwip-gambit-locked?) 1) (error "locking issue"))
+            ;; This COULD happen to copy from another threads stack!
+            (u8vector-copy-from-ptr! u8 0 data 0 len)
+            (thread-yield!) ;; KILLER!
+            #;(debug 'remaddr-is-still-ipv4? (internet-socket-address? remaddr))
+            #;(debug 'wire-send-via (socket-address->string remaddr))
+            #;(eqv? (send-message udp u8 0 #f 0 remaddr) len)
+            (zt/after-safe-return 0 (maybe-async (debug 'wire-sent (send-message udp u8 0 #f 0 remaddr))))))
+         (else #;(debug 'wire-send-via/blocked (socket-address->string remaddr)) 1))))
+      (else "address not yet handled" 1)))))
 
 (define (assemble-ethernet-pbuf src dst ethertype payload len)
   (let ((pbuf (or (make-pbuf-raw+ram (+ SIZEOF_ETH_HDR len))
@@ -547,7 +590,7 @@
    (let ((nif (find-nif dstmac)))
      (if nif
          (let ((pbuf (assemble-ethernet-pbuf srcmac dstmac ethertype payload len)))
-           (zt/after-safe-return (lwip-send-ethernet-input! nif pbuf)))
+           (zt/after-safe-return #!void (lwip-send-ethernet-input! nif pbuf)))
          (begin
            (debug 'DROP:VRECV-DSTMAC dstmac))))))
 
@@ -613,7 +656,7 @@
    ;; set multicast limit
    ;;(thread-send config-helper #t)
    ;;(if (eqv? nwid (ctnw)) (maybe-async-when-lwip-requires-pthread-locks (debug 'set-mc-limit (zt-set-config-item! nwid 2 16))))
-   #t))
+   0))
 
 ;; Optional
 
@@ -653,85 +696,15 @@
     (newline p)
     v))
 
-;; lwIP TCP
+;(include "going.scm")
 
-(define (lwip-ok? x) (eqv? x 0))
-
-(define (on-tcp-accept ctx connection err)
-  (debug 'on-tcp-accept ctx)
-  (lwip/after-safe-return (%%lwip-tcp-close connection)))
-
-(define (on-tcp-sent ctx connection len)
-  ;; should signal conn free
-  ERR_OK)
-
-(define (on-tcp-receive ctx connection pbuf err)
-  ERR_IF)
-
-(define (on-tcp-connect ctx connection err)
-  (case err
-    ((0)
-     (let ()
-       (debug 'CONNECTED connection)
-       (debug 'CONCTX ctx)
-       (lwip/after-safe-return (ctx connection))))
-    (else (debug 'on-tcp-connect err)))) ;; FIXME
-
-(define (on-tcp-poll ctx connection)
-  (debug 'UpsPOLL connection)
-  (thread-yield!)
-  (thread-yield!)
-  ;; (debug 'lwip-tcp-flush! (lwip-err (lwip-tcp-flush! connection)))
-  ERR_OK)
-
-(define (on-tcp-error ctx err)
-  (debug 'ERROR ctx)
-  (debug 'err (lwip-err err))
-  ERR_OK)
-
-#;(define (%%tcp-context-set! pcb ctx)
-  (tcp-context-set! pcb ctx))
-
-;#|;; BEWARE: it appeares to be illegal to store the context directly in
-;;;; the pcb, even if we kept another reference to it around.
-(define tcp-conn-nr
-  (let ((n 1))
-    (lambda () (let ((r n)) (set! n (+ n 1)) r))))
-
-(define tcp-contexts (make-table hash: equal?-hash weak-keys: #f))
-
-(define (%%lwip-tcp-close pcb)
-  (define table-remove! table-set!)
-  (table-remove! tcp-contexts (tcp-context pcb))
-  (lwip-tcp-close pcb))
-
-(define (%%tcp-context-set! pcb ctx)
-  #;(tcp-context-set! pcb ctx)
-  (let ((n (tcp-conn-nr)))
-    (tcp-context-set! pcb n)
-    (table-set! tcp-contexts n ctx)))
-;;|#
-
-(on-tcp-event
- (lambda (ctx pcb e pbuf size err)
-   (set! ctx (table-ref tcp-contexts ctx #f)) ;;; ENABLE if conns are counted above
-   ;; NOTE: This passes along what the lwIP callback API did.
-   (cond
-    ((eq? LWIP_EVENT_ACCEPT e) (on-tcp-accept ctx pcb err))
-    ((eq? LWIP_EVENT_SENT e) (on-tcp-sent ctx pcb len))
-    ((eq? LWIP_EVENT_RECV e) (on-tcp-receive ctx pcb pbuf err))
-    ((eq? LWIP_EVENT_CONNECTED e) (on-tcp-connect ctx pcb err))
-    ((eq? LWIP_EVENT_POLL e) (on-tcp-poll ctx pcb))
-    ((eq? LWIP_EVENT_ERR e) (on-tcp-error ctx err))
-    (else (debug "on-tcp-event: unknown event" e) ERR_ARG))))
+;;;** Test Environment (Continued)
 
 (define-sense connecting #t) ;; enabled
 
 (define-sense lws-contact-is-listening)
 
 (define (lwc0 from) (.lws-contact-is-listening from))
-
-(define-pin tcp-connections '())
 
 (define ip6addr-any '#u8(0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0))
 
@@ -741,6 +714,8 @@
                            #;Kicking lwc))))
 
 (define (lwc)
+  (define (start-client! conn)
+    (debug 'lwc 'client))
   (let* ((sa (make-6plane-addr (ctnw) (lws-contact-is-listening) #;(tester-ndid (other-party)) (adhoc-port)))
          (addr (receive (a p) (sa->u8 'lwc sa) a)))
     (debug "
@@ -751,31 +726,36 @@
 
 
 "  'PLATZ)
-    (let* ((client (tcp-new6))
-           (rcv
-            (lambda (connection)
-              (debug (list 'ClientConnected (current-thread)) connection)
-              (lwip/after-safe-return (%%lwip-tcp-close connection)))))
-      (%%tcp-context-set! client (debug 'clientcontext rcv))
-      (debug 'client-bound (lwip-tcp-bind client ip6addr-any 0))
-      (unless (lwip-ok? (debug 'conn (lwip-tcp-connect client addr (debug 'connecting (adhoc-port)))))
-              (error "lwip-tcp-connect failed"))
-      (unless (lwip-ok? (lwip-tcp-flush! (debug 'lwip-tcp-flush! client)))
-              (error "lwip-tcp-flush! failed"))
-      (debug 'lwc 'waiting-for-callback)
-      #;Kicking: (lambda () (tcp-connections (cons rcv (tcp-connections)))))))
+    (let ((conn (open-lwip-tcp-client-connection addr (debug 'connecting (adhoc-port)))))
+      (debug 'lwc (##in-safe-callback?))
+      (display "Hello World!\n" conn)
+      (debug 'GOT (read (debug 'waiting-for-server conn)))
+      (debug 'closed (close-port conn))
+      #;Kicking: #;(lambda () (close-port conn)))))
 
 (define lws-listener (PIN))
 
+(define (test-service-starter)
+  (do () (#f)
+    (let ((conn (debug 'test-conn (read (lws-listener)))))
+      (async! (lambda () (port-copy-through conn conn))
+       #;(lambda ()
+         (current-input-port conn)
+         (current-output-port conn)
+              (test-service)))
+      #f)))
+
 (define (lws-listening!)
   (if (lws-listener)
-      (begin-after-return! (zt-send! (tester-ndid (other-party)) 2 (object->u8vector "listening")))))
+      (begin-after-return!
+       (zt-send! (tester-ndid (other-party)) 2 (object->u8vector "listening")))))
 
 (wire! lws-listener post: lws-listening!)
 
+(wire! lws-listener post: (box (lambda () (async! test-service-starter))))
+
 (define (lws)
-  (let* ((srv (tcp-new-ip-type lwip-IPADDR_TYPE_V6))
-         (sa (make-6plane-addr (ctnw) (zt-address) (adhoc-port)))
+  (let* ((sa (make-6plane-addr (ctnw) (zt-address) (adhoc-port)))
          (addr (if #f
                    (receive (a p) (sa->u8 'lws sa) a) ;; Bind local/loopback only
                    ip6addr-any)))
@@ -787,14 +767,7 @@
 
 
 "  'BEDARF)
-    (debug 'lwIP-bind (ip-address->string addr))
-    (unless
-     (lwip-ok? (lwip-tcp-bind (debug 'pcb srv) addr (adhoc-port)))
-     (error "lwip-tcp-bind failed"))
-    (let ((srv (debug 'listening (lwip-tcp-listen (debug 'listenon srv)))))
-      (unless srv (error "lwip-listen failed"))
-      (%%tcp-context-set! srv #f)
-      (lws-listener srv))))
+    (lws-listener (open-lwip-tcp-server*/ipv6 (adhoc-port) local-addr: addr))))
 
 (define tried-to-contact (PIN #f))
 
@@ -851,11 +824,7 @@
 	  (loop i (cons (system-cmdargv i) r))))))
 
 (define (replloop)
-  (with-exception-catcher
-   (lambda (e)
-     (##default-display-exception e (current-error-port))
-     #;(for-each display (list (exception->string e) "\n")) #f)
-   (lambda () (##repl-debug #f #t)))
+  (with-exception-catcher handle-replloop-exception (lambda () (##repl-debug #f #t)))
   (replloop))
 
 (replloop)

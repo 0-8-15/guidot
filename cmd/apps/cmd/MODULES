@@ -1,1 +1,1 @@
-config ln_core gamsock likely zerotiercore lwip
+config ln_core gamsock likely zerotiercore lwip socks
