@@ -16,7 +16,17 @@
          (##safe-lambda-unlock! ,c-code)
          ,tmp))))
 
+(define-macro (delay-until-after-return expr) `(lambda () ,expr))
+(define-macro (after-safe-return expr)
+  ;; Schedule EXPR for execution (one way or another) and return nonsense.
+  `(if (##in-safe-callback?)
+       (delay-until-after-return ,expr)
+       (begin (debug 'lwip-after-safe-return:not-in-callback ',expr) ,expr)))
+
 ;;;* Local Syntax
+
+(define-macro (lwip/after-safe-return expr)
+  `(after-safe-return ,expr))
 
 (define-macro (define-c-constant var type . const)
   (let* ((const (if (not (null? const)) (car const) (symbol->string var)))
@@ -385,12 +395,14 @@ lwip-core-lock-end
  (else
   (define-macro (%lwip-lock!) '(##safe-lambda-lock! '%lwip-lock!))
   (define-macro (%lwip-unlock!) '(##safe-lambda-unlock! '%lwip-unlock!))
-  (define-macro (%lwip-post! result)
-    `(if (delayed-until-after-return? ,result)
-         (begin
-           (##safe-lambda-post! ,result)
-           ERR_OK)
-         ,result))
+  (define-macro (%lwip-post! expr)
+    (let ((result (gensym 'result)))
+      `(let ((,result ,expr))
+         (if (delayed-until-after-return? ,result)
+             (begin
+               (##safe-lambda-post! ,result)
+               ERR_OK)
+             ,result))))
   (define-macro (c-lambda-with-lwip-locked unused-backward-compatible-formals types ret code)
     `(c-safe-lambda ,types ,ret ,code))
   )) ;; cond-expand
@@ -1392,6 +1404,16 @@ END
    (pcb data sz x) (tcp_pcb void* unsigned-int16 unsigned-int8) err_t
    "___result = tcp_write(___arg1, ___arg2, ___arg3, ___arg4);"))
 
+(define lwip-tcp-write-subu8vector*
+  (c-lambda-with-lwip-locked
+   (data off sz pcb) (scheme-object size_t size_t tcp_pcb) err_t
+   "___result = tcp_write(___arg4, ___CAST(uint8_t*, ___BODY(___arg1)) + ___arg2, ___arg3 - ___arg2, 0);"))
+
+(define (lwip-tcp-write-subu8vector vec start end pcb)
+  (when (>= (+ start end) (u8vector-length vec))
+        (##raise-range-exception 1 'lwip-tcp-write-subu8vector (u8vector-length vec) start end))
+  (lwip-tcp-write-subu8vector* vec start end pcb))
+
 (define lwip-tcp-prio-set!
   (c-lambda-with-lwip-locked (pcb prio) (tcp_pcb unsigned-int8) void "tcp_setprio(___arg1, ___arg2);"))
 
@@ -1411,3 +1433,5 @@ END
 ;; (define lwip- (c-lambda ()  ""))
 
 ;; (define lwip-tcp_tcp_get_tcp_addrinfo (c-lambda ()  ""))
+
+(include "lwip-ports.scm")
