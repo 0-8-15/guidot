@@ -12,6 +12,30 @@
            #;(error  "out of range" ',proc (u8vector-length ,vec) ,offset ,size)
            (##raise-range-exception 2 ',proc (u8vector-length ,vec) ,offset ,size)))
 
+(cond-expand
+ ((and gambit unsafe)
+(define-macro (%u8v-ref-code vec off size conv)
+  (let ((big (if (>= size 32) "BIG" ""))
+        (result-c-type (string-append "uint" (number->string size) "_t")))
+    `(##c-code
+      ,(string-append
+        result-c-type " tmp = * ___CAST("
+        result-c-type "*, ___CAST(uint8_t*, ___BODY_AS(___ARG1,___tSUBTYPED)) + ___ARG2);"
+        "___RESULT=___" big "FIX(" conv "(tmp));")
+      ,vec ,off)))
+
+(define-macro (%u8v-ref size conv)
+  ;; ##c-code has no conversion overhead
+  `(lambda (vec off)
+     (%%u8v-ref-code vec off ,size ,conv)))
+
+(define-macro (define-u8v-ref name size conv)
+  `(define (,name vec off)
+     (nw-vector-range-assert ,name vec off ,size)
+     (%%u8v-ref-code vec off ,size ,conf)))
+
+  ) (gambit ;; gambit NOT unsafe
+
 (define-macro (%u8v-ref size conv)
   (let ((size_str (number->string size)))
     `(c-lambda
@@ -22,48 +46,73 @@ uint" size_str "_t result, val = *(uint" size_str "_t*)(cptr+___arg2);
 result = " conv "(val); // TODO just inline the expression
 ___return(result);"))))
 
+(define-macro (define-u8v-ref name size conv)
+  `(define (,name vec off)
+     (nw-vector-range-assert ,name vec off ,size)
+     ((%u8v-ref ,size ,conv) vec off)))
+
+  )
+ #;(else NYI -- anything but gambit not yet implemented))
+
 (define-macro (%u8vn-setter size conv)
-  (let ((size_str (number->string size)))
+  (let* ((size_str (number->string size))
+         (result-c-type (string-append "uint" size_str "_t")))
     `(c-lambda
       (scheme-object size_t ,(string->symbol (string-append "unsigned-int" size_str))) void
       ,(string-append
        "const char *cptr = ___CAST(uint8_t*, ___BODY(___arg1));
-uint" size_str "_t val = " conv "(___arg3); // TODO just inline the expression
-*(uint" size_str "_t*)(cptr+___arg2) = val;"))))
+" result-c-type " val = " conv "(___arg3); // TODO just inline the expression
+*(" result-c-type "*)(cptr+___arg2) = val;"))))
 
-(define %u8vector/n16h-ref (%u8v-ref 16 "lwip_ntohs"))
+#;(define-macro (%%u8vn-setter-code vec off val size conv)
+  ;;; WRONG
+  (if (>= size 32)
+      `(##c-code
+        ,(string-append
+          "* ___CAST(uint"
+          (number->string size)
+          "_t*, ___CAST(uint8_t*, ___BODY_AS(___ARG1,___tSUBTYPED)) + ___ARG2) = "
+          conv "(___BIGNUMP(___ARG3) ?  ___BIGAFETCH(___ARG3, 1)<<32|___BIGAFETCH(0, ___ARG3) : ___INT(___ARG3));"
+          "___RESULT=___VOID;")
+        ,vec ,off ,val)
+      `(##c-code
+        ,(string-append
+          "* ___CAST(uint"
+          (number->string size)
+          "_t*, ___CAST(uint8_t*, ___BODY_AS(___ARG1,___tSUBTYPED)) + ___ARG2) = "
+          conv "(___BIGNUMP(___ARG3) ? ___BIGAFETCH(___ARG3, 0) : ___INT(___ARG3)); ___RESULT=___VOID;")
+        ,vec ,off ,val)))
 
-(define (u8vector/n16h-ref vec n)
-  (nw-vector-range-assert u8vector/n16h-ref vec n 16)
-  (%u8vector/n16h-ref vec n))
+(define-macro (%%u8vn-setter size conv)
+  `(lambda (vec off val) (%%u8vn-setter-code vec off val ,size ,conv)))
 
-(define %u8vector/n16h-set! (%u8vn-setter 16 "lwip_htons"))
+(define %u8vector/n16h-ref (%u8v-ref 16 "PP_NTOHS"))
+
+(define-u8v-ref u8vector/n16h-ref 16 "PP_NTOHS")
+
+(define %u8vector/n16h-set! (%u8vn-setter 16 "PP_HTONS"))
 
 (define (u8vector/n16h-set! vec n v)
   (nw-vector-range-assert u8vector-set/n16! vec n 16)
   (%u8vector/n16h-set! vec n v))
 
-(define %u8vector/n32h-ref (%u8v-ref 32 "lwip_ntohl"))
+(define %u8vector/n32h-ref (%u8v-ref 32 "PP_NTOHL"))
 
-(define (u8vector/n32h-ref vec n)
-  (nw-vector-range-assert u8vector/n32h-ref vec n 32)
-  (%u8vector/n32h-ref vec n))
+(define-u8v-ref u8vector/n32h-ref 32 "PP_NTOHL")
 
-(define %u8vector/n32h-set! (%u8vn-setter 32 "lwip_htonl"))
+(define %u8vector/n32h-set! (%u8vn-setter 32 "PP_HTONL"))
 
 (define (u8vector/n32h-set! vec n v)
   (nw-vector-range-assert u8vector/n32h-set! vec n 32)
   (%u8vector/n32h-set! vec n v))
 
 (c-declare "static inline uint64_t lwip_ntohll(uint64_t x)
-{ return (((uint64_t)(lwip_ntohl((uint32_t)((x << 32) >> 32))) << 32)
-   | (uint32_t)lwip_ntohl(((uint32_t)(x >> 32)))) ;}")
+{ return (((uint64_t)(PP_NTOHL((uint32_t)((x << 32) >> 32))) << 32)
+   | (uint32_t)PP_NTOHL(((uint32_t)(x >> 32)))) ;}")
 
 (define %u8vector/n64h-ref (%u8v-ref 64 "lwip_ntohll"))
 
-(define (u8vector/n64h-ref vec n)
-  (nw-vector-range-assert u8vector/n64h-ref vec n 64)
-  (%u8vector/n64h-ref vec n))
+(define-u8v-ref u8vector/n64h-ref 64 "lwip_ntohll")
 
 (define %u8vector/n64h-set! (%u8vn-setter 64 "lwip_ntohll"))
 
@@ -123,6 +172,7 @@ uint" size_str "_t val = " conv "(___arg3); // TODO just inline the expression
 (define-c-constant ETHTYPE_MRP unsigned-int) ;; Media redundancy protocol
 (define-c-constant ETHTYPE_PTP unsigned-int) ;; Precision time protocol
 (define-c-constant ETHTYPE_QINQ unsigned-int) ;; Q-in-Q, 802.1ad
+(define ETHTYPE_NNG #x0901) ;; nanomsg
 
 (define (ethertype/host->symbol x)
   (cond
@@ -146,17 +196,17 @@ uint" size_str "_t val = " conv "(___arg3); // TODO just inline the expression
 
 (define (ethertype/network->symbol x) (ethertype/host->symbol (lwip-htons x)))
 
-(define (ethertype/host-decor2 etht)
+(define (ethertype/host-decor etht)
   (cond
    ((<= etht 1500) (list 'length etht))
-   ((and (> etht 1500) (< etht 1536)) (list 'illegal etht))
+   ((and (> etht 1500) (< etht 1536)) (list 'illegal-ethertype etht))
    (else
     (let ((x (ethertype/host->symbol etht)))
       (if (eq? x 'lwip-UNKNOWN) (list x etht (ethertype/network->symbol etht)) x)))))
 
 (define (display-eth-packet/offset u8 offset #!optional (port (current-output-port)))
   #;(define type (ethertype/network->symbol (ethernet-header?type/get u8 offset)))
-  (define type (ethertype/host-decor2 (lwip-ntohs (ethernet-header?type/get u8 offset))))
+  (define type (ethertype/host-decor (lwip-ntohs (ethernet-header?type/get u8 offset))))
   (display type port)
   (display " from: " port)
   (display (lwip-u8-mac->string u8 (+ 6 offset)) port)
