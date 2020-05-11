@@ -273,6 +273,10 @@
    (if (and (lwip) (zt-started))
        (.*nwif* (make-zt-ad-hoc-network-interface (ctnw) (zt-address))))))
 
+(define (hexstr id digits)
+  (let ((effective (number->string id 16)))
+    (string-append (make-string (- digits (string-length effective)) #\0) effective)))
+
 (wire!
  zt-started
  post:
@@ -312,14 +316,6 @@
    initial: #f
    pred: (or-ground (lambda (x) (assq x testers)))))
 
-(define (hexstr id digits)
-  (let ((effective (number->string id 16)))
-    (string-append (make-string (- digits (string-length effective)) #\0) effective)))
-
-(define (dbgmac l v)
-  (debug l (hexstr v 12))
-  v)
-
 (define-SENSOR *nwif*
   (SENSOR
    initial: (ground)
@@ -333,20 +329,19 @@
 
 (define (make-zt-ad-hoc-network-interface nwid ndid)
   (let ((nif (lwip-make-netif (lwip-mac:host->network (zt-network+node->mac nwid ndid)))))
-    (dbgmac 'MAC0 (zt-network+node->mac nwid ndid))
     ;; WRONG (debug 'lwip-mac-integer->string//ll (lwip-mac-integer->string (lwip-htonll (zt-network+node->mac nwid ndid))))
     (debug 'lwip-mac-integer->string (lwip-mac-integer->string (lwip-mac:host->network (zt-network+node->mac nwid ndid))))
     (debug 'lwip-mac/host-integer->string (lwip-mac-integer->string (zt-network+node->mac nwid ndid)))
     (debug 'lwip-netif-mac->string (lwip-netif-mac->string nif))
     #;(let ((addr (make-6plane-addr nwid ndid (adhoc-port))))
       (lwip_init_interface_IPv6 nif addr)
-      (zt-multicast-subscribe nwid (dbgmac 'MCMAC (gamsock-socket-address->nd6-multicast-mac addr))))
+      (zt-multicast-subscribe nwid (gamsock-socket-address->nd6-multicast-mac addr)))
     (begin
       (lwip_init_interface_IPv6 nif (make-6plane-addr nwid ndid (adhoc-port)))
       ;; this goes south under valgrind (only) and valgrind will report mem leaks
       #;(do ((n (- (debug 'NMacs (lwip-netif-ip6addr-count nif)) 1) (- n 1)))
           ((= n -1))
-        (zt-multicast-subscribe nwid (dbgmac 'MCMAC (lwip-netif-ip6broadcast-mach nif n)))))
+        (zt-multicast-subscribe nwid (lwip-netif-ip6broadcast-mach nif n))))
     nif))
 
 (define (eth-send! u8vec)
@@ -446,7 +441,7 @@
    (if old (tcp-service-unregister! old))
    (if new (tcp-service-register! new socks-server))))
 
-(wire!
+#;(wire!
 ;; Boah - what a dangerous thing!
  socks-port
  sequence:
@@ -541,7 +536,7 @@
        (receive
         (addr port) (sa->u8 'zt-wire-packet-send remaddr)
         (thread-yield!) ;; KILLER!
-        (##gc)
+        (##gc) ;; REALLY??
         (cond
          ((or (use-external) (is-ip4-local? addr))
           (debug 'wire-send-via (socket-address->string remaddr))
@@ -577,13 +572,7 @@
  ;; It's (currently) important that LWIP_TCPIP_CORE_LOCKING_INPUT is
  ;; not set.
  (lambda (node userptr thr nwid netptr srcmac dstmac ethertype vlanid payload len)
-   (define ethtp (ethertype/host-decor ethertype))
-   (dbgmac 'VRECV-SRCMAC srcmac)
-   (dbgmac 'VRECV-DSTMAC dstmac)
-   (debug 'VRECV-ethertype ethtp)
-   (debug 'VRECV len)
-   (debug 'netptr netptr)
-   (if (eq? ethtp 'ETHTYPE_IPV6)
+   (if (eq? ethertype ETHTYPE_IPV6)
        (let ((u8p (make-u8vector len)))
          (u8vector-copy-from-ptr! u8p 0 payload 0 len)
          (display-ip6-packet/offset u8p 0 (current-error-port))))
@@ -594,14 +583,6 @@
          (begin
            (debug 'DROP:VRECV-DSTMAC dstmac))))))
 
-(define (ethertype/host-decor etht)
-  (cond
-   ((<= etht 1500) (list 'length etht))
-   ((and (> etht 1500) (< etht 1536)) (list 'illegal etht))
-   (else
-    (let ((x (ethertype/host->symbol etht)))
-      (if (eq? x 'lwip-UNKNOWN) (list x etht (ethertype/network->symbol etht)) x)))))
-
 (lwip-nd6-get-gateway (lambda (netif dst) dst)) ;; ZT serves a single switch
 
 (lwip-ethernet-send
@@ -610,29 +591,22 @@
    (let ((src (lwip-mac:network->host src))
          (dst (lwip-mac:network->host dst))
          (ethertype ethertype))
-     (define ethtp (ethertype/host-decor ethertype))
-     (debug 'lwip-ethernet-send-to-zt pbuf)
-     (dbgmac 'src src)
-     (dbgmac 'dst dst)
-     (debug 'EtherType ethtp)
      #;(display-eth-packet/offset pbuf 0 (current-error-port))
      (let ((vlanid 0)
            (bp (pbuf->u8vector pbuf SIZEOF_ETH_HDR))) ;; FIXME: avoid the copy
-       (debug 'Packt-len (u8vector-length bp))
        (cond
-        ((eq? ethtp 'ETHTYPE_IPV6) (display-ip6-packet/offset bp 0 (current-error-port))))
+        ((eq? ethertype ETHTYPE_IPV6) (display-ip6-packet/offset bp 0 (current-error-port))))
        (lwip/after-safe-return (zt-virtual-send (find-nwid-for-nif netif) src dst ethertype vlanid bp))))))
 
 (lwip-ip6-send
  (lambda (netif pbuf ip6addr)
    (let ((addr (make-u8vector 16)))
-     (u8vector-copy-from-ptr! addr 0 ip6addr 0 16)
+     (u8vector-copy-from-ptr! addr 0 ip6addr 0 16) ;; GREAT, looks really simple and obvious!
      (if #t ;; (eqv? (u8vector-ref addr 0) #xfc)
          (let ((ndid (quotient (%u8vector/n48h-ref addr 5) 256))
                (nwid (find-nwid-for-nif netif))
                (src (lwip-netif-mac netif))
                (bp (pbuf->u8vector pbuf 0)))
-           (debug 'lwip-ip6-send-to (hexstr ndid 10))
            (display-ip6-packet/offset bp 0 (current-error-port))
            (lwip/after-safe-return (zt-virtual-send nwid src (zt-network+node->mac nwid ndid) ETHTYPE_IPV6 0 bp)))
          ERR_RTE))))
