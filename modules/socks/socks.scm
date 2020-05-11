@@ -14,12 +14,9 @@
       ;; overflows at 64 - is just a PoC
       (string-set! in off (integer->char n)))))
 
-(define (%sockes-server-error msg . more)
-  (debug msg more)
-  (error msg more))
-
 (define (port-copy-through in out #!optional (MTU 3000))
   ;; TODO: re-write using get-output-u8vector
+  ;; ##wait-input-port
   (let ((buffer (make-u8vector MTU)))
     (let loop ()
       (let ((n (read-subu8vector buffer 0 MTU in 1)))
@@ -169,11 +166,12 @@
   (let ((cmd (u8vector-ref req 1))
         (dstport (u8vector/n16h-ref req 2))
         (dstip (u8vector/n32h-ref req 4)))
-    (let ((dstip
-           (if (and (<= dstip 255) (> dstip 0))
-               (let ((user-id (read-line/null-terminated in)))
-                 (read-line/null-terminated in))
-               dstip)))
+    (let* ((user-id (read-line/null-terminated in))
+           (dstip
+            (if (and (<= dstip 255) (> dstip 0))
+                (read-line/null-terminated in)
+                dstip)))
+      ;; FIXME pass user-id along and fix read-line/null-terminated
       (case cmd
         ((1) (socks-dispatch-connection in out dstip dstport))
         ((2) (socks-dispatch-bind in out dstip dstport))
