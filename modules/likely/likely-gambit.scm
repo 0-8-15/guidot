@@ -1,3 +1,10 @@
+(declare
+ (standard-bindings)
+ (extended-bindings) ;; no overwrites of standard bindings
+ (not standard-bindings thread-start!) ;; except this
+ (block)
+ )
+
 (include "0001-dynamic-extent.scm")
 (include "0002-srfi-1.scm")
 (include "0003-tagged-proc-gambit.scm")

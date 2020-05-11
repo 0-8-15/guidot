@@ -25,6 +25,13 @@
 ;; (define-cond-expand-feature zt-locking)
 (define-cond-expand-feature zt-safe-locking)
 
+(declare
+ (standard-bindings)
+ (extended-bindings) ;; no overwrites of standard bindings
+ (not standard-bindings thread-start!) ;; except this
+ (block)
+ )
+
 ;;;* Macros
 (define-macro (c-safe-lambda formals return c-code)
   (let ((tmp (gensym 'c-safe-lambda-result))

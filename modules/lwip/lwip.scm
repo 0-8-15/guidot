@@ -23,6 +23,15 @@
        (delay-until-after-return ,expr)
        (begin (debug 'lwip-after-safe-return:not-in-callback ',expr) ,expr)))
 
+(declare
+ (standard-bindings)
+ (extended-bindings) ;; no overwrites of standard bindings
+ (not standard-bindings thread-start!) ;; except this
+ (block)
+ )
+
+#;(declare (debug))
+
 ;;;* Local Syntax
 
 (define-macro (lwip/after-safe-return expr)
