@@ -164,7 +164,7 @@
   (define (on-tcp-receive ctx connection pbuf err)
     (cond
      ((not pbuf) ;; closed
-      (lwip/after-safe-return (close-tcp-connection ctx)))
+      (and ctx (lwip/after-safe-return (close-tcp-connection ctx))))
      ((eqv? err ERR_OK)
       (pbuf-add-reference! pbuf)
       (lwip/after-safe-return
