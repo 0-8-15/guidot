@@ -17,9 +17,10 @@
   ;; This may better use stm-consistency-error?
   (dynamic
    (lambda (file display-content content)
-     (if content
-         (call-with-output-file file (lambda (port) (display-content content port)))
-         (if (file-exists? file) (delete-file file))))))
+     (cond
+      ((not content) (if (file-exists? file) (delete-file file)))
+      ((eq? content #t) #f)  ;; Keept old content
+      (else (call-with-output-file file (lambda (port) (display-content content port))))))))
 
 (define (call-with-overwrite file thunk sig)
   ;; FIXME: should handle volume letter for w32
