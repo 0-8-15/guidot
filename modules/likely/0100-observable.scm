@@ -152,20 +152,37 @@
 
 (define $debug-trace-triggers (make-parameter #f))
 
+(define $async-exceptions (make-parameter 'ignored))
+
 (define (make-observable-triggers #!key (async #f))
+  (define (handle-async-exception ex)
+    (display "In " (current-error-port))
+    (display (current-thread) (current-error-port))
+    (display #\space (current-error-port))
+    (##default-display-exception ex (current-error-port)))
+  (define (start-async! thunk name check)
+    (thread-start!
+     (make-thread
+      (lambda ()
+        (if check (check))
+        (case ($async-exceptions)
+          ((ignored) (thunk))
+          (else (with-exception-catcher handle-async-exception thunk))))
+      name)))
   (define (async-consequence! x)
     (cond
-     ((procedure? x) (thread-start! (make-thread (lambda () (kick! x)) 'consequence)))
+     ((procedure? x) (start-async! (lambda () (kick! x)) 'consequence #f))
      ((and (box? x) (let ((t (unbox x))) (and (procedure? t) t))) =>
       (lambda (thunk)
         (stm-log 'atomic-with-consequence " starting new thread" thunk)
-        (thread-start!
-         (make-thread
-          (lambda ()
-            (if (current-transaction) (stm-consistency-error 'atomic-with-consequence thunk)) ;; DEBUG
-            (let ((kicking (thunk)))
-              (if (procedure? kicking) (kick! kicking))))
-          'atomic-with-consequence))))
+        (start-async!
+         (lambda ()
+           (let ((kicking (thunk)))
+             (if (procedure? kicking) (kick! kicking))))
+         'atomic-with-consequence
+         (and #t ;; DEBUG
+              (lambda ()
+                (if (current-transaction) (stm-consistency-error 'atomic-with-consequence thunk)))))))
      (else
       (stm-log 'async-handler "USELESS handler MAYBE BETTER STM consistency error" x)
       #f)))
@@ -229,7 +246,10 @@
      (parameterize
       (($implicit-current-transactions #f))
       (with-exception-catcher
-       (lambda (ex) (stm-consistency-error "toplevel-execute!" ex))
+       (lambda (ex)
+         (stm-consistency-error
+          "toplevel-execute!" thunk
+          (call-with-output-string (lambda (p) (##default-display-exception ex p)))))
        thunk)))))
 
 (define %kick-style 'async)
@@ -266,6 +286,13 @@
        ((current-transaction) (%passive thunk))
        (else (%kick! thunk))))))
 
+(define (kick/sync! thunk)
+  (if (eq? ($kick-style) 'sync)
+      (kick! thunk)
+      (parameterize
+       (($kick-style 'sync))
+       (kick! thunk))))
+
 ;; Short procedural interface.  NOT recommended for eventual use,
 ;; except as a drop in compatible to parameters. It just hides too
 ;; much.  Better deploy with observables.  Otherwise nice for scripts
@@ -284,10 +311,22 @@
    ((k p . more) ;; INTERNAL API; TODO protect from uncontrolled access
     (cond
      ((not (or k p)) x)
-     ((and (string? k) (procedure? p))
-      (let ((sig (if (pair? more) (car more) #f))
-            (params (map conv (if sig (cdr more) more))))
-        (apply connect-dependent-value! k p (or sig '()) (cons x params))))
+     ;;; FIXME: sieh zu, daß das erstmal mit spezialisiertem
+     ;;; `observable-connect!` funktioniert!
+     ;;;
+     ;;; `call-with-overwrite` kann/sollte danach transaktionsfest
+     ;;; werden.
+     ;;;
+     ;;; Der eine Testfall wäre anzupassen und im Probiercode steht
+     ;;; ein guter Fall von "schön", der so bleiben sollte.
+     ;;;
+     ;;; NB: `:=` ist gar nicht so schlecht.
+     ((and (null? k) (string? p) (pair? more) (procedure? (car more)))
+      (let* ((mk (car more))
+             (more (cdr more))
+             (sig (if (pair? more) (car more) #f))
+             (params (map conv k)))
+        (connect-dependent-value! p mk (or sig '()) (cons x params))))
      (else
       (let ((params (map conv k)))
         (apply observable-connect! (cons x params) p more)))))))

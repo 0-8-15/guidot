@@ -24,7 +24,7 @@
 
 (define-macro (stm-consistency-error msg . args)
   `(begin
-     (stm-warning 'stm-consistency-error ,msg ',args)
+     (stm-warning 'stm-consistency-error ,msg (list . ,args))
      (error ,msg . ,args)))
 
 ;;;* implementation

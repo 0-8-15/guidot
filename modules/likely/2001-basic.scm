@@ -347,6 +347,21 @@
           (run-observed! (lambda () (observable-set! ob 33)))
           (not (file-exists? fn))))))
 
+(test-assert
+ "external files procedural"
+ (let ((ob (make-lval 23 #f #f 'ob))
+       (fn "Test file"))
+   (if (file-exists? fn) (delete-file fn))
+   (with-current-transaction
+    (lambda ()
+      (wire! ob fn (lambda () (and (= (ob) 42) "Test file\n")))))
+   (run-observed!
+    (lambda () (ob 42)))
+   (and (file-exists? fn)
+        (begin
+          (run-observed! (lambda () (ob 33)))
+          (not (file-exists? fn))))))
+
 ;; script interface
 
 ;; (define tnw (make-lval #f (lambda (x) (or (integer? x) (not x))) (lambda (o n) (nws n)) 'tnw))

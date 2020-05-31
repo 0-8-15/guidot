@@ -52,6 +52,7 @@
   current-trigger-handler
   make-observable-triggers
   kick!
+  kick/sync!
   make-lval make-mval wire!
   make-observable
   observable?
@@ -66,13 +67,14 @@
   observable-alter! ;; like clojure API
   observable-invoke!
   observable-connect!
-  (connect-dependent-value! exported-connect-dependent-value!) ;; better not export these?
+  (connect-dependent-value! exported-connect-dependent-value!) ;; BETTER NOT export these!_(?["now"])
   observable-regref!
   observable-unref!
   $stm-retry-limit ;; parameter
   $stm-conflict-peanalty
   $implicit-current-transactions
   (stm-current-global-clock exported-stm-current-global-clock)
+  $async-exceptions
   $debug-trace-triggers
   ;; Debug & Deprecated
   ;;
