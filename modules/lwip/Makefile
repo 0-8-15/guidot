@@ -1,23 +1,33 @@
 all: # Everything
 all: build test
 
-GAMBINDIR=$(HOME)/.cache/lambdanative/linux/bin
+SYS_ROOT=/home/u/.cache/lambdanative/linux
+
+GSC=$(SYS_ROOT)/bin/gsc
+GSI=$(SYS_ROOT)/bin/gsi
+
+GSCFLAGS= # -debug
+
+GSCINCL=$(SYS_ROOT)/include
 
 TEST_OPTIONS=-e '(define-cond-expand-feature test)'
 # BUILD_OPTIONS=-e '(define-cond-expand-feature no-dirty-tagging)'
 
 test:	# run test
 test:	force
-	$(GAMBINDIR)/gsi $(TEST_OPTIONS) lwip-test.scm
+	$(GSI) $(TEST_OPTIONS) lwip-test.scm
 
 LOCAL_DYNAMIC_LIBRARY_EXTENSION=o1
 
 build: # build library
-build:	lwip.$(LOCAL_DYNAMIC_LIBRARY_EXTENSION)
+build:	lwip.$(LOCAL_DYNAMIC_LIBRARY_EXTENSION) lwip.c
 
 SOURCES=lwip.scm
 
-likely.$(LOCAL_DYNAMIC_LIBRARY_EXTENSION): $(SOURCES)
+lwip.c: $(SOURCES)
+	$(GSC) $(GSCFLAGS) -o $@ -c lwip.scm
+
+lwip.$(LOCAL_DYNAMIC_LIBRARY_EXTENSION): $(SOURCES)
 	$(GAMBINDIR)/gsc -dynamic $(BUILD_OPTIONS) lwip.scm
 
 todo: # find things to be done

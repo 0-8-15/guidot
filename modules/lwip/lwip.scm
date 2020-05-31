@@ -679,7 +679,14 @@ ___return( the_gambit_owner==0 ? 0 : the_gambit_owner==pthread_self() ? 1 : -1 )
      (lwip-tcp-loop (lwip-check-timeouts 100)))
    (and ((c-lambda () bool "lwip_init_once"))
         (begin
-          (thread-start! (make-thread (lambda () (lwip-tcp-loop 1)) 'tcp))
+          (thread-start!
+           (make-thread
+            (lambda ()
+              (with-exception-catcher
+               (lambda (e)
+                 (##default-display-exception e (current-error-port)))
+               (lambda () (lwip-tcp-loop 1))))
+            'tcp))
           #t))))
 
 ;;; MAC and Host/Network Byte Order
@@ -980,7 +987,7 @@ END
     (lambda (mac)
       (%lwip-lock!)
       (let ((nif (lwip-make-netif mac)))
-        (make-will nif (c-lambda-with-lwip-locked (nif) (void*) scheme-object "release_netif"))
+        (make-will nif (c-lambda #|-with-lwip-locked (nif)|# (void*) scheme-object "release_netif"))
         (%lwip-unlock!)
         nif))))
 

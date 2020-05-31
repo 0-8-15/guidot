@@ -2,6 +2,8 @@
 
 ;;;* U8Vector Network Encoded
 
+;;;** Local Syntax
+
 (define-macro (nw-vector-range-assert proc vec offset size)
   `(unless (>= (u8vector-length ,vec) (+ ,offset ,(quotient size 8)))
            #;(error  "out of range" ',proc (u8vector-length ,vec) ,offset ,size)
@@ -12,47 +14,50 @@
            #;(error  "out of range" ',proc (u8vector-length ,vec) ,offset ,size)
            (##raise-range-exception 2 ',proc (u8vector-length ,vec) ,offset ,size)))
 
+;;;*** Compile Time Options
+
 (cond-expand
  ((and gambit unsafe)
-(define-macro (%u8v-ref-code vec off size conv)
-  (let ((big (if (>= size 32) "BIG" ""))
-        (result-c-type (string-append "uint" (number->string size) "_t")))
-    `(##c-code
-      ,(string-append
-        result-c-type " tmp = * ___CAST("
-        result-c-type "*, ___CAST(uint8_t*, ___BODY_AS(___ARG1,___tSUBTYPED)) + ___ARG2);"
-        "___RESULT=___" big "FIX(" conv "(tmp));")
-      ,vec ,off)))
 
-(define-macro (%u8v-ref size conv)
-  ;; ##c-code has no conversion overhead
-  `(lambda (vec off)
-     (%%u8v-ref-code vec off ,size ,conv)))
+  (define-macro (%u8v-ref-code vec off size conv)
+    (let ((big (if (>= size 32) "BIG" ""))
+          (result-c-type (string-append "uint" (number->string size) "_t")))
+      `(##c-code
+        ,(string-append
+          result-c-type " tmp = * ___CAST("
+          result-c-type "*, ___CAST(uint8_t*, ___BODY_AS(___ARG1,___tSUBTYPED)) + ___ARG2);"
+          "___RESULT=___" big "FIX(" conv "(tmp));")
+        ,vec ,off)))
 
-(define-macro (define-u8v-ref name size conv)
-  `(define (,name vec off)
-     (nw-vector-range-assert ,name vec off ,size)
-     (%%u8v-ref-code vec off ,size ,conf)))
+  (define-macro (%u8v-ref size conv)
+    ;; ##c-code has no conversion overhead
+    `(lambda (vec off)
+       (%%u8v-ref-code vec off ,size ,conv)))
+
+  (define-macro (define-u8v-ref name size conv)
+    `(define (,name vec off)
+       (nw-vector-range-assert ,name vec off ,size)
+       (%%u8v-ref-code vec off ,size ,conf)))
 
   ) (gambit ;; gambit NOT unsafe
 
-(define-macro (%u8v-ref size conv)
-  (let ((size_str (number->string size)))
-    `(c-lambda
-      (scheme-object size_t) ,(string->symbol (string-append "unsigned-int" size_str))
-      ,(string-append
-       "const char *cptr = ___CAST(uint8_t*, ___BODY(___arg1));
+     (define-macro (%u8v-ref size conv)
+       (let ((size_str (number->string size)))
+         `(c-lambda
+           (scheme-object size_t) ,(string->symbol (string-append "unsigned-int" size_str))
+           ,(string-append
+             "const char *cptr = ___CAST(uint8_t*, ___BODY(___arg1));
 uint" size_str "_t result, val = *(uint" size_str "_t*)(cptr+___arg2);
 result = " conv "(val); // TODO just inline the expression
 ___return(result);"))))
 
-(define-macro (define-u8v-ref name size conv)
-  `(define (,name vec off)
-     (nw-vector-range-assert ,name vec off ,size)
-     ((%u8v-ref ,size ,conv) vec off)))
+     (define-macro (define-u8v-ref name size conv)
+       `(define (,name vec off)
+          (nw-vector-range-assert ,name vec off ,size)
+          ((%u8v-ref ,size ,conv) vec off)))
 
-  )
- #;(else NYI -- anything but gambit not yet implemented))
+     )
+    (else NYI -- anything but gambit not yet implemented))
 
 (define-macro (%u8vn-setter size conv)
   (let* ((size_str (number->string size))
@@ -85,6 +90,8 @@ ___return(result);"))))
 
 (define-macro (%%u8vn-setter size conv)
   `(lambda (vec off val) (%%u8vn-setter-code vec off val ,size ,conv)))
+
+;;;* Generic Packets (u8vector)
 
 (define %u8vector/n16h-ref (%u8v-ref 16 "PP_NTOHS"))
 
