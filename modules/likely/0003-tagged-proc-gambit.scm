@@ -41,39 +41,60 @@
 
 (define-type procinfo comment)
 
-(define (tag-procedure proc comment)
+(define (tag-procedure* proc comment)
     (let ((@procinfo (make-procinfo comment)))
       (lambda args
         (##first-argument @procinfo) ;; keep @procinfo in the free vars
         (apply proc args))))
 
-(define (tag-thunk thunk comment)
+(define (tag-thunk* thunk comment)
     (let ((@procinfo (make-procinfo comment)))
       (lambda ()
         (##first-argument @procinfo) ;; keep @procinfo in the free vars
         (thunk))))
 
-(define (procedure-tagged? proc tag)
-
+(define (extract-procedure-tags proc)
   (define (extract x)
-    (if (procinfo? x) (procinfo-comment x) #f))
-
+    (if (procinfo? x) x #f))
   (cond ((not (##closure? proc))
          #f)
         ((##interp-procedure? proc)
-         (eq?
-          (let ((rte (##interp-procedure-rte proc)))
-            (extract (and (vector? rte)
-                          (= 2 (vector-length rte))
-                          (vector-ref rte 1))))
-          tag))
+         (let ((rte (##interp-procedure-rte proc)))
+           (extract (and (vector? rte)
+                         (= 2 (vector-length rte))
+                         (vector-ref rte 1)))))
         (else
-         (eq? (extract (##closure-ref proc 1)) tag))))
+         (extract (##closure-ref proc 1)))))
+
+(define (tag-procedure proc comment)
+  (let ((procinfo (extract-procedure-tags proc)))
+    (if procinfo
+        (begin
+          (procinfo-comment-set! procinfo (cons comment (procinfo-comment procinfo)))
+          proc)
+        (let ((@procinfo (make-procinfo (list comment))))
+          (lambda args
+            (##first-argument @procinfo) ;; keep @procinfo in the free vars
+            (apply proc args))))))
+
+(define (tag-thunk thunk comment)
+  (let ((procinfo (extract-procedure-tags obj)))
+    (if procinfo
+        (begin
+          (procinfo-comment-set! procinfo (cons comment (procinfo-comment procinfo)))
+          proc)
+        (let ((@procinfo (make-procinfo (list comment))))
+          (lambda ()
+            (##first-argument @procinfo) ;; keep @procinfo in the free vars
+            (thunk))))))
+
+(define (procedure-tagged? proc tag)
+  (let ((tags (extract-procedure-tags proc))) (and tags (memq tag (procinfo-comment tags)) #t)))
 
 (define dynamic
   (let ((current-dynamic-extent current-dynamic-extent)
         (call-with-values call-with-values)
-        (@procinfo (make-procinfo 'dynamic)))
+        (@procinfo (make-procinfo (list 'dynamic))))
     (define (dynamic f #!optional (dynamic-extent #f) (single-value-return #f))
       (let ((fixed (if dynamic-extent dynamic-extent (current-dynamic-extent (not single-value-return)))))
         (lambda args
@@ -81,4 +102,6 @@
           (fixed (lambda () (apply f args))))))
     dynamic))
 
-(define (dynamic? x) (procedure-tagged? proc 'dynamic))
+(define (procedure-tagged-dynamic? proc) (procedure-tagged? proc 'dynamic))
+
+(define dynamic? procedure-tagged-dynamic?)
