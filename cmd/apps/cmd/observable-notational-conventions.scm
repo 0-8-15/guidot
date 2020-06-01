@@ -157,7 +157,7 @@
 (define rx~ regex-search)
 (define-macro/rt (~ rx str . more) `(regex-search ,str . ,more)) ;; syntactic sugar
 (define (rx-fold rx kons nil str . args)
-  (check-compiled-regular-expression! rx-fold x)
+  (check-compiled-regular-expression! rx-fold rx)
   (apply irregex-fold (%rx-regex-v rx) kons nil str args))
 (define (rx// rx str . args)
   (check-compiled-regular-expression! rx-replace rx)
