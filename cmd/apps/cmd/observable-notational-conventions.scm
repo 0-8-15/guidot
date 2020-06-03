@@ -179,6 +179,7 @@
 ;;;*** Sockets and Network
 (define socket-address? ot0-socket-address?)
 (define string->socket-address ot0-string->socket-address)
+(define internetX-address->socket-address ot0-internetX-address->socket-address)
 (define socket-address->string ot0-socket-address->string)
 (define socket-address-family ot0-socket-address-family)
 (define socket-address-family-set! ot0-socket-address-family-set!)

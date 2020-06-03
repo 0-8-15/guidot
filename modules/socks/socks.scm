@@ -72,15 +72,41 @@
 
 (define (%socks-bind! conn-in conn-to kind addr port)
   (let ((request (socks4a-request kind port addr)))
-    (send-packet-now! req conn-to)
+    (send-packet-now! request conn-to)
     (let ((reply (make-u8vector 8)))
       (when
        (read-subu8vector reply 0 8 conn-in 8)
-       (unless (socks-success? replay) (error "failed"))))))
+       (unless (socks-success? reply) (error "failed"))))))
+
+(define (open-socks-tcp-client socks-spec addr port)
+  (let ((proxy (open-tcp-client socks-spec)))
+    (and proxy
+         (let ((request (socks4a-request #f port addr)))
+           (send-packet-now! request proxy)
+           (let ((reply (make-u8vector 8)))
+             (if (read-subu8vector reply 0 8 proxy 8)
+                 (if (socks-success? reply) proxy
+                     (begin (close-port proxy) proxy))
+                 (begin (close-port proxy) proxy)))))))
 
 ;;;** SOCKS Service
 
-(define (socks-dispatch-connection in out dstip dstport)
+(define on-socks-connect
+  ;; returns dipatch info.  #f -> denied
+  (let ((proc #f))
+    (define (dflt dstip dstport)
+      ;; TODO find a usable predicate for the job
+      (cond
+       ((and (> (string-length dstip) 2)
+             (member (substring dstip 0 2) '("FC" "fc")))
+        'lwip)
+       (else 'host)))
+    (set! proc dflt)
+    (case-lambda
+     (() proc)
+     ((x) (if (procedure? x) (set! proc x) (error "on-socks-connect" x))))))
+
+(define (socks-dispatch-connection name in out dstip dstport)
   (define (socks-dispatch-connection/common in out conn)
     (cond
      ((port? conn)
@@ -97,13 +123,15 @@
    (with-exception-catcher
     (lambda () #f)
     (lambda ()
-      (define kind ;; TODO find a usable predicate for the job
-        (and (> (string-length dstip) 2)
-             (member (substring dstip 2) '("FC" "fc"))
-             'lwip))
-      (case kind
-        ((lwip) (open-lwip-tcp-client-connection dstip dstport))
-        (else (open-tcp-client `(address: ,dstip port-number: ,dstport))))))))
+      (define kind)
+      (match
+       ((on-socks-connect) name dstip dstport)
+       ((? port? x) x)
+       ((or 'lwip 'vpn) (open-lwip-tcp-client-connection dstip dstport))
+       ((or 'host #t) (open-tcp-client `(address: ,dstip port-number: ,dstport)))
+       (('vpn addr port) (open-lwip-tcp-client-connection addr port))
+       (('host addr port) (open-tcp-client addr port))
+       (#f #f))))))
 
 (define socks-service-register!)
 (define socks-service-unregister!)
@@ -155,14 +183,14 @@
          (conn-to conn-in)
          (in (current-input-port))
          (to (current-output-port)))
-  (%socks-bind! #t conn-in conn-to "addr ignored" port)
+  (%socks-bind! conn-in conn-to #t "addr ignored" port)
   (ports-connect! conn-in conn-to in to))
 
 (define (socks-test-local! #!optional (port 1234))
   (socks-service-register! port)
   (socks-bind-cut! port))
 
-(define (sock4a-server/req+in+out req in out)
+(define (sock4a-server/req+in+out name req in out)
   (let ((cmd (u8vector-ref req 1))
         (dstport (u8vector/n16h-ref req 2))
         (dstip (u8vector/n32h-ref req 4)))
@@ -173,20 +201,20 @@
                 dstip)))
       ;; FIXME pass user-id along and fix read-line/null-terminated
       (case cmd
-        ((1) (socks-dispatch-connection in out dstip dstport))
+        ((1) (socks-dispatch-connection name in out dstip dstport))
         ((2) (socks-dispatch-bind in out dstip dstport))
         (else (socks4-reply! out #f))))))
 
-(define (socks-server/in+out in out)
+(define (socks-server/in+out name in out)
   (let ((req (make-u8vector 8)))
     (when
      (read-subu8vector req 0 8 in 8)
      (case (u8vector-ref req 0)
-       ((4) (sock4a-server/req+in+out req in out))
+       ((4) (sock4a-server/req+in+out name req in out))
        (else (socks4-reply! out #f))))))
 
-(define (socks-server)
-  (socks-server/in+out (current-input-port) (current-output-port)))
+(define (socks-server #!optional (name 'host))
+  (socks-server/in+out name (current-input-port) (current-output-port)))
 
 #|
 
