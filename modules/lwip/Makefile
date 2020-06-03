@@ -28,7 +28,7 @@ lwip.c: $(SOURCES)
 	$(GSC) $(GSCFLAGS) -o $@ -c lwip.scm
 
 lwip.$(LOCAL_DYNAMIC_LIBRARY_EXTENSION): $(SOURCES)
-	$(GAMBINDIR)/gsc -dynamic $(BUILD_OPTIONS) lwip.scm
+	$(GSC) -dynamic $(BUILD_OPTIONS) lwip.scm
 
 todo: # find things to be done
 	find . -type f \( -name '*.org' -o -name '[Mm]akefile' \) -exec egrep '(TODO|TBD)' '{}' ';' -print

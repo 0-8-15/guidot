@@ -124,6 +124,24 @@ c-declare-end
 
 (include "datastructures.scm")
 
+(define (lwip-string->ip6-address str)
+  (let ((result (make-u8vector 16)))
+    (and
+     ((c-lambda
+       (char-string scheme-object) bool
+       "___return(ip6addr_aton(___arg1,___CAST(ip6_addr_t*, ___BODY(___arg2))));")
+      str result)
+     result)))
+
+(define (lwip-string->ip4-address str)
+  (let ((result (make-u8vector 4)))
+    (and
+     ((c-lambda
+       (char-string scheme-object) bool
+       "___return(ip4addr_aton(___arg1,___CAST(ip4_addr_t*, ___BODY(___arg2))));")
+      str result)
+     result)))
+
 ;;; C Types
 
 (c-define-type void* (pointer "void"))
