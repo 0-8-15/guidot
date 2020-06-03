@@ -81,7 +81,7 @@
                   (retry (tcp-connection-pcb conn)))
                  (else (debug 'port-copy-to-lwip:fail (lwip-err rc))))))))))))))
 
-(define (open-lwip-tcp-server*/ipv6 port #!key (local-addr ip6addr-any)) ;; half EXPORT
+(define (open-lwip-tcp-server*/ipv6 port #!key (local-addr lwip-ip6addr-any)) ;; half EXPORT
   (let* ((srv (tcp-new-ip-type lwip-IPADDR_TYPE_V6)))
     (unless
      (eqv? (lwip-tcp-bind srv local-addr port) ERR_OK)

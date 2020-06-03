@@ -52,6 +52,8 @@
 (define-macro (start! expr)
   (thread-start! (make-thread (lambda () ,expr)) 'start!))
 
+(define lwip-ip6addr-any '#u8(0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1))
+
 (define lwip-host-is-network-endian
   ;; big endian needs no conversion => #t
   ;;
