@@ -52,7 +52,11 @@
 (define-macro (start! expr)
   (thread-start! (make-thread (lambda () ,expr)) 'start!))
 
-(define lwip-ip6addr-any '#u8(0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1))
+(define lwip-ip6addr-any '#u8(0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0))
+(define lwip-ip6addr-loopback '#u8(0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1))
+(define lwip-ip4addr-any '#u8(0 0 0 0))
+(define lwip-ip4addr-loopback '#u8(127 0 0 1))
+(define lwip-ip4addr-broadcast '#u8(255 255 255 255))
 
 (define lwip-host-is-network-endian
   ;; big endian needs no conversion => #t

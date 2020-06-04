@@ -98,18 +98,21 @@
          (%%tcp-context-set! srv lws-conn)
          c)))))
 
-(define (service-starter handler srv name)
+(define (%lwip-service-starter handler srv name)
   (let loop ()
     (let ((conn (read srv)))
       (if (port? conn)
-          (thread-start!
-           (make-thread
-            (lambda ()
-              (current-input-port conn)
-              (current-output-port conn)
-              (with-exception-catcher handle-debug-exception handler)
-              (close-port conn))
-            name))))))
+          (begin
+            (thread-start!
+             (make-thread
+              (lambda ()
+                (parameterize
+                 ((current-input-port conn)
+                  (current-output-port conn))
+                 (with-exception-catcher handle-debug-exception handler))
+                (close-port conn))
+              name))
+            (loop))))))
 
 (define lwip-tcp-service-register!)   ;; EXPORT
 (define lwip-tcp-service-unregister!) ;; EXPORT
@@ -121,7 +124,7 @@
       (let ((srv (open-lwip-tcp-server*/ipv6 port)))
         (thread-start!
          (make-thread
-          (lambda () (service-starter handler srv 'lwip-tcp-server))
+          (lambda () (%lwip-service-starter handler srv 'lwip-tcp-server))
           'lwip-tcp-service))
         (table-set! services port srv)))
     (define (unregister! port)
@@ -151,7 +154,9 @@
              (close-tcp-connection conn))
            'tcp-server))
          (%%tcp-context-set! connection conn)
-         (write c (tcp-connection-srv-port ctx))
+         (let ((rcv (tcp-connection-srv-port ctx)))
+           (write c rcv)
+           (force-output rcv))
          (lwip/after-safe-return (thread-start! (tcp-connection-next conn))))))
      (else (lwip/after-safe-return (lwip-tcp-close connection)))))
 
@@ -164,7 +169,7 @@
   (define (on-tcp-receive ctx connection pbuf err)
     (cond
      ((not pbuf) ;; closed
-      (and ctx (lwip/after-safe-return (close-tcp-connection ctx))))
+      (if ctx (lwip/after-safe-return (close-tcp-connection ctx)) ERR_OK))
      ((eqv? err ERR_OK)
       (pbuf-add-reference! pbuf)
       (lwip/after-safe-return

@@ -21,7 +21,9 @@
     (let loop ()
       (let ((n (read-subu8vector buffer 0 MTU in 1)))
         (cond
-         ((eqv? n 0) (close-port out)) ;; done
+         ((eqv? n 0) ;; done
+          (close-input-port in)
+          (close-output-port out))
          (else
           (write-subu8vector buffer 0 n out)
           (force-output out)

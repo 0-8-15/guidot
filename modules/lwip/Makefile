@@ -22,7 +22,7 @@ LOCAL_DYNAMIC_LIBRARY_EXTENSION=o1
 build: # build library
 build:	lwip.$(LOCAL_DYNAMIC_LIBRARY_EXTENSION) lwip.c
 
-SOURCES=lwip.scm
+SOURCES=lwip.scm datastructures.scm lwip-ports.scm
 
 lwip.c: $(SOURCES)
 	$(GSC) $(GSCFLAGS) -o $@ -c lwip.scm
