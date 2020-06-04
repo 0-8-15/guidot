@@ -66,7 +66,9 @@
     (let loop ()
       (let ((n (read-subu8vector buffer 0 MTU in 1)))
         (cond
-         ((eqv? n 0)) ;; done
+         ((eqv? n 0) ;; done
+          (let ((pcb (tcp-connection-pcb conn)))
+            (lwip-tcp_shutdown pcb #f #t)))
          (else
           (let retry ((pcb (tcp-connection-pcb conn)))
             (cond
