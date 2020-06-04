@@ -551,7 +551,7 @@ static int lwip_init_once()
     sys_sem_t sem;
     if(lwip_gambit_init() != ERR_OK) return 0;
     done=true;
-    fprintf(stderr, "Init NO_SYS: %d LWIP_CALLBACK_API %d\n", NO_SYS, LWIP_CALLBACK_API); // DEBUG
+    // fprintf(stderr, "Init NO_SYS: %d LWIP_CALLBACK_API %d\n", NO_SYS, LWIP_CALLBACK_API); // DEBUG
     lwip_init();
     if(sys_sem_new(&sem, 0) != ERR_OK) return 0;
     tcpip_init(tcpip_init_done, &sem);
@@ -1322,7 +1322,6 @@ END
    (type) (unsigned-int8) new_tcp_pcb
    "local_lwip_init();
  struct tcp_pcb *result=tcp_new_ip_type(___arg1);
- fprintf(stderr, \"PCB %p\\n\", result);
  ___return(result);"))
 
 (define (tcp-new6) (tcp-new-ip-type lwip-IPADDR_TYPE_V6))
