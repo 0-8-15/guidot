@@ -571,7 +571,7 @@ static int lwip_init_once()
   static bool done = false;
   if(!done) {
     done=true;
-    fprintf(stderr, "Init NO_SYS: %d LWIP_CALLBACK_API %d\n", NO_SYS, LWIP_CALLBACK_API); // DEBUG
+    // fprintf(stderr, "Init NO_SYS: %d LWIP_CALLBACK_API %d\n", NO_SYS, LWIP_CALLBACK_API); // DEBUG
     lwip_init();
     // tcpip_init(NULL, NULL);
     return 1;

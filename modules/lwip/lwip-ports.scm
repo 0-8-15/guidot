@@ -67,8 +67,8 @@
       (let ((n (read-subu8vector buffer 0 MTU in 1)))
         (cond
          ((eqv? n 0) ;; done
-          (let ((pcb (tcp-connection-pcb conn)))
-            (lwip-tcp_shutdown pcb #f #t)))
+          (let ((pcb (tcp-connection-pcb conn))) ;; might be gone already!
+            (if pcb (lwip-tcp_shutdown pcb #f #t))))
          (else
           (let retry ((pcb (tcp-connection-pcb conn)))
             (cond
@@ -164,7 +164,7 @@
 
   (define (on-tcp-sent ctx connection len)
     ;; signal conn free
-    (let ((t (tcp-connection-next ctx)))
+    (let ((t (if ctx (tcp-connection-next ctx) (begin #;(debug 'on-tcp-sent:conn-already-closed len) #f))))
       (if t (thread-send t len)))
     ERR_OK)
 
