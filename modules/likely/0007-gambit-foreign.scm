@@ -7,7 +7,7 @@
 (define (##raise-safe-lambda-exception location reason)
   (error reason location))
 
-(define-macro (trace-lock phase ref posted)
+(define-macro (trace-lock* phase ref posted)
   `(display
     (with-output-to-string
       (lambda ()
@@ -24,7 +24,18 @@
         (display (if (string? ,ref) (substring ,ref 0 (min (string-length ,ref) 40)) ,ref))
         (newline)))
     (current-error-port)))
-(define-macro (trace-lock phase ref posted) #!void)
+
+(define ##safe-lambda-trace* #f)
+
+(define ##safe-lambda-trace
+  (case-lambda
+   (() ##safe-lambda-trace*)
+   ((x) (set! ##safe-lambda-trace* (and x #t)))))
+
+(define-macro (trace-lock phase ref posted)
+  `(if ##safe-lambda-trace* (trace-lock* ,phase ,ref ,posted)))
+
+;(define-macro (trace-lock phase ref posted) #!void)
 
 (define (##safe-lambda-lock! location)
   ;; Jump through loops to err out on dead locks,
