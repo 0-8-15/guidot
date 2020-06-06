@@ -14,6 +14,11 @@
            #;(error  "out of range" ',proc (u8vector-length ,vec) ,offset ,size)
            (##raise-range-exception 2 ',proc (u8vector-length ,vec) ,offset ,size)))
 
+(define-macro (nw-vector-range+pos-assert proc pos vec offset size)
+  `(unless (>= (u8vector-length ,vec) (+ ,offset ,size))
+           #;(error  "out of range" ',proc ,pos (u8vector-length ,vec) ,offset ,size)
+           (##raise-range-exception ,pos ',proc (u8vector-length ,vec) ,offset ,size)))
+
 ;;;*** Compile Time Options
 
 (cond-expand
@@ -255,6 +260,10 @@ ___return(result);"))))
  ip6addr_ntoa_r(&ua, buf, 80);
  return buf;
 }")
+
+(define (ip6addr->string u8 #!optional (offset 0))
+  (nw-vector-range+pos-assert ip6addr->string 1 u8 offset 16)
+  ((c-lambda (scheme-object) char-string "___return(local_ip6addr_ntoa(___BODY(___arg1)));") u8))
 
 (c-declare "static inline char * local_IP6H_SRC_s(const struct ip6_hdr *hdr)
 {return local_ip6addr_ntoa(&hdr->src);}")
