@@ -58,13 +58,13 @@
        #;(unless (lwip-ok? (lwip-tcp-flush! (debug 'lwip-tcp-flush! client))) (error "lwip-tcp-flush! failed"))
        c))))
 
-(define (port-copy-to-lwip in conn #!optional (MTU 3000))
+(define (port-copy-to-lwip/basic in conn mtu)
   ;; FIXME: use get-output-u8vector !!!
   ;;
   ;; FIXME: likely we need to do bookkeeping wrt outstanding writes
-  (let ((buffer (make-u8vector MTU)))
+  (let ((buffer (make-u8vector mtu)))
     (let loop ()
-      (let ((n (read-subu8vector buffer 0 MTU in 1)))
+      (let ((n (read-subu8vector buffer 0 mtu in 1)))
         (cond
          ((eqv? n 0) ;; done
           (let ((pcb (tcp-connection-pcb conn))) ;; might be gone already!
@@ -83,6 +83,14 @@
                   (thread-receive)
                   (retry (tcp-connection-pcb conn)))
                  (else (debug 'port-copy-to-lwip:fail (lwip-err rc))))))))))))))
+
+(define port-copy-to-lwip
+  ;; TBD: experiment with strategies wrt. performance
+  (let ((proc port-copy-to-lwip/basic))
+    (case-lambda
+     ((in conn #!optional (MTU 3000)) (proc in conn MTU))
+     ((arg) (if (procedure? x) (set! proc arg) (error "setting port-copy-to-lwip: illegal argument" arg)))
+     (() proc))))
 
 (define (open-lwip-tcp-server*/ipv6 port #!key (local-addr lwip-ip6addr-any)) ;; half EXPORT
   (let* ((srv (tcp-new-ip-type lwip-IPADDR_TYPE_V6)))
