@@ -22,7 +22,7 @@
       (let ((n (read-subu8vector buffer 0 MTU in 1)))
         (cond
          ((eqv? n 0) ;; done
-          (close-output-port out)
+          ;; (close-output-port out) sometimes aborts connection too early
           (close-input-port in))
          (else
           (write-subu8vector buffer 0 n out)
@@ -31,7 +31,9 @@
 
 (define (ports-connect! r0 w0 r1 w1)
   (thread-start! (make-thread (lambda () (port-copy-through r0 w1)) 'port-copy))
-  (port-copy-through r1 w0))
+  (port-copy-through r1 w0)
+  (close-output-port w0)
+  (close-output-port w1))
 
 (define (send-packet-now! packet conn)
   (write-subu8vector packet 0 (u8vector-length packet) conn)
@@ -123,7 +125,7 @@
   (socks-dispatch-connection/common
    in out
    (with-exception-catcher
-    (lambda () #f)
+    (lambda (ex) (handle-debug-exception ex) #f)
     (lambda ()
       (define kind)
       (match
