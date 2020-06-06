@@ -76,7 +76,8 @@
               (let ((rc (lwip-tcp-write-subu8vector* buffer 0 n pcb)))
                 (cond
                  ((eq? rc ERR_OK)
-                  (lwip-tcp-flush! pcb)
+                  (lwip-tcp-flush! pcb) ;; a bit dangerous - if buffer was moved around by GC
+                  (thread-receive) ;; wait for it to be out.
                   (loop))
                  ((eq? rc ERR_MEM)
                   (thread-receive)
