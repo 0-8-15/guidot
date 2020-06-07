@@ -22,7 +22,7 @@
       (let ((n (read-subu8vector buffer 0 MTU in 1)))
         (cond
          ((eqv? n 0) ;; done
-          ;; (close-output-port out) sometimes aborts connection too early
+          ;; (close-output-port out) sometimes aborts connection too early!
           (close-input-port in))
          (else
           (write-subu8vector buffer 0 n out)
