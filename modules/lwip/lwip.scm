@@ -2,6 +2,15 @@
 (define-cond-expand-feature lwip-requires-pthread-locks)
 ;;;|#
 
+(define $lwip-debug (make-parameter #f))
+
+(define (lwip-exception-handler exn)
+  (when
+   ($lwip-debug)
+   (display "lwIP Exception: " (current-error-port))
+   (##default-display-exception exn (current-error-port)))
+  #f)
+
 ;;;* Global Syntax Imports
 
 (define-macro (c-safe-lambda formals return c-code)
@@ -707,8 +716,7 @@ ___return( the_gambit_owner==0 ? 0 : the_gambit_owner==pthread_self() ? 1 : -1 )
            (make-thread
             (lambda ()
               (with-exception-catcher
-               (lambda (e)
-                 (##default-display-exception e (current-error-port)))
+               lwip-exception-handler
                (lambda () (lwip-tcp-loop 1))))
             'tcp))
           #t))))

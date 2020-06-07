@@ -153,7 +153,7 @@
                 (parameterize
                  ((current-input-port conn)
                   (current-output-port conn))
-                 (with-exception-catcher handle-debug-exception handler))
+                 (with-exception-catcher lwip-exception-handler handler)) ;; FIXME prints "Connection refused"
                 (close-port conn))
               name))
             (loop))))))
