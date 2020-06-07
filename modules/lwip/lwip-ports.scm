@@ -216,12 +216,13 @@
       (if ctx (lwip/after-safe-return (close-tcp-connection ctx)) ERR_OK))
      ((eqv? err ERR_OK)
       (pbuf-add-reference! pbuf)
+      (%%while-in-callback-tcp-received! connection (pbuf-length pbuf))
       (lwip/after-safe-return
        (let ((u8 (pbuf->u8vector pbuf))
              (s (tcp-connection-srv-port ctx)))
          (pbuf-release! pbuf)
          (let ((n (u8vector-length u8)))
-           (tcp-received! connection n)
+           ;; (tcp-received! connection n) ;; too late, could have been frred already
            (write-subu8vector u8 0 n s)
          (force-output s)))))
      (else ERR_IF)))
@@ -248,7 +249,7 @@
     (if (tcp-connection? ctx)
         (let ((t (tcp-connection-next ctx)))
           (if t (thread-send t 0))))
-    ;; (debug 'lwip-tcp-flush! (lwip-err (lwip-tcp-flush! connection)))
+    ;; (debug 'lwip-tcp-force-output (lwip-err (lwip-tcp-force-output connection)))
     ERR_OK)
 
   (define (on-tcp-error ctx err)
