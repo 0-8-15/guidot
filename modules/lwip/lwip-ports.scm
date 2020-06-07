@@ -82,7 +82,7 @@
                   (retry (tcp-connection-pcb conn)))
                  (else (debug 'port-copy-to-lwip:fail (lwip-err rc))))))))))))))
 
-(define-macro (lwip-timeout outstanding) 1)
+(define-macro (lwip-timeout outstanding) 60) ;; TODO: calculate better timeout
 
 (define (port-copy-to-lwip/always-copy in conn mtu)
   (let ((buffer (make-u8vector mtu))
