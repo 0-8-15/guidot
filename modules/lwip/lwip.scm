@@ -1195,15 +1195,12 @@ static inline void cp_sockaddr_to_ip6_addr(ip6_addr_t *ip6addr, struct sockaddr_
 }
 
 static void
-lwip_init_interface_IPv6(struct netif *nif, struct sockaddr_storage *ip)
+lwip_init_interface_IPv6(struct netif *nif, uint8_t* sin6addr)
 {
-  struct sockaddr_in6 *sa_in6 = (struct sockaddr_in6 *) ip;
-
   ip6_addr_t ip6addr;
   local_lwip_init(); // be sure that's done
   // fprintf(stderr, "lwip_init_interface_IPv6\n");
-  // ip6_addr_copy_from_packed(ip6addr, (sa_in6->sin6_addr));
-  cp_sockaddr_to_ip6_addr(&ip6addr, sa_in6);
+  memcpy(ip6addr.addr, sin6addr, sizeof(ip6addr.addr));
   ip6_addr_set_zone(&ip6addr, IP6_NO_ZONE);
   // nif->ip6_autoconfig_enabled = 1; // too early
 
@@ -1231,7 +1228,7 @@ c-declare-end
 
 (define lwip_init_interface_IPv6
   (c-lambda-with-lwip-locked
-   (nif addr) (netif* socket-address) void "lwip_init_interface_IPv6(___arg1, ___arg2);"))
+   (nif addr) (netif* scheme-object) void "lwip_init_interface_IPv6(___arg1, ___BODY(___arg2));"))
 
 (define pbuf-fill-ethernet-header!
   (c-lambda
