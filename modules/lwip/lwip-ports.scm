@@ -49,19 +49,16 @@
 (define (open-lwip-tcp-client-connection addr port) ;; EXPORT
   (receive
    (c s) (%%lwip-make-pipe)
-   (let ((client (tcp-new6)))
+   (let* ((client (tcp-new6))
+          (conn (make-tcp-connection #f s client #f)))
+     (%%tcp-context-set! client conn) ;; FIRST register for on-tcp-connect to find it
      (unless (eqv? (lwip-tcp-connect client addr port) ERR_OK)
-             (lwip-tcp-close client)
-             (error "open-lwip-tcp-client-connection failed"))
-     (let ((conn (make-tcp-connection #f s client #f)))
-       (%%tcp-context-set! client conn)
-       #;(unless (lwip-ok? (lwip-tcp-flush! (debug 'lwip-tcp-flush! client))) (error "lwip-tcp-flush! failed"))
-       c))))
+             (close-tcp-connection conn)
+             (debug 'open-lwip-tcp-client-connection "open-lwip-tcp-client-connection failed"))
+     c)))
 
-(define (port-copy-to-lwip/basic in conn mtu)
-  ;; FIXME: use get-output-u8vector !!!
-  ;;
-  ;; FIXME: likely we need to do bookkeeping wrt outstanding writes
+(define (port-copy-to-lwip/synchronized in conn mtu)
+  ;; TBD: How to use: get-output-u8vector ?  How to wait for it?
   (let ((buffer (make-u8vector mtu)))
     (let loop ()
       (let ((n (read-subu8vector buffer 0 mtu in 1)))
@@ -76,21 +73,57 @@
               (let ((rc (lwip-tcp-write-subu8vector* buffer 0 n pcb)))
                 (cond
                  ((eq? rc ERR_OK)
-                  (lwip-tcp-flush! pcb) ;; a bit dangerous - if buffer was moved around by GC
-                  (thread-receive) ;; wait for it to be out.
-                  (loop))
+                  (lwip-tcp-force-output pcb)
+                  ;; wait for it to be out -- a bit dangerous - if buffer was moved around by GC
+                  (let wait ((ack (thread-receive)))
+                    (if (= ack n) (loop) (wait (+ ack (thread-receive))))))
                  ((eq? rc ERR_MEM)
                   (thread-receive)
                   (retry (tcp-connection-pcb conn)))
                  (else (debug 'port-copy-to-lwip:fail (lwip-err rc))))))))))))))
 
+(define-macro (lwip-timeout outstanding) 1)
+
+(define (port-copy-to-lwip/always-copy in conn mtu)
+  (let ((buffer (make-u8vector mtu))
+        (outstanding 0))
+    (define (await)
+      (and (fx> outstanding 0)
+           (let ((aknowledged (thread-receive (lwip-timeout outstanding) #f)))
+             (and aknowledged
+                  (begin
+                    (set! outstanding (fx- outstanding aknowledged))
+                    #t)))))
+    (let loop ()
+      (let ((n (read-subu8vector buffer 0 mtu in 1)))
+        (cond
+         ((eqv? n 0) (await)) ;; done
+         (else
+          (let retry ((pcb (tcp-connection-pcb conn)))
+            (cond
+             (pcb
+              (let ((rc (lwip-tcp-write-subu8vector/copy* buffer 0 n pcb)))
+                (cond
+                 ((eq? rc ERR_OK)
+                  (set! outstanding (fx+ outstanding n))
+                  (lwip-tcp-force-output pcb)
+                  (loop))
+                 ((eq? rc ERR_MEM) (and (await) (retry (tcp-connection-pcb conn))))
+                 (else (debug 'port-copy-to-lwip:fail (lwip-err rc))))))))))))))
+
+(define port-copy-to-lwip/default port-copy-to-lwip/always-copy)
+
+(define lwip-MTU (make-parameter 2880))
+
+(define port-copy-to-lwip-set!)
+
 (define port-copy-to-lwip
   ;; TBD: experiment with strategies wrt. performance
-  (let ((proc port-copy-to-lwip/basic))
-    (case-lambda
-     ((in conn #!optional (MTU 3000)) (proc in conn MTU))
-     ((arg) (if (procedure? x) (set! proc arg) (error "setting port-copy-to-lwip: illegal argument" arg)))
-     (() proc))))
+  (let ((proc port-copy-to-lwip/default))
+    (define (setter arg)
+      (if (procedure? arg) (set! proc arg) (error "setting port-copy-to-lwip: illegal argument" arg)))
+    (set! port-copy-to-lwip-set! setter)
+    (lambda (in conn #!optional (MTU (lwip-MTU))) (proc in conn MTU))))
 
 (define (open-lwip-tcp-server*/ipv6 port #!key (local-addr lwip-ip6addr-any)) ;; half EXPORT
   (let* ((srv (tcp-new-ip-type lwip-IPADDR_TYPE_V6)))

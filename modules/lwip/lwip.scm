@@ -1113,7 +1113,7 @@ lwip_send_ethernet_input(struct netif *netif, struct pbuf* p)
     return ERR_IF;
   }
   if ((result = netif->input(p, netif)) != ERR_OK) {
-    fprintf(stderr, "lwip_send_ethernet_input: input failed\n", p);
+    fprintf(stderr, "lwip_send_ethernet_input: input failed with %d on %p\n", result, p);
   } else {
     //**/ fprintf(stderr, "lwip_send_ethernet_input: packet has been read into netif\n", p);
     /*
@@ -1419,6 +1419,9 @@ END
 (define tcp-received!
   (c-lambda-with-lwip-locked (pcb amount) (tcp_pcb unsigned-int16) void "tcp_recved(___arg1, ___arg2);"))
 
+(define %%while-in-callback-tcp-received!
+  (c-lambda (tcp_pcb unsigned-int16) void "tcp_recved(___arg1, ___arg2);"))
+
 (define lwip-tcp-listen
   ;; NOTE: this deallocates the argument, except when it returns #f.
   ;;
@@ -1448,6 +1451,11 @@ END
    (data off sz pcb) (scheme-object size_t size_t tcp_pcb) err_t
    "___result = tcp_write(___arg4, ___CAST(uint8_t*, ___BODY(___arg1)) + ___arg2, ___arg3 - ___arg2, 0);"))
 
+(define lwip-tcp-write-subu8vector/copy*
+  (c-lambda-with-lwip-locked
+   (data off sz pcb) (scheme-object size_t size_t tcp_pcb) err_t
+   "___result = tcp_write(___arg4, ___CAST(uint8_t*, ___BODY(___arg1)) + ___arg2, ___arg3 - ___arg2, TCP_WRITE_FLAG_COPY);"))
+
 (define (lwip-tcp-write-subu8vector vec start end pcb)
   (when (>= (+ start end) (u8vector-length vec))
         (##raise-range-exception 1 'lwip-tcp-write-subu8vector (u8vector-length vec) start end))
@@ -1456,8 +1464,8 @@ END
 (define lwip-tcp-prio-set!
   (c-lambda-with-lwip-locked (pcb prio) (tcp_pcb unsigned-int8) void "tcp_setprio(___arg1, ___arg2);"))
 
-(define lwip-tcp-flush!1 (c-lambda-with-lwip-locked (flush-pcb) (tcp_pcb) err_t "___result = tcp_output(___arg1);"))
-(define lwip-tcp-flush!
+(define lwip-tcp-force-output (c-lambda-with-lwip-locked (flush-pcb) (tcp_pcb) err_t "___result = tcp_output(___arg1);"))
+(define lwip-tcp-force-output2
   ;; FIXME: so far it did not call back.  Could it?
   (c-lambda-with-lwip-locked
    (flush-pcb) (tcp_pcb) err_t #<<END
