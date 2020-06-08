@@ -141,6 +141,10 @@
 (define-macro (check-compiled-regular-expression! loc x)
   `(unless (%rx-regex? ,x) (error (not-a-compiled-regular-expression) ,loc ,x)))
 
+(define-macro (not-a-regular-expression-match) "not a regular expression match result")
+(define-macro (check-regular-expression-match! loc x)
+  `(unless (%rxm-regex-match? ,x) (error (not-a-regular-expression-match) ,loc ,x)))
+
 (define (regex x . o) (%rx-make-regex (apply irregex x o)))
 (define rx regex)
 (define (regex? x) (%rx-regex? x))
@@ -148,6 +152,9 @@
 (define (regex-match rx str #!optional (start 0) (end (string-length str)))
   (check-compiled-regular-expression! regex-match rx)
   (%%rxm-make (irregex-match/chunked (%rx-regex-v rx) irregex-basic-string-chunker (list str start end))))
+(define (rxm-ref rxm . opt)
+  (check-regular-expression-match! rxm-ref rxm)
+  (apply irregex-match-substring (%rxm-regex-match-v rxm) opt))
 (define rx~/anchored regex-match)
 (define rx~= regex-match)
 (define (rx~=? . args) (and (apply regex-match args) #t))
@@ -155,8 +162,8 @@
   (check-compiled-regular-expression! regex-search x)
   (%%rxm-make (irregex-search/chunked (%rx-regex-v x) irregex-basic-string-chunker (list str start end) start)))
 (define rx~ regex-search)
-(define-macro/rt (~ rx str . more) `(regex-search ,str . ,more)) ;; syntactic sugar
-(define (rx-fold rx kons nil str . args)
+(define-macro/rt (~ rx str . more) `(regex-search rx ,str . ,more)) ;; syntactic sugar
+(define (rx-fold rx kons nil str . args) ;; FIXME: does NOT feed opaque matches into `kons`
   (check-compiled-regular-expression! rx-fold rx)
   (apply irregex-fold (%rx-regex-v rx) kons nil str args))
 (define (rx// rx str . args)
@@ -172,6 +179,9 @@
   (check-compiled-regular-expression! rx-replace rx)
   (apply irregex-replace/all (%rx-regex-v rx) str args))
 (define rx-replace* rx-replace/all)
+(define (rx-extract rx str . args)
+  (check-compiled-regular-expression! rx-extract rx)
+  (apply irregex-extract (%rx-regex-v rx) str args))
 (define (rx-split rx str . args)
   (check-compiled-regular-expression! rx-split rx)
   (apply irregex-split (%rx-regex-v rx) str args))
