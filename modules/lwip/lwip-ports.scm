@@ -65,7 +65,7 @@
         (cond
          ((eqv? n 0) ;; done
           (let ((pcb (tcp-connection-pcb conn))) ;; might be gone already!
-            (if pcb (lwip-tcp_shutdown pcb #f #t))))
+            (if pcb (lwip-tcp_shutdown pcb #t #t))))
          (else
           (let retry ((pcb (tcp-connection-pcb conn)))
             (cond

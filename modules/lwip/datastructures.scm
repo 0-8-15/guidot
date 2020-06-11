@@ -376,6 +376,24 @@ ___return(result);"))))
   (newline port)
   u8)
 
+(define (make-icmp6-echo-request from to)
+  (let ((proc icmp6-echo-request)
+        (ip6addr-len 16)
+        (p (make-u8vector (+ SIZEOF_IP6_HDR SIZEOF_ICMP6_HDR)))
+        (o 0))
+    (nw-vector-range+pos-assert proc 1 from 0 ip6addr-len)
+    (nw-vector-range+pos-assert proc 2 to 0 ip6addr-len)
+    (u8vector-set! p (+ o 0) #x60)    ;; IPv6 class 0 upper bit
+    ;; left as zeros
+    (u8vector/n16h-set! p (+ o 4) SIZEOF_ICMP6_HDR) ;; Payload
+    (u8vector-set! p (+ o 6) 58)      ;; IPv6-ICMP
+    (u8vector-set! p (+ o 7) 255)     ;; hop limit
+    (subu8vector-move! from 0 ip6addr-len p (+ o 8))
+    (subu8vector-move! to 0 ip6addr-len p (+ o 24))
+    ;; ICMP6 Ping
+    (u8vector-set! p (+ o SIZEOF_IP6_HDR) 128) ;; type EREQ
+    p))
+
 ;;;** TCP
 
 (c-declare "#include \"lwip/prot/tcp.h\"")

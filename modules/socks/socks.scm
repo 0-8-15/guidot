@@ -30,8 +30,10 @@
           (loop)))))))
 
 (define (ports-connect! r0 w0 r1 w1)
-  (thread-start! (make-thread (lambda () (port-copy-through r0 w1)) 'port-copy))
-  (port-copy-through r1 w0)
+  ;; terminates when r1 is at EOF - TBD: maybe should also terminate when w0 is closed!
+  (let ((thr (thread-start! (make-thread (lambda () (port-copy-through r0 w1)) 'port-copy))))
+    (port-copy-through r1 w0)
+    (thread-join! thr))
   (close-output-port w0)
   (close-output-port w1))
 
@@ -127,11 +129,10 @@
    (with-exception-catcher
     (lambda (ex) (handle-debug-exception ex) #f)
     (lambda ()
-      (define kind)
       (match
        ((on-socks-connect) name dstip dstport)
        ((? port? x) x)
-       ((or 'lwip 'vpn) (open-lwip-tcp-client-connection dstip dstport))
+       ((or 'lwip 'vpn) (open-lwip-tcp-client-connection (lwip-string->ip6-address dstip) dstport))
        ((or 'host #t) (open-tcp-client `(address: ,dstip port-number: ,dstport)))
        (('vpn addr port) (open-lwip-tcp-client-connection addr port))
        (('host addr port) (open-tcp-client addr port))
