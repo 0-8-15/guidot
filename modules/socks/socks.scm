@@ -24,7 +24,9 @@
     (let loop ()
       (let ((n (read-subu8vector buffer 0 MTU in 1)))
         (cond
-         ((eqv? n 0) ;; done
+         ((eqv? n 0)
+          ;; done TBD: which one to close first?  Sequence seems to
+          ;; depend on implementation.
           (close-input-port in)
           (close-output-port out))
          (else
