@@ -121,6 +121,7 @@
       (let ((n (read-subu8vector buffer 0 mtu in 1)))
         (cond
          ((eqv? n 0)
+          ;; TODO: maybe we can close the output side before we wait for all the acks?
           (%%lwip-close-tcp-connection/dir conn 'input)
           (do ((r (await) (await))) ((not r)))
           (%%lwip-close-tcp-connection/dir conn 'output))
@@ -283,8 +284,9 @@
   (define (on-tcp-error ctx err)
     (cond
      ((tcp-connection? ctx)
-      (debug "lwIP: TCP error, closing connection:
-       (This is likely and indicator of other errors. NYI: suppression of this message.)" ctx)
+      ;; This is likely either a timeout or an indicator of other errors.
+      (if ($lwip-debug)
+          (debug "lwIP: TCP error, closing connection: " ctx))
       ;; The pcb is already freed when this callback is called!
       (tcp-connection-pcb-set! ctx #f)
       (tcp-connection-status-set! ctx 0)
