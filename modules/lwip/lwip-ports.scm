@@ -121,9 +121,10 @@
       (let ((n (read-subu8vector buffer 0 mtu in 1)))
         (cond
          ((eqv? n 0)
-          (%%lwip-close-tcp-connection/dir conn 'output)
+          #;(%%lwip-close-tcp-connection/dir conn 'output)
+          (%%lwip-close-tcp-connection/dir conn 'input+output)
           (do ((r (await) (await))) ((not r)))
-          (%%lwip-close-tcp-connection/dir conn 'input))
+          #;(%%lwip-close-tcp-connection/dir conn 'input))
          (else
           (let retry ((pcb (tcp-connection-pcb conn)))
             (cond
