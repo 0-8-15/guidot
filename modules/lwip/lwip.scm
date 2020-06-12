@@ -1446,6 +1446,9 @@ END
   (c-lambda-with-lwip-locked
    (pcb shtin shtou) (tcp_pcb bool bool) err_t "___result=tcp_shutdown(___arg1, ___arg2, ___arg3);"))
 
+(define lwip-tcp_sndbuf
+  (c-lambda-with-lwip-locked (pcb) (tcp_pcb) size_t "___result = tcp_sndbuf(___arg1);"))
+
 (define lwip-tcp_write
   (c-lambda-with-lwip-locked
    (pcb data sz x) (tcp_pcb void* unsigned-int16 unsigned-int8) err_t

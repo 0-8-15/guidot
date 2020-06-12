@@ -15,6 +15,9 @@
       (string-set! in off (integer->char n)))))
 
 (define (port-copy-through in out #!optional (MTU 3000))
+  ;; Copy `in` to `out` and close the input side of `in` and the
+  ;; output side of `out` when EOF is reached on `in`.
+  ;;
   ;; TODO: re-write using get-output-u8vector
   ;; ##wait-input-port
   (let ((buffer (make-u8vector MTU)))
@@ -22,20 +25,26 @@
       (let ((n (read-subu8vector buffer 0 MTU in 1)))
         (cond
          ((eqv? n 0) ;; done
-          ;; (close-output-port out) sometimes aborts connection too early!
-          (close-input-port in))
+          (close-input-port in)
+          (close-output-port out))
          (else
           (write-subu8vector buffer 0 n out)
           (force-output out)
           (loop)))))))
 
+(define (port-pipe+close! in out #!optional (MTU 3000))
+  (with-exception-catcher
+   (lambda (exn)
+     (close-input-port in)
+     (close-output-port out)
+     (raise (debug 'port-pipe+close! exn)))
+   (lambda () (port-copy-through in out MTU))))
+
 (define (ports-connect! r0 w0 r1 w1)
   ;; terminates when r1 is at EOF - TBD: maybe should also terminate when w0 is closed!
-  (let ((thr (thread-start! (make-thread (lambda () (port-copy-through r0 w1)) 'port-copy))))
-    (port-copy-through r1 w0)
-    (thread-join! thr))
-  (close-output-port w0)
-  (close-output-port w1))
+  (let ((thr (thread-start! (make-thread (lambda () (port-pipe+close! r0 w1)) 'port-copy))))
+    (port-pipe+close! r1 w0)
+    (thread-join! thr)))
 
 (define (send-packet-now! packet conn)
   (write-subu8vector packet 0 (u8vector-length packet) conn)
@@ -85,7 +94,7 @@
        (unless (socks-success? reply) (error "failed"))))))
 
 (define (open-socks-tcp-client socks-spec addr port)
-  (let ((proxy (open-tcp-client socks-spec)))
+  (let ((proxy (if (port? socks-spec) socks-spec (open-tcp-client socks-spec))))
     (and proxy
          (let ((request (socks4a-request #f port addr)))
            (send-packet-now! request proxy)

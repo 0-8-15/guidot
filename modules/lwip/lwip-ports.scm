@@ -1,6 +1,10 @@
+(define-macro (lwip/after-safe-return expr) `(lambda () ,expr))
+
 ;; (C) 2020 JFW
 
 ;;** lwIP TCP
+
+(define-macro (lwip-timeout outstanding) 60) ;; TODO: calculate better timeout
 
 ;;;*** lwIP TCP data structures and basics
 (define (%%lwip-make-pipe) (open-u8vector-pipe '(buffering: #f) '(buffering: #f)))
@@ -10,7 +14,7 @@
 
 ;#|;; BEWARE: it appeares to be illegal to store the context directly in
 ;;;; the pcb, even if we kept another reference to it around.
-(define-type tcp-connection id srv-port pcb next)
+(define-type tcp-connection id srv-port status pcb next)
 
 (define tcp-conn-nr
   (let ((n (vector 1)))
@@ -22,19 +26,40 @@
 
 (define tcp-contexts (make-table hash: equal?-hash weak-keys: #f))
 
-(define (close-tcp-connection conn)
+(define (%%lwip-close-tcp-connection/dir conn dir)
   (define table-remove! table-set!)
+  (define (closeit pcb status dir)
+    (cond
+     ((bitwise-and status 3)
+      (lwip-tcp_shutdown
+       pcb
+       (and (bitwise-and status 1) (eq? dir 'input))
+       (and (bitwise-and status 2) (eq? dir 'output))))
+     (else (lwip-tcp-close pcb))))
   (let ((pcb (tcp-connection-pcb conn)))
-    (close-port (tcp-connection-srv-port conn))
     (when pcb
-          (tcp-connection-pcb-set! conn #f)
-          (let retry ((rc (lwip-tcp-close pcb)))
-            (cond
-             ((eq? rc ERR_MEM)
-              (thread-receive)
-              (retry (lwip-tcp-close pcb))))))
-    ;; eventually only
-    (table-remove! tcp-contexts (tcp-connection-id conn))))
+          (let ((status (tcp-connection-status conn)))
+            (case dir
+              ((input) (tcp-connection-status-set! conn (bitwise-and status 2)))
+              ((output) (tcp-connection-status-set! conn (bitwise-and status 1)))
+              ((input+output) (tcp-connection-status-set!conn  0))
+              (else (error "lwIP close: illegal dirction" dir)))
+            (let retry ((rc (closeit pcb status dir)))
+              (cond
+               ((eq? rc ERR_MEM)
+                (thread-receive)
+                (retry (closeit pcb dir))))
+              (when (eqv? (bitwise-and (tcp-connection-status conn) 3) 0)
+                    (tcp-connection-pcb-set! conn #f)
+                    ;; eventually only
+                    (table-remove! tcp-contexts (tcp-connection-id conn))
+                    (close-port (tcp-connection-srv-port conn))))))))
+
+(define (%%close-tcp-connection loc conn dir)
+  (%%lwip-close-tcp-connection/dir conn dir))
+
+(define-macro (close-tcp-connection location conn)
+  `(%%close-tcp-connection ,location ,conn 'input+output))
 
 (define (%%tcp-context-set! pcb ctx)
   #;(tcp-context-set! pcb ctx)
@@ -50,11 +75,11 @@
   (receive
    (c s) (%%lwip-make-pipe)
    (let* ((client (tcp-new6))
-          (conn (make-tcp-connection #f s client #f)))
+          (conn (make-tcp-connection #f s 4 client #f)))
      (%%tcp-context-set! client conn) ;; FIRST register for on-tcp-connect to find it
      (unless (eqv? (lwip-tcp-connect client addr port) ERR_OK)
-             (close-tcp-connection conn)
-             (debug 'open-lwip-tcp-client-connection "open-lwip-tcp-client-connection failed"))
+             (%%lwip-close-tcp-connection conn)
+             #;(error (debug 'open-lwip-tcp-client-connection "open-lwip-tcp-client-connection failed") addr port))
      c)))
 
 (define (port-copy-to-lwip/synchronized in conn mtu)
@@ -82,8 +107,6 @@
                   (retry (tcp-connection-pcb conn)))
                  (else (debug 'port-copy-to-lwip:fail (lwip-err rc))))))))))))))
 
-(define-macro (lwip-timeout outstanding) 60) ;; TODO: calculate better timeout
-
 (define (port-copy-to-lwip/always-copy in conn mtu)
   (let ((buffer (make-u8vector mtu))
         (outstanding 0))
@@ -97,7 +120,10 @@
     (let loop ()
       (let ((n (read-subu8vector buffer 0 mtu in 1)))
         (cond
-         ((eqv? n 0) (await)) ;; done
+         ((eqv? n 0)
+          (%%lwip-close-tcp-connection/dir conn 'input)
+          (do ((r (await) (await))) ((not r)))
+          (%%lwip-close-tcp-connection/dir conn 'output))
          (else
           (let retry ((pcb (tcp-connection-pcb conn)))
             (cond
@@ -138,7 +164,7 @@
                        (error "lwip-listen failed"))))))
       (receive
        (c s) (open-vector-pipe)
-       (let ((lws-conn (make-tcp-connection #f s srv #f)))
+       (let ((lws-conn (make-tcp-connection #f s 1 srv #f)))
          (%%tcp-context-set! srv lws-conn)
          c)))))
 
@@ -187,7 +213,7 @@
      ((eqv? err ERR_OK)
       (receive
        (c s) (%%lwip-make-pipe)
-       (let ((conn (make-tcp-connection #f s connection #f)))
+       (let ((conn (make-tcp-connection #f s 3 connection #f)))
          (tcp-connection-next-set!
           conn
           (make-thread
@@ -195,7 +221,7 @@
              (port-copy-to-lwip s conn)
              ;; (close-port s) done in close-tcp-connection
              ;; lwip-tcp-close done in close-tcp-connection
-             (close-tcp-connection conn))
+             (close-tcp-connection "client closed connection" conn))
            'tcp-server))
          (%%tcp-context-set! connection conn)
          (let ((rcv (tcp-connection-srv-port ctx)))
@@ -212,8 +238,8 @@
 
   (define (on-tcp-receive ctx connection pbuf err)
     (cond
-     ((not pbuf) ;; closed
-      (if ctx (lwip/after-safe-return (close-tcp-connection ctx)) ERR_OK))
+     ((not pbuf) ;; closed FIXME: output too?
+      (if ctx (lwip/after-safe-return (%%close-tcp-connection on-tcp-receive ctx 'input)) ERR_OK))
      ((eqv? err ERR_OK)
       (pbuf-add-reference! pbuf)
       (%%while-in-callback-tcp-received! connection (pbuf-length pbuf))
@@ -232,6 +258,7 @@
       ((0)
        (let ()
          (tcp-connection-pcb-set! ctx connection)
+         (tcp-connection-status-set! ctx 3)
          (tcp-connection-next-set!
           ctx
           (make-thread
@@ -239,7 +266,8 @@
              (port-copy-to-lwip (tcp-connection-srv-port ctx) ctx)
              ;; (close-port s) done in close-tcp-connection
              ;; lwip-tcp-close done in close-tcp-connection
-             (close-tcp-connection ctx)
+             ;; (close-tcp-connection "server closed connection" ctx)
+             #;(thread-send (debug 'tcp-connect-input-closed (tcp-connection-next ctx)) 'close-input)
              (tcp-connection-next-set! ctx #f))
            'lwip-tcp-client))
          (lwip/after-safe-return (thread-start! (tcp-connection-next ctx)))))
@@ -255,9 +283,12 @@
   (define (on-tcp-error ctx err)
     (cond
      ((tcp-connection? ctx)
+      (debug "lwIP: TCP error, closing connection:
+       (This is likely and indicator of other errors. NYI: suppression of this message.)" ctx)
       ;; The pcb is already freed when this callback is called!
       (tcp-connection-pcb-set! ctx #f)
-      (close-tcp-connection ctx)))
+      (tcp-connection-status-set! ctx 0)
+      (close-tcp-connection "closing connection on error" ctx)))
     ERR_OK)
 
   (on-tcp-event
