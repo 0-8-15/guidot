@@ -58,21 +58,26 @@
 (define-macro (delayed-until-after-return? expr) `(procedure? ,expr))
 
 (define ##safe-lambda-unlock!
-  (let ((post '()))
+  (let ((post (list #f)) ;; dummy head
+        (last '()))
     (define (run-safe-lambda-posted job)
       (cond
        ((delayed-until-after-return? job) (job))
        (else (debug 'run-safe-lambda-posted:unhandled job))))
+    (set! last post) ;; initially
     (set! ##safe-lambda-post!
           (lambda (job)
             (trace-lock 'POST 'unknown job)
             (if (eq? (mutex-state ##safe-lambda-mutex) (current-thread))
-                (set! post (cons job post))
+                (let ((next (list job)))
+                  (set-cdr! last next)
+                  (set! last next))
                 (##raise-safe-lambda-exception (debug "not locked" 'safe-lambda-post!) "not locked"))))
     (lambda (location)
       ;; report (not yet)
-      (let ((tbd post))
-        (set! post '())
+      (let ((tbd (cdr post)))
+        (set-cdr! post '())
+        (set! last post)
         ;; report trace
         (trace-lock 'V location tbd)
         (mutex-unlock! ##safe-lambda-mutex)
