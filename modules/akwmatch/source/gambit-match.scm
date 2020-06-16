@@ -50,7 +50,7 @@
 
 
 (this-module
- match
+ match-for-gambit
  (match:version
   ;;
   match:set-structure-control
@@ -68,5 +68,5 @@
 (let ()
   (include "match-match-expanders.scm")
   ;; NOTE: The module-end MUST be within the let form.
-  (module-match-end))
+  (module-match-for-gambit-end))
 (define-rt-macros "source/match-match-syntax.scm")
