@@ -323,7 +323,14 @@ end-pbuf-cdeclare
 (define pbuf-copy-to-ptr!
   (c-lambda (void* pbuf size_t size_t) void "copy_pbuf_to_ptr"))
 
+(define make-pbuf-raw+pool
+  (c-lambda (size_t) pbuf "___return(pbuf_alloc(PBUF_RAW, ___arg1, PBUF_POOL));"))
+
+(define make-pbuf-raw+ref
+  (c-lambda (size_t) pbuf "___return(pbuf_alloc(PBUF_RAW, ___arg1, PBUF_REF));"))
+
 (define make-pbuf-raw+ram
+  ;; BEWARE: This seems to leave memory leaks behind.
   (c-lambda (size_t) pbuf "___return(pbuf_alloc(PBUF_RAW, ___arg1, PBUF_RAM));"))
 
 (define pbuf-release! (c-lambda (pbuf) scheme-object "g_release_pbuf"))
