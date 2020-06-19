@@ -42,7 +42,7 @@
             (case dir
               ((input) (tcp-connection-status-set! conn (bitwise-and status 2)))
               ((output) (tcp-connection-status-set! conn (bitwise-and status 1)))
-              ((input+output) (tcp-connection-status-set!conn  0))
+              ((input+output) (tcp-connection-status-set! conn 0))
               (else (error "lwIP close: illegal dirction" dir)))
             (let retry ((rc (closeit pcb status dir)))
               (cond
@@ -211,7 +211,7 @@
 
   (define (on-tcp-accept ctx connection err)
     (cond
-     ((eqv? err ERR_OK)
+     ((and (eqv? err ERR_OK) ctx)
       (receive
        (c s) (%%lwip-make-pipe)
        (let ((conn (make-tcp-connection #f s 3 connection #f)))
@@ -241,7 +241,7 @@
     (cond
      ((not pbuf) ;; closed FIXME: output too?
       (if ctx (lwip/after-safe-return (%%close-tcp-connection on-tcp-receive ctx 'input)) ERR_OK))
-     ((eqv? err ERR_OK)
+     ((and (eqv? err ERR_OK) ctx)
       (pbuf-add-reference! pbuf)
       (%%while-in-callback-tcp-received! connection (pbuf-length pbuf))
       (lwip/after-safe-return
@@ -251,28 +251,30 @@
          (let ((n (u8vector-length u8)))
            ;; (tcp-received! connection n) ;; too late, could have been frred already
            (write-subu8vector u8 0 n s)
-         (force-output s)))))
+           (force-output s)))))
+     ((and (not ctx) connection) (lwip/after-safe-return (lwip-tcp-close connection)))
      (else ERR_IF)))
 
   (define (on-tcp-connect ctx connection err)
-    (case err
-      ((0)
-       (let ()
-         (tcp-connection-pcb-set! ctx connection)
-         (tcp-connection-status-set! ctx 3)
-         (tcp-connection-next-set!
-          ctx
-          (make-thread
-           (lambda ()
-             (port-copy-to-lwip (tcp-connection-srv-port ctx) ctx)
-             ;; (close-port s) done in close-tcp-connection
-             ;; lwip-tcp-close done in close-tcp-connection
-             ;; (close-tcp-connection "server closed connection" ctx)
-             #;(thread-send (debug 'tcp-connect-input-closed (tcp-connection-next ctx)) 'close-input)
-             (tcp-connection-next-set! ctx #f))
-           'lwip-tcp-client))
-         (lwip/after-safe-return (thread-start! (tcp-connection-next ctx)))))
-      (else (debug 'on-tcp-connect err)))) ;; FIXME
+    (cond
+     ((and (eqv? err ERR_OK) ctx)
+      (let ()
+        (tcp-connection-pcb-set! ctx connection)
+        (tcp-connection-status-set! ctx 3)
+        (tcp-connection-next-set!
+         ctx
+         (make-thread
+          (lambda ()
+            (port-copy-to-lwip (tcp-connection-srv-port ctx) ctx)
+            ;; (close-port s) done in close-tcp-connection
+            ;; lwip-tcp-close done in close-tcp-connection
+            ;; (close-tcp-connection "server closed connection" ctx)
+            #;(thread-send (debug 'tcp-connect-input-closed (tcp-connection-next ctx)) 'close-input)
+            (tcp-connection-next-set! ctx #f))
+          'lwip-tcp-client))
+        (lwip/after-safe-return (thread-start! (tcp-connection-next ctx)))))
+     ((and (not ctx) connection) (lwip/after-safe-return (lwip-tcp-close connection)))
+     (else (debug 'on-tcp-connect err)))) ;; FIXME
 
   (define (on-tcp-poll ctx connection)
     (if (tcp-connection? ctx)
