@@ -91,6 +91,7 @@
   match:andmap
   match:syntax-err
   match:expanders
+  genmatch genletrec gendefine pattern-var?
   ;;
   ))
 
@@ -111,7 +112,7 @@ END-of-header
         (display "  (module-match-end)) ;; Closing the `let` at end of the header.\n")
         (display sntx)
         (pp-define-values/rt)
-        (display "#eof\n")))))
+        (display ";;; #eof\n")))))
 
 (case 2
   ((2) (make-ln-akwmatch)))

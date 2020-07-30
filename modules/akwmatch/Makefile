@@ -14,7 +14,7 @@ GSCINCL?=$(SYS_ROOT)/include
 all:	# All derived files
 all: ALL_DERIVED_FILES
 
-ALL_DERIVED_FILES=match.c match.o match.o1 akwmatch.scm
+ALL_DERIVED_FILES=match.o1 match.c match.o # akwmatch.scm
 ALL_DERIVED_FILES: $(ALL_DERIVED_FILES)
 
 GAMBIT_C_SOURCE_DIR=include/gambitc
@@ -46,14 +46,14 @@ match.c: $(PLAIN_SRC) source/gambit-match.scm
 	$(GSC) $(GSCFLAGS) -o $@ -c source/gambit-match.scm
 
 match.o:	# TARGET platform object
-match.o: $(PLAIN_SRC) source/gambit-match.scm
-	$(GSC) $(GSCFLAGS) -o $@ -obj source/gambit-match.scm
+match.o: match.c
+	$(GSC) $(GSCFLAGS) -o $@ -obj match.c
 
 match.o1:	# HOST platform loadable object (for compile time)
 match.o1: $(PLAIN_SRC) source/gambit-match.scm
 	$(GSC) $(GSCFLAGS) -o $@ -dynamic source/gambit-match.scm
 
-akwmatch.scm:	# lambdanative `awmatch` module source
+akwmatch.scm:	# lambdanative `akwmatch` module source
 akwmatch.scm: $(PLAIN_SRC) source/gambit-match.scm scripts/make-ln-akwmatch.scm \
   $(GENERATED)
 	@-rm -f $@

@@ -62,6 +62,7 @@
   match:andmap
   match:syntax-err
   match:expanders
+  genmatch genletrec gendefine pattern-var?
   ;;
   ))
 
@@ -1682,4 +1683,4 @@
                                  (set! ,vals (cdr ,vals))
                                  ,name)))
                       names)))))))
-#eof
+;;; #eof
