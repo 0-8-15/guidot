@@ -3,6 +3,8 @@ all: test
 
 GAMBINDIR=$(HOME)/.cache/lambdanative/linux/bin
 
+GSC ?= $(GAMBINDIR)/gsc
+
 TEST_OPTIONS=-e '(define-cond-expand-feature test)'
 # BUILD_OPTIONS=-e '(define-cond-expand-feature no-dirty-tagging)'
 
@@ -21,10 +23,10 @@ SOURCES=likely.scm likely-gambit.scm \
  0100-observable.scm
 
 likely.$(LOCAL_DYNAMIC_LIBRARY_EXTENSION): $(SOURCES)
-	$(GAMBINDIR)/gsc -dynamic $(BUILD_OPTIONS) likely.scm
+	$(GSC) -dynamic $(BUILD_OPTIONS) likely.scm
 
 likely.gambit.c: $(SOURCES)
-	$(GAMBINDIR)/gsc -o $@ -c $(BUILD_OPTIONS) likely.scm
+	$(GSC) -o $@ -c $(BUILD_OPTIONS) likely.scm
 
 todo: # find things to be done
 	find . -type f \( -name '*.org' -o -name '[Mm]akefile' \) -exec egrep '(TODO|TBD)' '{}' ';' -print
