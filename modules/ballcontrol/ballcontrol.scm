@@ -167,6 +167,82 @@ spool.db-journal
   get-kernel-connection
   %call-kernel))
 
+(c-declare "
+#include <string.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <sys/types.h>
+#ifdef _WIN32
+# include <winsock2.h>
+# include <ws2tcpip.h>
+// # include <afunix.h>
+
+/*
+ * MinGW does not have sockaddr_un (yet)
+ */
+
+# ifndef UNIX_PATH_MAX
+#  define UNIX_PATH_MAX 108
+struct sockaddr_un {
+  ADDRESS_FAMILY sun_family;
+  char sun_path[UNIX_PATH_MAX];
+};
+# endif
+#else
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <sys/un.h>
+#endif
+")
+
+(c-declare
+#<<end-of-c-declare
+#if defined(__ANDROID__) || defined(_WIN32) || defined(__linux__)
+#include <stddef.h>
+static socklen_t set_socket_name(struct sockaddr_un *socket_name, const char *filename)
+{
+  size_t fn_length = strlen(filename), off=1;
+  const char prefix[] = "FIXchange";
+  const char suffix[] = "FIXMESHOULDbechanged";
+  size_t total = sizeof(socket_name->sun_path)-1;
+  memset(socket_name->sun_path, (42 + 23), sizeof(socket_name->sun_path));
+  socket_name->sun_path[0] = '\0';
+  strncpy(socket_name->sun_path+off, prefix, total);
+  total -= sizeof(prefix);
+  off += sizeof(prefix);
+  strncpy(socket_name->sun_path+off, filename, total);
+  total -= fn_length;
+  off += fn_length;
+  strncpy(socket_name->sun_path+off, suffix, total);
+  off += sizeof(suffix);
+  off += offsetof(struct sockaddr_un, sun_path);
+  // return off < sizeof(socket_name->sun_path) ? off : sizeof(socket_name->sun_path);
+  return sizeof(struct sockaddr_un);
+}
+#else
+static socklen_t set_socket_name(struct sockaddr_un *socket_name, const char *filename)
+{
+  strncpy (socket_name->sun_path, filename, sizeof (socket_name->sun_path));
+  socket_name->sun_path[sizeof (socket_name->sun_path) - 1] = '\0';
+  return SUN_LEN(socket_name);
+}
+#endif
+end-of-c-declare
+)
+
+(define (abstract-address->socket-address fn)
+  (if (>= (string-length fn) unix-path-max) ;; FIXME this MUST exclude prefix and suffix and leading '\0'
+      (error "abstract-address->socket-address: path too long" fn))
+  (let ((addr (make-u8vector SOCKADDR_UN_SIZE)))
+    ((c-lambda (scheme-object nonnull-char-string) void "
+struct sockaddr_un *sa_un = ___BODY(___arg1);
+sa_un->sun_family = AF_UNIX;
+set_socket_name(sa_un, ___arg2);
+") addr fn)
+    addr))
+
 (define string->socket-address abstract-address->socket-address)
 
 (define (control-socket-path)
