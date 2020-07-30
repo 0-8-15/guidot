@@ -11,20 +11,15 @@
 ;; conn: (TBD) the connection to use with the kernel
 
 (define (get-kernel-connection)
-  (let ((addr (string->socket-address (control-socket-path)))
-        (sock (create-socket protocol-family/unix socket-type/stream)))
-    (with-exception-catcher
-     (lambda (ex)
-       #;(debug 'Check-EX (exception-->printable ex))
-       #;(start-kernel-server!)
-       ;; (log-debug "connecting to control socket failed with " 1 (exception-->printable ex))
-       (close-socket sock)
-       #f)
-     (lambda ()
-       ;; (log-debug "trying to connect to control socket " 1)
-       (connect-socket sock addr)
-       (log-debug "connected to control socket " 1)
-       (socket-port sock)))))
+  (with-exception-catcher
+   (lambda (exn)
+     ;; (log-debug "FAILED to connected to control socket " 1 exn)
+     #f)
+   (lambda ()
+     (let ((port (open-unix-client (string->socket-address (control-socket-path)))))
+       (if (port? port)
+           (log-debug "connected to control socket " 1))
+       port))))
 
 (define with-ball-kernel
   (let ((catching

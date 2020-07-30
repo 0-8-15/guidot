@@ -1,1 +1,1 @@
-config eventloop ln_core ln_glcore ln_glgui magic gamsock chckn uiform ballcontrol androidforeground
+config eventloop ln_core ln_glcore ln_glgui magic likely unsocket chckn uiform ballcontrol androidforeground
