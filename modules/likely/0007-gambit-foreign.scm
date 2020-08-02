@@ -4,6 +4,8 @@
 
 (define ##safe-lambda-mutex (make-mutex 'safe-lambda))
 
+(c-declare "static ___mask_heartbeat_interrupts_state heartbeat_interrupts;")
+
 (define (##raise-safe-lambda-exception location reason)
   (error reason location))
 
@@ -44,6 +46,7 @@
   (if (eq? (mutex-state ##safe-lambda-mutex) (current-thread))
       (##raise-safe-lambda-exception location (debug location "deadlock")))
   (mutex-lock! ##safe-lambda-mutex)
+  ((c-lambda () void "___mask_heartbeat_interrupts_begin(&heartbeat_interrupts);"))
   (trace-lock 'P location #f)
   ;; report trace
   )
@@ -80,6 +83,7 @@
         (set! last post)
         ;; report trace
         (trace-lock 'V location tbd)
+        ((c-lambda () void "___mask_heartbeat_interrupts_end(&heartbeat_interrupts);"))
         (mutex-unlock! ##safe-lambda-mutex)
         ;; enforce delayed operations now
         (for-each run-safe-lambda-posted tbd)))))
