@@ -137,10 +137,19 @@ c-declare-end
     (lambda (nr)
       (vector-ref all (* nr -1)))))
 
+(define %allocate-u8vector
+  ;; FIXME: Performance: How to allocate without useless initialization?
+  (c-lambda
+   (size_t) scheme-object
+   "___SCMOBJ result = ___EXT(___alloc_scmobj) (___PSTATE, ___sU8VECTOR, ___arg1);
+if(___FIXNUMP(result)) { fprintf(stderr, \"OH NOOO\\n\"); ___return(___FAL); }
+___EXT(___release_scmobj)(result);
+___return(result);"))
+
 (include "datastructures.scm")
 
 (define (lwip-string->ip6-address str)
-  (let ((result (make-u8vector 16)))
+  (let ((result (%allocate-u8vector 16)))
     (and
      ((c-lambda
        (char-string scheme-object) bool
@@ -149,7 +158,7 @@ c-declare-end
      result)))
 
 (define (lwip-string->ip4-address str)
-  (let ((result (make-u8vector 4)))
+  (let ((result (%allocate-u8vector 4)))
     (and
      ((c-lambda
        (char-string scheme-object) bool

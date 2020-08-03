@@ -86,7 +86,7 @@
 
 (define (port-copy-to-lwip/synchronized in conn mtu)
   ;; TBD: How to use: get-output-u8vector ?  How to wait for it?
-  (let ((buffer (make-u8vector mtu)))
+  (let ((buffer (%allocate-u8vector mtu)))
     (let loop ()
       (let ((n (read-subu8vector buffer 0 mtu in 1)))
         (cond
@@ -110,7 +110,7 @@
                  (else (debug 'port-copy-to-lwip:fail (lwip-err rc))))))))))))))
 
 (define (port-copy-to-lwip/always-copy in conn mtu)
-  (let ((buffer (make-u8vector mtu))
+  (let ((buffer (%allocate-u8vector mtu))
         (outstanding 0))
     (define (await)
       (and (fx> outstanding 0)
