@@ -6,6 +6,8 @@
 
 (define-macro (lwip-timeout outstanding) 60) ;; TODO: calculate better timeout
 
+(define lwip-connect-timeout (make-parameter 60))
+
 ;;;*** lwIP TCP data structures and basics
 (define (%%lwip-make-pipe) (open-u8vector-pipe '(buffering: #f) '(buffering: #f)))
 
@@ -73,6 +75,7 @@
 (define (open-lwip-tcp-client-connection addr port) ;; EXPORT
   (receive
    (c s) (%%lwip-make-pipe)
+   (input-port-timeout-set! c (lwip-connect-timeout))
    (let* ((client (tcp-new6))
           (conn (make-tcp-connection #f s 4 client #f)))
      (%%tcp-context-set! client conn) ;; FIRST register for on-tcp-connect to find it
@@ -213,6 +216,7 @@
      ((and (eqv? err ERR_OK) ctx)
       (receive
        (c s) (%%lwip-make-pipe)
+       (input-port-timeout-set! c (lwip-connect-timeout))
        (let ((conn (make-tcp-connection #f s 3 connection #f)))
          (tcp-connection-next-set!
           conn
