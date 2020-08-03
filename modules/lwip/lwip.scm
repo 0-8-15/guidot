@@ -780,7 +780,7 @@ c-declare-end
 
 (define (lwip-mac:network->host x) ;; return a uint64_t in host byte order
   (cond
-   ((fixnum? x)
+   ((integer? x)
     ((c-lambda
       (unsigned-int64) unsigned-int64
       "___return(mac_from_u8v6(&___arg1));")
@@ -794,7 +794,7 @@ c-declare-end
       (scheme-object) unsigned-int64
       "u64w r; r.n=0; memcpy(r.addr.addr, ___CAST(void *,___BODY_AS(___arg1,___tSUBTYPED)), ETH_HWADDR_LEN); ___return(r.n);")
      x))
-   ((fixnum? x)
+   ((integer? x)
     ((c-lambda
       (unsigned-int64) unsigned-int64
       "uint64_t result = 0; g_lwip_set_mac_ui64h(&result, ___arg1); ___return(result);")

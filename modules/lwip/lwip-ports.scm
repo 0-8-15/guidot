@@ -36,24 +36,23 @@
        (and (bitwise-and status 1) (eq? dir 'input))
        (and (bitwise-and status 2) (eq? dir 'output))))
      (else (lwip-tcp-close pcb))))
-  (let ((pcb (tcp-connection-pcb conn)))
-    (when pcb
-          (let ((status (tcp-connection-status conn)))
-            (case dir
-              ((input) (tcp-connection-status-set! conn (bitwise-and status 2)))
-              ((output) (tcp-connection-status-set! conn (bitwise-and status 1)))
-              ((input+output) (tcp-connection-status-set! conn 0))
-              (else (error "lwIP close: illegal dirction" dir)))
-            (let retry ((rc (closeit pcb status dir)))
-              (cond
-               ((eq? rc ERR_MEM)
-                (thread-receive)
-                (retry (closeit pcb dir))))
-              (when (eqv? (bitwise-and (tcp-connection-status conn) 3) 0)
-                    (tcp-connection-pcb-set! conn #f)
-                    ;; eventually only
-                    (table-remove! tcp-contexts (tcp-connection-id conn))
-                    (close-port (tcp-connection-srv-port conn))))))))
+  (let ((pcb (tcp-connection-pcb conn))
+        (status (tcp-connection-status conn)))
+    (case dir
+      ((input) (tcp-connection-status-set! conn (bitwise-and status 2)))
+      ((output) (tcp-connection-status-set! conn (bitwise-and status 1)))
+      ((input+output) (tcp-connection-status-set! conn 0))
+      (else (error "lwIP close: illegal dirction" dir)))
+    (let retry ((rc (and pcb (closeit pcb status dir))))
+      (cond
+       ((eq? rc ERR_MEM)
+        (thread-receive)
+        (retry (closeit pcb dir))))
+      (when (eqv? (bitwise-and (tcp-connection-status conn) 3) 0)
+            (tcp-connection-pcb-set! conn #f)
+            ;; eventually only
+            (table-remove! tcp-contexts (tcp-connection-id conn))
+            (close-port (tcp-connection-srv-port conn))))))
 
 (define (%%close-tcp-connection loc conn dir)
   (%%lwip-close-tcp-connection/dir conn dir))
@@ -242,7 +241,6 @@
      ((not pbuf) ;; closed FIXME: output too?
       (if ctx (lwip/after-safe-return (%%close-tcp-connection on-tcp-receive ctx 'input)) ERR_OK))
      ((and (eqv? err ERR_OK) ctx)
-      (pbuf-add-reference! pbuf)
       (%%while-in-callback-tcp-received! connection (pbuf-length pbuf))
       (lwip/after-safe-return
        (let ((u8 (pbuf->u8vector pbuf))
