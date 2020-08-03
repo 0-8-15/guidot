@@ -5,7 +5,10 @@ CONTRIBDIR=contrib
 LWIPDIR=src
 include $(CONTRIBDIR)/$(LWIP_PORT)/Common.mk
 
-CFLAGS+=$(LWIP_PORT_DEF)
+BYTE_ORDER ?= 1234 # little endian
+#BYTE_ORDER ?= 4321 # big endian
+
+CFLAGS+=$(LWIP_PORT_DEF) -DBYTE_ORDER=$(BYTE_ORDER)
 
 all: $(LWIPLIBCOMMON)
 
