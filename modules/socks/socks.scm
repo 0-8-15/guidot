@@ -22,7 +22,7 @@
   ;;
   ;; TODO: re-write using get-output-u8vector
   ;; ##wait-input-port
-  (let ((buffer (make-u8vector MTU)))
+  (let ((buffer (%allocate-u8vector MTU)))
     (let loop ()
       (input-port-timeout-set! in (socks-data-timeout))
       (let ((n (read-subu8vector buffer 0 MTU in 1)))
@@ -60,7 +60,7 @@
 (define (socks4a-request cmd dstport dstip #!optional (id ""))
   (let* ((iplen (if (string? dstip) (string-length dstip) (u8vector-length dstip)))
          (idlen (string-length id))
-         (packet (make-u8vector (+ 8 idlen 1 iplen 1))))
+         (packet (%allocate-u8vector (+ 8 idlen 1 iplen 1))))
     (u8vector-set! packet 0 4)
     (let ((cmd (case cmd
                  ((#t) 2)
@@ -308,11 +308,11 @@
            (dstip
             (case dst-type
               ((4 1)
-               (let ((addr (make-u8vector dst-size)))
+               (let ((addr (%allocate-u8vector dst-size)))
                  (if (read-subu8vector addr 0 dst-size in dst-size) addr
                      (error "SOCKS5 could not read address bytes" dst-size))))
               ((3)
-               (let ((buffer (make-u8vector dst-size))
+               (let ((buffer (%allocate-u8vector dst-size))
                      (addr (make-string dst-size)))
                  (if (read-subu8vector buffer 0 dst-size in dst-size)
                      (do ((i 0 (fx+ i 1)))
