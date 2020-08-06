@@ -2,6 +2,8 @@
 
 (define socks-data-timeout (make-parameter 660))
 
+(define socks-connect-timeout (lambda args (apply lwip-connect-timeout args)))
+
 (define (handle-debug-exception e)
   (##default-display-exception e (current-error-port))
   #!void)
@@ -23,8 +25,8 @@
   ;; TODO: re-write using get-output-u8vector
   ;; ##wait-input-port
   (let ((buffer (%allocate-u8vector MTU)))
+    (input-port-timeout-set! in (socks-connect-timeout))
     (let loop ()
-      (input-port-timeout-set! in (socks-data-timeout))
       (let ((n (read-subu8vector buffer 0 MTU in 1)))
         (cond
          ((eqv? n 0)
@@ -35,20 +37,26 @@
          (else
           (write-subu8vector buffer 0 n out)
           (force-output out)
+          (input-port-timeout-set! in (socks-data-timeout))
           (loop)))))))
 
 (define (port-pipe+close! in out #!optional (MTU 3000))
   (with-exception-catcher
    (lambda (exn)
-     (close-input-port in)
-     (close-output-port out)
+     (close-port in)
+     (close-port out)
      exn)
    (lambda () (port-copy-through in out MTU))))
 
-(define (ports-connect! r0 w0 r1 w1)
-  ;; terminates when r1 is at EOF - TBD: maybe should also terminate when w0 is closed!
-  (let ((thr (thread-start! (make-thread (lambda () (port-pipe+close! r0 w1)) 'port-copy))))
+(define (ports-connect! r0 w0 r1 w1 #!optional (close-flags 0))
+  (let* ((job (lambda ()
+                (port-pipe+close! r0 w1)
+                (when (not (eqv? (bitwise-and close-flags 1) 0))
+                  (close-input-port r1))))
+         (thr (thread-start! (make-thread job 'port-copy))))
     (port-pipe+close! r1 w0)
+    (when (not (eqv? (bitwise-and close-flags 2) 0))
+      (close-input-port r0))
     (thread-join! thr)))
 
 (define (send-packet-now! packet conn)
@@ -128,7 +136,7 @@
 (define (%socks-bind! version conn-in conn-to kind addr port)
   (let ((request (socks4a-request kind port addr)))
     (send-packet-now! request conn-to)
-    (let ((reply (make-u8vector 8)))
+    (let ((reply (%allocate-u8vector 8)))
       (when
        (read-subu8vector reply 0 8 conn-in 8)
        (unless (socks-success? reply) (error "failed"))))))
@@ -136,7 +144,7 @@
 (define (socks4-connect-via proxy socks-spec addr port)
   (let ((request (socks4a-request #f port addr)))
     (send-packet-now! request proxy)
-    (let ((reply (make-u8vector 8)))
+    (let ((reply (%allocate-u8vector 8)))
       (if (read-subu8vector reply 0 8 proxy 8)
           (if (socks-success? reply) proxy
               (begin (close-port proxy) proxy))
@@ -180,10 +188,7 @@
     (cond
      ((port? conn)
       (socks4-reply! out #t)  ;; SOCKS granted
-      (with-exception-catcher
-       handle-debug-exception
-       (lambda () (ports-connect! conn conn in out)))
-      (close-port conn))
+      (ports-connect! conn conn in out 3))
      (else
       ;; SOCKS reply "rejected or failed"
       (socks4-reply! out #f))))
@@ -191,10 +196,7 @@
     (cond
      ((port? conn)
       (socks5-reply! out #t addr port)  ;; SOCKS granted
-      (with-exception-catcher
-       handle-debug-exception
-       (lambda () (ports-connect! conn conn in out)))
-      (close-port conn))
+      (ports-connect! conn conn in out 3))
      (else
       ;; SOCKS reply "rejected or failed"
       (socks5-reply! out #f addr port))))
@@ -252,10 +254,7 @@
           (case version
             ((5) (error "NYI socks-bind version 5"))
             (else (socks4-reply! out #t)))
-          (with-exception-catcher
-           handle-debug-exception
-           (lambda () (ports-connect! conn conn in out)))
-          (close-port conn))
+          (ports-connect! conn conn in out 3))
         (case version
           ((5) (error "NYI socks-bind version 5"))
           (else (socks4-reply! out #f))))))
@@ -273,7 +272,7 @@
          (in (current-input-port))
          (to (current-output-port)))
   (%socks-bind! version conn-in conn-to #t "addr ignored" port)
-  (ports-connect! conn-in conn-to in to))
+  (ports-connect! conn-in conn-to in to 3))
 
 (define (socks-test-local! #!optional (port 1234))
   (socks-service-register! port)
