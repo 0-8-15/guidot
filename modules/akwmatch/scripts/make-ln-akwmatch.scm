@@ -88,6 +88,7 @@
   match:set-error
   match:set-error-control
   ;;
+  match:error
   match:andmap
   match:syntax-err
   match:expanders
