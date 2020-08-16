@@ -171,7 +171,7 @@
   ;;
   ;; returns dispatch info.  #f -> denied
   (let ((proc #f))
-    (define (dflt dstip dstport)
+    (define (dflt key dstip dstport)
       ;; TODO find a usable predicate for the job
       (cond
        ((and (> (string-length dstip) 2)
