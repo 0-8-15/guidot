@@ -232,7 +232,7 @@ static socklen_t set_socket_name(struct sockaddr_un *socket_name, const char *fi
 end-of-c-declare
 )
 
-(define (abstract-address->socket-address fn)
+(define (ball-abstract-address->socket-address fn)
   (if (>= (string-length fn) unix-path-max) ;; FIXME this MUST exclude prefix and suffix and leading '\0'
       (error "abstract-address->socket-address: path too long" fn))
   (let ((addr (make-u8vector SOCKADDR_UN_SIZE)))
@@ -243,7 +243,7 @@ set_socket_name(sa_un, ___arg2);
 ") addr fn)
     addr))
 
-(define string->socket-address abstract-address->socket-address)
+(define ball-string->socket-address ball-abstract-address->socket-address)
 
 (define (control-socket-path)
   (make-pathname kernel-data-directory "control"))

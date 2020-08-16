@@ -16,7 +16,7 @@
      ;; (log-debug "FAILED to connected to control socket " 1 exn)
      #f)
    (lambda ()
-     (let ((port (open-unix-client (string->socket-address (control-socket-path)))))
+     (let ((port (open-unix-client (ball-string->socket-address (control-socket-path)))))
        (if (port? port)
            (log-debug "connected to control socket " 1))
        port))))
