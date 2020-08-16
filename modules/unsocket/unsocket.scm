@@ -183,7 +183,7 @@ sa_st->ss_family = AF_UNSPEC;
 (define-macro (unsocket-os-exception proc . args)
   (let ((errno (gensym 'errno)))
     `(let ((,errno (c-errno)))
-       (##raise-os-exception #f ,errno ,proc (strerror ,errno) . ,args))))
+       (##raise-os-exception #f ,errno ,proc (strerror ,errno) ,@args))))
 
 (define
   c-socket
