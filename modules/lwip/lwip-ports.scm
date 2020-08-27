@@ -43,13 +43,13 @@
     (case dir
       ((input) (tcp-connection-status-set! conn (bitwise-and status 2)))
       ((output) (tcp-connection-status-set! conn (bitwise-and status 1)))
-      ((input+output) (tcp-connection-status-set! conn 0))
-      (else (error "lwIP close: illegal dirction" dir)))
+      ((input+output) (tcp-connection-status-set! conn 0) (set! status 0))
+      (else (error "lwIP close: illegal direction" dir)))
     (let retry ((rc (and pcb (closeit pcb status dir))))
       (cond
        ((eq? rc ERR_MEM)
         (thread-receive)
-        (retry (closeit pcb dir))))
+        (retry (closeit pcb status dir))))
       (when (eqv? (bitwise-and (tcp-connection-status conn) 3) 0)
             (tcp-connection-pcb-set! conn #f)
             ;; eventually only
