@@ -2,7 +2,7 @@ VERSION=2.1.2
 VERSION_CONTRIB=2.1.0
 # PKGURL=http://download.savannah.nongnu.org/releases/lwip/lwip-$VERSION.zip
 PKGURL=lwip-$VERSION.tar.gz
-PKGHASH=8729119666234b74df299c043e4d419223933bc6
+PKGHASH=1e6b92739fde38899ed0c75ffc0730eb5683600d
 
 # To rebuild the package do:
 #
@@ -60,7 +60,8 @@ lwip_build() # build using plain make
             LWIP_PORT=ports/unix;;
         android)
             EXTRACONF="$EXTRACONF -DCMAKE_SYSTEM_NAME=Android -DCMAKE_ANDROID_API=${ANDROIDAPI} -DCMAKE_ANDROID_STANDALONE_TOOLCHAIN=${android_customtoolchain}"
-            LWIP_PORT_DEF=""
+            LWIP_ARCH_VARIANT=Android
+            LWIP_PORT_DEF="-fPIC"
             LWIP_PORT_TARGET=lwipcontribportunix
             LWIP_PORT_I=contrib/ports/unix/port
             LWIP_PORT=ports/unix
@@ -77,7 +78,7 @@ lwip_build() # build using plain make
     test -f ${D0}/src/include/lwip/lwipopts.h || cp $libdir/lwipopts.h ${D0}/src/include/lwip/
 # TODO make ...
     cp $libdir/BuildMakefile ${D0}/Makefile
-    make -C ${D0} LWIPARCH=${LWIP_PORT_I} LWIP_PORT=${LWIP_PORT} CC=${lncc} "LWIP_PORT_DEF=${LWIP_PORT_DEF}" # $EXTRACONF
+    make -C ${D0} LWIPARCH=${LWIP_PORT_I} LWIP_PORT=${LWIP_PORT} LWIP_ARCH_VARIANT=${LWIP_ARCH_VARIANT} CC=${lncc} "LWIP_PORT_DEF=${LWIP_PORT_DEF}" # $EXTRACONF
     # install
     cp -ar ${D0}/${LWIP_PORT_I}/include/* $SYS_PREFIX/include/
     cp -ar src/include/* $SYS_PREFIX/include/

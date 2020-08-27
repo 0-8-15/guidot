@@ -1,11 +1,16 @@
 VERSION=2.1.2
 VERSION_CONTRIB=2.1.0
+ARCHIVE=lwip-$(VERSION).tar.gz
 
 all: # Everything
 all: test
 
+dist: # assemble distribution
+dist: make.sh package
+	CS=`sha1sum $(ARCHIVE)|cut -f 1 -d ' '` ; sed -i -es/'PKGHASH=.*$$'/PKGHASH=$${CS}/ make.sh
+
 package: # package core and contrib into one
-package: lwip-$(VERSION).tar.gz
+package: $(ARCHIVE)
 
 DISTURL_BASE=http://download.savannah.nongnu.org/releases/lwip
 
@@ -22,7 +27,7 @@ lwip-core-$(VERSION).zip:
 	wget -O lwip-core-$(VERSION).zip $(DISTURL_BASE)/lwip-$(VERSION).zip
 
 lwip-contrib-$(VERSION_CONTRIB).zip:
-	wget -O lwip-contrib-$(VERSION_CONTRIB).zip $(DISTURL_BASE)/lwip/contrib-$(VERSION_CONTRIB).zip
+	wget -O lwip-contrib-$(VERSION_CONTRIB).zip $(DISTURL_BASE)/contrib-$(VERSION_CONTRIB).zip
 
 todo: # find things to be done
 	find . -type f \( -name '*.org' -o -name '[Mm]akefile' \) -exec egrep '(TODO|TBD)' '{}' ';' -print
