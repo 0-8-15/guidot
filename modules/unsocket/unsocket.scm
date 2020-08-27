@@ -31,7 +31,7 @@
 (define (open-fd-port direction name index #!optional (settings '()))
   (##make-path-psettings
    direction
-   (append settings (##list 'readtable: ##main-readtable))
+   (append settings (if (eqv? (bitwise-and direction 2) 0) '() '(output-width: 80)) (##list 'readtable: ##main-readtable))
    ##exit-abnormally
    (lambda (psettings)
      (let ((device
@@ -315,7 +315,9 @@ C-END
        ((current-input-port conn) (current-output-port conn))
        (handler))
       ;; (force-output conn)
-      (close-port conn)))
+      (with-exception-catcher
+       (lambda (exn) #f) ;; close-port raises an exception if the client is gone.
+       (lambda () (close-port conn)))))
   (let ((incomming
          (open-unix-server
           spec backlog: backlog
@@ -337,7 +339,7 @@ C-END
    (int scheme-object size_t) int
    "___return(connect(___arg1, ___CAST(struct sockaddr *, ___BODY(___arg2)), ___arg3));"))
 
-(define (open-unix-client* spec)
+(define (open-unix-client* spec #!optional (fail (lambda () (unsocket-os-exception open-unix-client))))
   (let* ((addr (cond
                 ((and (u8vector? spec) (eqv? (u8vector-length spec) SOCKADDR_UN_SIZE)) spec)
                 ((string? spec) (unix-address->socket-address spec))
@@ -352,17 +354,19 @@ C-END
      ((eq? rc 0) (open-fd-port 3 open-unix-client fd))
      (else
       (c-close fd)
-      (unsocket-os-exception open-unix-client)))))
+      (fail)))))
 
-(define (open-unix-client spec #!optional (retry #f) (scale 0.01) (base 2) (limit 0.16))
+(define (open-unix-client spec #!optional (retry #f) (scale 0.01) (base 2) (limit 1.0))
   (define (wait-for-connection sockaddr)
       (define (wait-for-socket n)
         (or (with-exception-catcher
              (lambda (exn) #f)
              (lambda () (open-unix-client* sockaddr)))
             (let ((sleep-time (* scale (expt base n))))
-              (if (> sleep-time limit) (error "failed to connect to beaver" sockaddr))
-              (thread-sleep! sleep-time)
-              (wait-for-socket (+ n 1)))))
+              (if (> sleep-time limit)
+                  (if (procedure? retry) (retry) (error "failed to connect to beaver" sockaddr))
+                  (begin
+                    (thread-sleep! sleep-time)
+                    (wait-for-socket (+ n 1)))))))
       (wait-for-socket 0))
   (if retry (wait-for-connection spec) (open-unix-client* spec)))
