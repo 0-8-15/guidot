@@ -23,7 +23,7 @@ NULL;
                   (mutex-lock! mutex)
                   (cond-expand
                    (android (jscheme-invoke/s2s req))
-                   (else (error "jscheme-call: not availible on platform" (system-platform))))))
+                   (else (error "jscheme-call: not available on platform" (system-platform))))))
              (r0 (begin
                    (mutex-unlock! mutex)
                    (if (string? s)
