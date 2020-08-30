@@ -255,9 +255,10 @@ ___return(result);"))))
 (define-u8-ip6header-get IP6H_HOPLIM unsigned-int8 "IP6H_HOPLIM" 8)
 
 (c-declare "static inline char * local_ip6addr_ntoa(const ip6_addr_p_t *addr) {
- static char buf[80];
+ static char buf[80]; char *p;
  ip6_addr_t ua; ip6_addr_copy_from_packed(ua, *addr);
  ip6addr_ntoa_r(&ua, buf, 80);
+ for(p=buf; *p; p++) *p=tolower(*p);
  return buf;
 }")
 
