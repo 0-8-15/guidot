@@ -1602,6 +1602,7 @@ Is the service not yet running?")))
                     (set! count 0)
                     (loop))
                    (else (set! count (fx+ count 1)))))))))
+           ((eq? t 126) (LNjScheme-result))
 	   (else
             (set! count 0)
 	    (unless
