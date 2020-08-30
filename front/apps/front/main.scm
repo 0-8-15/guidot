@@ -1,5 +1,20 @@
 ;; frontend (to be changed to mimic the Calculator demo)
 
+(register-command! "ball" ballroll)
+
+(register-command! "beaver" beaver-start!)
+
+(cond
+ ((and (>= (system-cmdargc) 3) (equal? (system-cmdargv 1) "-s"))
+  (execute-registered-command))
+ (else #!void))
+
+(cond-expand
+ (debug
+  ($debug-trace-triggers #t)
+  ($async-exceptions 'catch)
+  ) (else #f))
+
 (set!
  thread-sleep!
  (let ((thread-sleep! thread-sleep!)
@@ -19,7 +34,7 @@
   (define (setup-heartbeat!)
     #;((c-lambda () scheme-object "___setup_heartbeat_interrupt_handling"))
     (##set-heartbeat-interval! (exact->inexact 1/100)))
-  #;(setup-heartbeat!)
+  (setup-heartbeat!)
   )
  (else))
 
@@ -55,14 +70,157 @@ NULL;
         (run/boolean 'mv source target)
         #t)))
 
-(define (kernel-send-idle)
-  #;(cond-expand
-   (android
-    (unless (orbot-running?)
-            (log-error "Orbot not running")
-            (orbot-running!)))
-   (else))
-  (kernel-control-send! 'idle))
+(define (portnumber-or-false? obj)
+  (or (not obj) (and (fixnum? obj) (>= obj 0) (<= obj #xffff))))
+
+(define (front-pin-attach-log! pin msg)
+  (wire! pin post: (lambda () (log-debug msg 1 (debug msg (pin))))))
+
+(define (front-beaver-directory-default)
+  (make-pathname
+   (cond-expand
+    (android (system-appdirectory))
+    (else '()))
+   "beaver"))
+(define front-beaver-query (lambda (expr) (error "beaver-call/~query not yet started")))
+(define front-beaver-call front-beaver-query)
+(define front-test-beaver-active (lambda () (error "beaver not yet started")))
+(define front-beaver-directory
+  (let ((pin
+         (make-pin
+          initial: #f
+          filter: (lambda (o n) (or o n))
+          name: "The directory for beaver VPN data")))
+    (define (export old new)
+      (receive (test query call) (make-beaver-api new)
+        (set! front-test-beaver-active test)
+        (set! front-beaver-query call)
+        (set! front-beaver-call call)))
+    (wire! pin sequence: export)
+    pin))
+(kick/sync! (lambda () (front-beaver-directory (front-beaver-directory-default))))
+
+(define front-beaver-enabled:=
+  (make-pin
+   initial: (query-beaver-ot0-status)
+   pred: boolean?
+   name: "enable beaver VPN"))
+
+(define front-beaver-up??
+  (make-pin initial: (front-beaver-enabled:=) name: "beaver VPN seen up"))
+(front-pin-attach-log! front-beaver-up?? "beaver up")
+(let ((msg "ball kernel up upon startup"))
+  (if ball-kernel-found-up-on-startup (log-debug msg 1 (debug msg ball-kernel-found-up-on-startup))))
+(front-pin-attach-log! ball-kernel-up?? "ball kernel up")
+
+(define front-beaver-network (make-pin initial: 18374687579166474240))
+
+(define (front-beaver-origin:= u8v)
+  (front-beaver-call `(kick (ot0cli-origin ',u8v))))
+
+(define (front-beaver-start-script)
+  `(ot0cli-process-commands
+    '("-adm" "ip:" "on"
+      "-service" "ot0" "start" "\"*:19993\"" "join:" ,(object->string (front-beaver-network)))))
+
+(define beaver-socks-port (make-pin initial: 9052))
+
+(define (front-beaver-setup-script-2)
+  `(ot0cli-process-commands
+    '("-service" "tcp" "register" ,(object->string (beaver-socks-port)) "socks" ":")))
+
+(define front-beaver-ip-address
+  (make-pin
+   initial: #f
+   ;;pred: (lambda (x) (or (not x) (string? x)))
+   name: "beaver IP address"))
+(front-pin-attach-log! front-beaver-ip-address "Beaver IP address ")
+
+(define-macro (macro-file-as-u8 fn)
+  (and (file-exists? fn)
+       (let* ((size (file-size fn))
+              (data (make-u8vector size))
+              (got (call-with-input-file fn (lambda (p) (read-subu8vector data 0 size p)))))
+         (if (eqv? got size)
+             `',data
+             (error "read-file-as-u8vector failed. following file size read and size expected"
+                    fn got size)))))
+
+(define front-beaver-default-origin (macro-file-as-u8 "/home/u/.ot0/origin"))
+
+(define (query-beaver-ip-address)
+  (log-status "Waiting for beaver address")
+  (front-beaver-ip-address
+   (front-beaver-query
+    `(and (ot0-up?)
+          (ip6addr->string (make-6plane-addr ,(front-beaver-network) (ot0-address))))))
+  (front-beaver-up?? (and (front-beaver-ip-address) #t)))
+
+(if (front-beaver-up??) (kick! query-beaver-ip-address))
+
+(define (query-beaver-ot0-status)
+  (with-exception-catcher
+   (lambda (exn) (handle-replloop-exception exn) #f)
+   (lambda () (and (front-test-beaver-active) (front-beaver-query '(ot0-up?))))))
+
+(define (front-beaver-start!*)
+  (define (control-socket fn) (make-pathname fn "control"))
+  (define (runit! fn)
+    (log-status "Running beaver from " fn)
+    (semi-fork "beaver" `(#;"-:r" "-B" ,fn "-S" "control" ,(control-socket fn) "-e" ":" "-wait")))
+  (define (beaver-init! fn)
+    (log-status "Initialize beaver home " fn)
+    (when (debug 'BInit (semi-run "beaver" `("-A" ,fn)))
+      (let ((beaver (semi-fork& "beaver" `("-B" ,fn "-S" "control" ,(control-socket fn) "-e" ":" "-wait"))))
+        (when beaver
+          (front-beaver-call `(begin (kick/sync (ot0cli-origin ',front-beaver-default-origin)) (exit 0)))
+          (when (eqv? (process-status beaver) 0)
+            (runit! fn))))))
+  (define (startup!)
+    (log-status "Starting beaver")
+    (when (front-beaver-call (front-beaver-start-script))
+      (kick/sync! query-beaver-ip-address))
+    (log-debug "Beaver setup returned: " 1 (front-beaver-call (front-beaver-setup-script-2))))
+  (let ((fn (front-beaver-directory)))
+    (cond
+     ((not (file-exists? fn)) (beaver-init! fn) (startup!))
+     ((front-test-beaver-active) (kick! query-beaver-ip-address))
+     (else (runit! fn) (startup!)))))
+
+(define (front-beaver-start!)
+  (with-exception-catcher
+   (lambda (exn)
+     ;; (kick! (lambda () (front-beaver-ip-address (exception-->printable exn))))
+     (log-error "front-beaver-start! : " (exception-->printable exn)))
+   front-beaver-start!*))
+
+(define (front-beaver-stop!)
+  (with-exception-catcher
+   (lambda (exn) #;(debug 'query-beaver-ot0-status exn) #f)
+   (lambda () (front-beaver-query '(exit 0))))
+  ;; FIXME: unset up?? when it dies unexpectedly.
+  (kick! (lambda () (front-beaver-up?? #f))))
+
+(define (front-trigger-beaver-start-stop!)
+  (let ((e (front-beaver-enabled:=))
+        (u (front-beaver-up??)))
+    (cond
+     ((and e (not u)) (front-beaver-start!))
+     ((and u (not e)) (front-beaver-stop!)))))
+
+(wire!
+ (list front-beaver-enabled:= front-beaver-up??)
+ post: front-trigger-beaver-start-stop!)
+
+(thread-start!
+ (make-thread
+  (lambda ()
+    (do () (#t)
+      (thread-sleep! 10)
+      (let ((active (debug 'BA (front-test-beaver-active))))
+        (unless (eq? active (front-beaver-up??))
+          (kick! (lambda () (front-beaver-up?? active)))))))
+  'watch-beaver))
 
 (define (kernel-send-connect to)
   (unless (call-kernel "connect" to)
@@ -77,6 +235,7 @@ NULL;
 
 (define (is-garlic? name) (and name (string-suffix? ".i2p" name)))
 (define (is-onion? name) (string-suffix? ".onion" name))
+(define (is-beavered? name) #t) ;; FIXME
 
 (define (is-allioideae? name) (or (is-onion? name) (is-garlic? name)))
 
@@ -87,29 +246,83 @@ NULL;
 ;; different external port than the one we forward to.
 (define (documented-external-https-port) 7443)
 
+(define (front-trigger-ball-kernel-start-stop!)
+  (let ((e (ball-kernel-enabled:=))
+        (u (ball-kernel-up??)))
+    (cond
+     ((and e (not u)) (start-kernel-server!))
+     ((and u (not e) (not in-initialization)) (stop-kernel-server!)))))
+
+(wire!
+ (list ball-kernel-enabled:= ball-kernel-up??)
+ post: front-trigger-ball-kernel-start-stop!)
+
+#;(wire!  ;; TODO: remove after a while
+ ball-kernel-up?? post:
+ (lambda ()
+   (call-kernel
+    'begin
+    '(for-each
+      http-host-remove!
+      (filter
+       (let ((mat (dsssl-pcre "onion|i2p")))
+         (lambda (h) (mat (http-host-lookup h))))
+       (quorum-others (http-all-hosts))))
+    ;; '(ball-trigger-save-config!)
+    '(ball-save-config))))
+
+(define (front-trigger-transfer-of-beaver-ip-to-ball!)
+  (when (and (ball-kernel-up??) (front-beaver-ip-address))
+    (log-status "configuring ball to use beaver at: " (front-beaver-ip-address))
+    (call-kernel
+      'begin
+      `($external-address ,(front-beaver-ip-address))
+      '($https-use-socks4a #t)
+      `($https-socks4a-server ,(string-append "127.0.0.1:" (number->string (beaver-socks-port))))
+      '($external-port 443)
+      ;;'(ball-trigger-save-config!) ;; TODO: remove
+      '(ball-save-config)
+      #t)))
+
+(wire!
+ (list ball-kernel-up?? front-beaver-ip-address)
+ post: front-trigger-transfer-of-beaver-ip-to-ball!)
+
 (define (kernel-config-socks-script cn)
-  `(if ,(is-allioideae? cn)
-       (begin
-         ($https-use-socks4a #t)
-         ($https-socks4a-server ,(if (is-garlic? cn) "127.0.0.1:9051" "127.0.0.1"))
-         ($external-port 443)
-         ($external-address ,cn))
-       (begin
-         ($external-port ,(documented-external-https-port))
-         ($external-address ,(if (ipv6-address/port? cn) cn #f))
-         ($https-use-socks4a 'maybe))))
+  (define socks-port (beaver-socks-port))
+  (cond
+   ((beaver-socks-port)
+    `(begin
+       ($https-use-socks4a #t)
+       ($https-socks4a-server ,(string-append "127.0.0.1:" (number->string (beaver-socks-port))))
+       ($external-port 443)
+       ($external-address ,(front-beaver-ip-address))))
+   ((is-allioideae? cn)
+    `(begin
+       ($https-use-socks4a #t)
+       ($https-socks4a-server ,(if (is-garlic? cn) "127.0.0.1:9051" "127.0.0.1"))
+       ($external-port 443)
+       ($external-address ,cn)))
+   (else
+    `(begin
+       ($external-port ,(documented-external-https-port))
+       ($external-address ,(if (ipv6-address/port? cn) cn #f))
+       ($https-use-socks4a 'maybe)))))
 
 (define (kernel-send-set-auth kind user password cn)
-  (unless (call-kernel
-           'begin
-           `(and (install-x509-default ,user ,password ,cn)
-                 (begin
-                   ;; not exported ($tc-tofu ,(equal? kind 'tofu))
-                   (local-id ,cn)
-                   ,(kernel-config-socks-script cn)
-                   (ball-save-config)
-                   #t)))
-	  (error "failed to set auth" kind user cn)))
+  (unless
+      (call-kernel
+       'begin
+       (add-guard-fail
+        "signing failed"
+        `(and (install-x509-default ,user ,password ,cn)
+              (begin
+                ;; not exported ($tc-tofu ,(equal? kind 'tofu))
+                (local-id ,cn)
+                ,(kernel-config-socks-script cn)
+                (ball-save-config)
+                #t))))
+    (error "failed to set auth" kind user cn)))
 
 (define (get-channels-command #!optional (source #f) (oid? #f))
   (define from
@@ -372,7 +585,9 @@ NULL;
 	     (lambda ()
 	       (set! in-initialization 0.05)
 	       (if (*init-rep! CN logname passwd large?)
-		   (log-status "Initialization done.")
+		   (begin
+                     (kick/sync! (lambda () (front-beaver-enabled:= #t)))
+                     (log-status "Initialization done."))
 		   ;; TBD: handle the error situation.  Just how?
 		   (log-error "Initialization failed.\n"))
 	       (set! in-initialization #f)
@@ -460,7 +675,7 @@ NULL;
 (define-once/or local-connect-string *entry-missing*
   (and (check-kernel-server!)
        (let ((ip (allioideae-address)))
-         (if ip (set! ip (ipconnect-string ip (if (is-allioideae? ip) 443 (external-https-port)))))
+         (if ip (set! ip (ipconnect-string ip (if (or (is-beavered? ip) (is-allioideae? ip)) 443 (external-https-port)))))
 	 (if ip
 	     (set! myip ip)
 	     (set! ip myip))
@@ -470,23 +685,27 @@ NULL;
   (not (eq? (local-connect-string) *entry-missing*)))
 
 (define (my-ip-address-display #!optional (postproc #f))
-  `(button
-    h 75 size normal ;; indent 0.05 rounded #t
-    text
-    ,(if (have-local-connect?)
-	 (local-connect-string)
-	 "Find Address")
-    action
-    ,(lambda ()
-       (cond
-        ((have-local-connect?) (chached-kernel-values-flush!))
-        (else
-         (when (and (check-kernel-server!)
-                    (eq? (local-connect-string #t) *entry-missing*))
-               (set! myip (let ((myip (host-ipaddr)))
-                            (and myip (ipconnect-string myip (external-https-port))))))))
-       (if (procedure? postproc) (postproc))
-       #f)))
+  (define (v0)
+    `(button
+      h 75 size normal ;; indent 0.05 rounded #t
+      text
+      ,(if (have-local-connect?)
+	   (local-connect-string)
+	   "Find Address")
+      action
+      ,(lambda ()
+         (cond
+          ((have-local-connect?) (chached-kernel-values-flush!))
+          (else
+           (when (and (check-kernel-server!)
+                      (eq? (local-connect-string #t) *entry-missing*))
+             (set! myip (let ((myip (host-ipaddr)))
+                          (and myip (ipconnect-string myip (external-https-port))))))))
+         (if (procedure? postproc) (postproc))
+         #f)))
+  (define (v1)
+    `(label text ,(lambda () (string-append "Address: " (or (front-beaver-ip-address) "local address not available")))))
+  (v1))
 
 (define-macro (define-cached-kernel-value name valid? convert . query)
   (let ((cache (gensym name))
@@ -519,6 +738,27 @@ NULL;
 (define-cached-kernel-value main-entry #f #f 'begin '(mesh-cert-o (tc-private-cert)))
 
 (define-cached-kernel-value https-server-port #f (documented-external-https-port) 'begin '($https-server-port))
+
+(define https-server-port2
+  (make-pin
+   initial: #f
+   pred: portnumber-or-false?
+   name: "actual https port ball kernel listens on"))
+
+(define (front-trigger-install-vpn-forward!)
+  (cond
+   ;; FIXME: should handle change of server port too, i.e. take the old forwarding down! -> sequence:
+   ((and (front-beaver-up??) (https-server-port2))
+    (let ((addr (string-append "127.0.0.1:" (number->string (https-server-port2)))))
+      (log-status "forwarding beaver vpn from " 443 " to " addr)
+      (front-beaver-call `(ot0cli-process-commands '("-service" "vpn" "tcp" "forward" "443" ,addr)))))))
+(define (front-trigger-get-http-server!)
+  (when (ball-kernel-up??)
+    (kick! (lambda () (https-server-port2 (call-kernel 'begin '($https-server-port)))))))
+(wire! ball-kernel-up?? post: front-trigger-get-http-server!)
+(if ball-kernel-found-up-on-startup (front-trigger-get-http-server!))
+(wire! (list front-beaver-up?? https-server-port2)
+       post: front-trigger-install-vpn-forward!)
 
 (define-cached-kernel-value external-https-port #f (documented-external-https-port) 'begin '($external-port))
 
@@ -793,9 +1033,19 @@ Is the service not yet running?")))
 (define pages-again-hook #f)
 
 (define (update-pages!)
-  (if (procedure? pages-again-hook)
-      (pages-again-hook))
+  (front-trigger-update-of-pages!)
   #f)
+
+(define *front-pages-update-mux* (make-mutex '*front-pages-update-required*))
+(define *front-pages-update-cv* (make-condition-variable '*front-pages-update-required*))
+
+(define (front-trigger-update-of-pages!)
+  ;;(mutex-lock! *front-pages-update-mux*)
+  (mutex-specific-set! *front-pages-update-mux* #t)
+  ;;(mutex-unlock! *front-pages-update-mux*)
+  (condition-variable-signal! *front-pages-update-cv*))
+
+(wire! (list ball-kernel-up?? front-beaver-up??) post: front-trigger-update-of-pages!)
 
 (define *unset-code* "<no code>")
 
@@ -867,7 +1117,7 @@ Is the service not yet running?")))
   (or (not app:android?) (not-using-fork-alike)))
 
 (define (uiform:pages again)
-  (define upnrunning (check-kernel-server!))
+  (define upnrunning (and (ball-kernel-up??) (front-beaver-up??)))
   (define (again1 lst) (again (list->table lst)))
   (again1
    `(
@@ -896,7 +1146,10 @@ Is the service not yet running?")))
 	      `(,@(if (show-start-stop-buttons?)
 		      `((button h 75 size header #;(indent 0.05) rounded #f text "Stop" action
 				,(lambda ()
-				   (stop-kernel-server!)
+                                   (kick!
+                                    (lambda ()
+                                      (front-beaver-enabled:= #f)
+                                      (ball-kernel-enabled:= #f)))
 				   (uiform:pages again)
 				   'main))
 			(spacer))
@@ -912,7 +1165,10 @@ Is the service not yet running?")))
 		)
               (let ((kick-start
                      (lambda ()
-                       (thread-start! (make-thread start-kernel-server! 'starting))
+                       (kick!
+                        (lambda ()
+                          (front-beaver-enabled:= #t)
+                          (ball-kernel-enabled:= #t)))
                        'starting)))
                 (if (show-start-stop-buttons?)
                     `((button h 75 size header #;(indent 0.05) rounded #f text "Start" action ,kick-start)
@@ -932,11 +1188,19 @@ Is the service not yet running?")))
       ("Status" ,(push-page 'status))
       (spacer height 50)
       (label text "Starting... stay tuned!")
+      (spacer)
+      (label text ,(lambda () (or (front-beaver-ip-address) "local address not available")))
       (redirect action
 		,(lambda ()
-                   (and (wait-for-kernel-server 1)
+                   #;(and (wait-for-kernel-server 1)
                         (begin
                           ;; (thread-sleep! 0.1)
+                          (hook-run kernel-on-init) ;; FIXME: disable/remove once old installes are updated.
+                          (public-oid #t)
+                          (uiform:pages again)
+                          'main))
+                   (and (ball-kernel-up??) (front-beaver-up??)
+                        (begin
                           (hook-run kernel-on-init) ;; FIXME: disable/remove once old installes are updated.
                           (public-oid #t)
                           (uiform:pages again)
@@ -1145,6 +1409,9 @@ Is the service not yet running?")))
       (label text ,(string-append "Data directory: " kernel-data-directory) wrap #t)
       (spacer)
       (label text ,(string-append "Kernel running as: " (symbol->string (subprocess-style))))
+      ;;; (spacer) (label text ,(lambda () (string-append "Address: " (or (front-beaver-ip-address) "local address not available"))))
+      (spacer)
+      ,(my-ip-address-display update-pages!)
       (spacer)
       (button text "Network Connections (Refresh List)" action
 	      ,(lambda ()
@@ -1154,8 +1421,6 @@ Is the service not yet running?")))
 		 #f))
       (spacer)
       (list id remote-host entries ,(kernel-connections))
-      (spacer)
-      ,(my-ip-address-display update-pages!)
       (spacer)
       #;,(lambda ()
          (cond
@@ -1280,6 +1545,11 @@ Is the service not yet running?")))
       )
      )))
 
+(define (update-pages2!)
+  (if (procedure? pages-again-hook)
+  (pages-again-hook))
+  #f)
+
 (define dispatch-events
   (let ((check-magic-keys
 	 (lambda (gui t x y)
@@ -1288,41 +1558,55 @@ Is the service not yet running?")))
 		 (if (= x EVENT_KEYESCAPE)
 		     (terminate))))))
     (cond
-     (app:android? ;;(member (system-platform) '("android"))
+     #;(app:android? ;;(member (system-platform) '("android"))
       (lambda (gui t x y)
         (##thread-heartbeat!)
         (thread-yield!)
 	(cond
          ((eq? t EVENT_IDLE)
           ;; (log-debug "idle" 1)
-          #;(kernel-send-idle)
           #t)
          (else
           ;; (check-magic-keys gui t x y)
           (glgui-event gui t x y)))))
      (else
-      (let ((last-redraw 0)
-	    (wait-step 0.2)
-	    (max-count 10))
-	(lambda (gui t x y)
+      (let ((frame-period 0.7)
+            (step 0.07)
+            (count 0))
+        (lambda (gui t x y)
           (thread-yield!)
 	  (check-magic-keys gui t x y)
 	  (cond
            ((eq? t EVENT_IDLE)
-            ;; (log-debug "idle" 1)
-            (kernel-send-idle)
             #t)
-	   ((and (= t EVENT_REDRAW) (not (expecting-progress)))
-	    (glgui-event gui t x y)
-	    (when
-	     (> last-redraw 0)
-	     (thread-sleep! (* wait-step last-redraw)))
-	    (when (< last-redraw max-count) (set! last-redraw (+ 1 last-redraw))))
+	   ((= t EVENT_REDRAW)
+            (let loop ()
+              (when (mutex-lock! *front-pages-update-mux*)
+                (cond
+                 ((mutex-specific *front-pages-update-mux*)
+                  (let loop2 ()
+                    (mutex-specific-set! *front-pages-update-mux* #f)
+                    (update-pages2!)
+                    (thread-yield!)
+                    (if (mutex-specific *front-pages-update-mux*)
+                        (loop2)
+                        (begin
+                          (glgui-event gui t x y)
+                          (set! count 0)
+                          (mutex-unlock! *front-pages-update-mux*)))))
+                 (else
+                  (glgui-event gui t x y)
+                  (cond
+                   ((expecting-progress) (mutex-unlock! *front-pages-update-mux*))
+                   ((mutex-unlock! *front-pages-update-mux* *front-pages-update-cv* (min frame-period (* count step)))
+                    (set! count 0)
+                    (loop))
+                   (else (set! count (fx+ count 1)))))))))
 	   (else
-	    (set! last-redraw -2)
+            (set! count 0)
 	    (unless
-	     (= t EVENT_MOTION)
-	     (glgui-event gui t x y))))))))))
+	        (= t EVENT_MOTION)
+	      (glgui-event gui t x y))))))))))
 
 (define (run-gui!)
   (define gui #f)
@@ -1359,8 +1643,8 @@ Is the service not yet running?")))
      ;; Set the sandbox up to be the current directory and use the above example as the script
      (glgui-widget-set! gui form 'sandbox (system-directory))
      #;(uiform:pages (lambda (pages) (glgui-widget-set! gui form 'uiform pages)))
-     (set! pages-again-hook (lambda () (uiform:pages (lambda (pages) (glgui-widget-set! gui form 'uiform pages)))))
-     (update-pages!)
+     (set! pages-again-hook (lambda () (uiform:pages (lambda (pages) (mutex-specific-set! *front-pages-update-mux* #f) (glgui-widget-set! gui form 'uiform pages)))))
+     (update-pages2!)
 
      ;; Set the fonts
      (glgui-widget-set! gui form 'fnt ascii_18.fnt)
@@ -1373,8 +1657,27 @@ Is the service not yet running?")))
 
      (unless (dbget 'username) (dbset 'username "me"))
      (unless (dbget 'CN) (dbset 'CN "localhost"))
-
-     )
+     (cond-expand
+      (android
+       (let ((appdir (object->string
+                      (jscheme-eval
+                       `(let* ((app ,(android-app-class))
+                               (this ((method "me" app)))
+                               (String (lambda (x) (new "java.lang.String" x)))
+                               )
+                          (let (
+                                (getApplicationContext (method "getApplicationContext" app))
+                                (getDataDir (method "getDataDir" "android.content.Context"))
+                                )
+                            (getDataDir (getApplicationContext this))))))))
+         (log-status "appdir is " appdir)
+         (log-status
+          "content: "
+          (call-with-input-process
+           `(path: "/system/bin/ls" arguments: ("-l" ,(string-append appdir "/files/")) #;("-lR" ,(string-append appdir "/lib/")))
+           (lambda (port) (read-line port #f)))))
+       )
+      (else #f)))
    ;; events
    (lambda (t x y) (dispatch-events gui t x y))
    ;; termination
@@ -1385,11 +1688,9 @@ Is the service not yet running?")))
      )
    ;; resume
    (lambda ()
-     (update-pages!)
+     (update-pages2!)
      (glgui-resume))
    ))
-
-(register-command! "ball" ballroll)
 
 #;(register-command! "tsrv" (lambda (args) (load "overwrite.scm") (set! kernel-server #t) (pseudo-server-task) ((debug 'exiting-via exit) 0)))
 
@@ -1397,6 +1698,11 @@ Is the service not yet running?")))
 (debug 'argc (system-cmdargc))
 (debug 'commands *registered-commands*)
 |#
+
+(cond-expand
+ (debug
+  (if (file-exists? "overwrite.scm") (load "overwrite.scm")))
+ (else #f))
 
 (cond
  ((and (>= (system-cmdargc) 3) (equal? (system-cmdargv 1) "-s"))

@@ -1,5 +1,17 @@
 ;; Helpers (maybe to be moved elsewhere)
 
+(cond-expand
+ (android
+  (define (handle-replloop-exception e)
+    (cond
+     ((unbound-global-exception? e)
+      (println port: (current-error-port) "Unbound variable " (unbound-global-exception-variable e)))
+     (else (##default-display-exception e (current-error-port))))
+    #!void))
+ (else #f))
+
+(include "~~lib/onetierzero/src/observable-notational-conventions.scm")
+
 (include "hook.scm")
 
 (define getpid (c-lambda () int "getpid"))
@@ -289,7 +301,7 @@ set_socket_name(sa_un, ___arg2);
 (define kernel-control-thread)
 (let ((tmo (vector #!eof))
       (kernel-supposed-to-run #f)
-      (check-period 15)
+      (check-period 30)
       (retry-period 1)
       (wait #f)
       (conn #f))
