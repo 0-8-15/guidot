@@ -18,13 +18,16 @@
     v))
 
 (define (exception-->printable exc)
-  (if (os-exception? exc)
-      (list 'OS-EXCEPTION (os-exception-procedure exc)
-	    (os-exception-arguments exc)
-	    (os-exception-code exc)
-	    (err-code->string (os-exception-code exc))
-	    (os-exception-message exc))
-      exc))
+  (cond
+   ((os-exception? exc)
+    (list 'OS-EXCEPTION (os-exception-procedure exc)
+	  (os-exception-arguments exc)
+	  (os-exception-code exc)
+	  (err-code->string (os-exception-code exc))
+	  (os-exception-message exc)))
+   ((unbound-global-exception? exc)
+    (println port: port "Unbound variable " (unbound-global-exception-variable exc)))
+   (else exc)))
 
 #|
 (let ((o mutex-lock!))
@@ -577,8 +580,43 @@ set_socket_name(sa_un, ___arg2);
 (define (semi-fork cmd args)
   ;; (debug 'semi-fork `(,cmd . ,args))
   (log-debug "semi-fork " 1 cmd " on " args)
-  (open-process `(path: ,(system-cmdargv 0) arguments: ("-s" ,cmd . ,args)))
-  )
+  (cond-expand
+   (android
+    (let ((datadir
+           (jscheme-eval
+            `(let* ((app ,(android-app-class))
+                    (this ((method "me" app)))
+                    )
+               (let (
+                     (getApplicationContext (method "getApplicationContext" app))
+                     (getDataDir (method "getDataDir" "android.content.Context"))
+                     )
+                 (getDataDir (getApplicationContext this)))))))
+      (if datadir
+          (let ((exe (make-pathname (list (object->string datadir) "lib") (string-append "lib" cmd ".so"))))
+            (with-exception-catcher
+             (lambda (exn) (log-debug "open-process failed " 1 (debug 'fail (exception-->printable exn))) #f)
+             (lambda () (open-process `(path: ,exe arguments: ,args stdout-redirection: #f))))))))
+   (linux
+    (open-process `(path: ,(system-cmdargv 0) arguments: ("-s" ,cmd . ,args) stdout-redirection: #f)))
+   (else
+    (with-exception-catcher
+     (lambda (exn) (log-debug "open-process failed " 1 (debug 'fail (exception-->printable exn))) #f)
+     (lambda () (debug 'Got (open-process `(path: #;"/proc/self/exe" ,(system-cmdargv 0) arguments: ("-s" ,cmd . ,args) stdout-redirection: #f))))))))
+
+(define (semi-run cmd args)
+  (let ((port (semi-fork cmd args)))
+    (and (port? port)
+         (begin
+           (close-port port)
+           (eqv? (debug 'ProcessStatus (process-status port)) 0)))))
+
+(define (semi-fork& cmd args)
+  (let ((port (semi-fork cmd args)))
+    (and (port? port)
+         (begin
+           (close-port port)
+           port))))
 
 (define *registered-commands* '())
 
@@ -680,7 +718,7 @@ static void set_proc_name(const char* name) {
 }
 #endif
 
-static void ballcontrol_deamonize()
+static void ballcontrol_daemonize()
 {
  unsigned int i=0;
  if(fork() != 0) exit(0);
@@ -720,17 +758,17 @@ end-of-c-declare
   (define (watchdog kind name proc args)
     (set-process-name! (string-append "watchdog:" name))
     (cond
-     ((eq? kind 'deamon)
-      ((c-lambda () void "ballcontrol_deamonize"))
-      (log-status "Watchdog deamon running as PID " (getpid))))
+     ((eq? kind 'daemon)
+      ((c-lambda () void "ballcontrol_daemonize"))
+      (log-status "Watchdog daemon running as PID " (getpid))))
     (let ((pid ((c-lambda () int "ln_fork"))))
       (case pid
         ((-1) (log-error "fork failed") (_exit 1)) ;; TODO: include errno
         ;; FIXME: establish signal handlers as with the original watchdog.
         ;; maybe simply use the latter here.
-        ((0) (set-process-name! name) (_exit (proc args)))
+        ((0) (set! this-pid (getpid)) (set-process-name! name) (_exit (proc args)))
         (else
-         (log-status "Kernel running as PID " pid)
+         (log-status cmd "running as PID " pid)
          (receive
           (sig success pid2) (process-wait pid #f)
           (cond ;; be sure NOT to run at_exit hooks trying to take down lambdanative
@@ -739,9 +777,13 @@ end-of-c-declare
              ((and (equal? sig 0) success)
               (log-status "Kernel PID " pid " terminated normally")
               (_exit #;(if (not kind) exit _exit) 0)) ;; still seeing that SEGV - just to be sure.
+             ((and success (equal? sig 42))
+              (log-status "Kernel PID " pid " terminated normally with code " sig)
+              (_exit #;(if (not kind) exit _exit) sig))
              (else
               (debug 'watchdog-restart-on-sig sig)
               (log-status "Kernel PID " pid " terminated " (if success "normally" "abnormal") " code " sig " restarting")
+              ;; FIXME: should this *really* use `watchdog-style` here or just #t in order not daemonize again ?
               (watchdog watchdog-style name proc args))))
            (else
             (log-error "Kernel PID " pid " process-wait returned signal " sig
@@ -749,7 +791,7 @@ end-of-c-declare
             (_exit 1))))))))
   (cond-expand
    ((or #;linux #;android)
-    (if (eq? watchdog-style #t) (set! watchdog-style 'deamon)))
+    (if (eq? watchdog-style #t) (set! watchdog-style 'daemon)))
    (else))
   (let ((e (assoc cmd *registered-commands*)))
     (if e
@@ -760,6 +802,7 @@ end-of-c-declare
 	     ;; ((c-lambda () void "microgl_close"))
 	     ;; (redirect-standard-ports-for-logging)
 	     ;; was : (exit ((cdr e) args))
+             (set! this-pid (getpid))
 	     (if watchdog-style
                  (watchdog watchdog-style (car e) (cdr e) args)
                  (_exit ((cdr e) args))))
@@ -784,11 +827,20 @@ end-of-c-declare
 	  (loop i (cons (system-cmdargv i) r))))))
 
 (define (execute-registered-command)
+  ;; (##clear-exit-jobs!)
+  (set! exit (lambda x ((c-lambda (int) void "exit") (if (pair? x) (car x) 0)))) ;; dunno yet where this segfaults
+  ;; ((c-lambda () void "lambdanative_cutoff_unwind"))
   (let ((exe (system-cmdargv 0))
 	(cmd (system-cmdargv 2)))
     (let ((e (assoc cmd *registered-commands*)))
       (if e ;; (debug 'CmdEntry e)
-	  (exit ((cdr e) (system-command-line* 4)))
+	  (if #t
+              (exit ((cdr e) (system-command-line* 4)))
+              (with-exception-catcher
+               handle-replloop-exception
+               (lambda ()
+                (debug 'CP (fork-and-call 'daemon cmd (system-command-line* 4)))
+                (exit 0))))
 	  (exit 1)))))
 
 ;; eof
