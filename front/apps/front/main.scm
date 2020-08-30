@@ -1668,7 +1668,12 @@ Is the service not yet running?")))
                                )
                           (let (
                                 (getApplicationContext (method "getApplicationContext" app))
-                                (getDataDir (method "getDataDir" "android.content.Context"))
+                                ;; getDataDir is new in API24 and deprecated
+                                ;; (getDataDir (method "getDataDir" "android.content.Context"))
+                                (getDataDir
+                                 (let ((getFilesDir (method "getFilesDir" "android.content.Context"))
+                                       (getParent (method "getParent" "java.io.File")))
+                                   (lambda (ctx) (getParent (getFilesDir ctx)))))
                                 )
                             (getDataDir (getApplicationContext this))))))))
          (log-status "appdir is " appdir)
