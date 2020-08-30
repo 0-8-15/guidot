@@ -40,11 +40,16 @@
           (input-port-timeout-set! in (socks-data-timeout))
           (loop)))))))
 
+(define (close-port/no-exception port)
+  (with-exception-catcher
+   (lambda (exn) (handle-debug-exception exn) #f)
+   (close-port port)))
+
 (define (port-pipe+close! in out #!optional (MTU 3000))
   (with-exception-catcher
    (lambda (exn)
-     (close-port in)
-     (close-port out)
+     (close-port/no-exception in)
+     (close-port/no-exception out)
      exn)
    (lambda () (port-copy-through in out MTU))))
 
@@ -242,7 +247,7 @@
       (let ((listener (table-ref listeners port #f)))
         (when listener
               (table-set! listeners port)
-              (close-port listener))))
+              (close-port/no-exception listener))))
     (set! socks-service-register! register!)
     (set! socks-service-unregister! unregister!)
     (lambda (port) (table-ref listeners port #f))))
