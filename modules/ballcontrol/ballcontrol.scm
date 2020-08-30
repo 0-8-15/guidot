@@ -267,6 +267,22 @@ set_socket_name(sa_un, ___arg2);
 
 (log-ballcontrol #t)
 
+(define ball-kernel-enabled:=
+  (make-pin
+   initial: #f
+   pred: boolean?
+   filter: (lambda (o n) (and n (rep-exists?))) ;; enable restricted
+   name: "enable ball kernel"))
+
+(define ball-kernel-up??
+  (make-pin initial: #f name: "ball kernel seen up"))
+
+#;(define ball-kernel-up??
+  (make-pin initial: #f filter: (lambda (o n) #f)))
+
+(define (ball-kernel-up:= v)
+  (kick! (lambda () (ball-kernel-up?? (and v #t)))))
+
 (define kernel-control-thread)
 (let ((tmo (vector #!eof))
       (kernel-supposed-to-run #f)
@@ -278,6 +294,7 @@ set_socket_name(sa_un, ___arg2);
     (error "kernel-control-thread: unhandled message" msg))
   (define (conn-set! v)
     (set! conn v)
+    (ball-kernel-up:= v)
     (set! wait (if conn check-period retry-period)))
   (define (close-kernel-connection!)
     (if conn (close-port conn))
@@ -395,6 +412,7 @@ set_socket_name(sa_un, ___arg2);
 	(mux (make-mutex 'ks)))
     (define (cleanup!)
       (set! process #f)
+      (ball-kernel-up:= #f)
       (possibly-remove-control-socket! #;(and (not-using-fork-alike) srv)))
     (lambda args
       (dynamic-wind
@@ -413,8 +431,8 @@ set_socket_name(sa_un, ___arg2);
                          (if (or (= p srv)
                                  (= p -1))
                              (begin
-                               (if (and (= p -1) (= c errno/child))
-                                   (log-error "failed to wait for process " srv " ECHILD: gambit stole the value" ))
+                               (if (and (= p -1))
+                                   (log-error "failed to wait for process " srv (if  (= c ((c-lambda () int "___return(ECHILD);"))) " ECHILD: gambit stole the value" "") ))
                                (cleanup!)
                                (list c n p))
                              #f)))
@@ -425,7 +443,9 @@ set_socket_name(sa_un, ___arg2);
 		    (begin
 		      (if process
                           (log-error "kernel already running")
-                          (set! process (apply (car args) (cdr args))))
+                          (begin
+                            (set! process (apply (car args) (cdr args)))
+                            #;(ball-kernel-up:= #t)))
 		      process)))
 	      (lambda () process))
 	  (lambda () (mutex-unlock! mux))))))
@@ -509,6 +529,11 @@ set_socket_name(sa_un, ___arg2);
 (define (check-kernel-server!)
   (kernel-control-call #t 'connect #f))
 
+(define ball-kernel-found-up-on-startup (check-kernel-server!))
+
+(if ball-kernel-found-up-on-startup
+    (kick! (lambda () (ball-kernel-enabled:= #t) (ball-kernel-up?? #t))))
+
 (define (wait-for-kernel-server limit)
   (let loop ((w 0))
     (cond
@@ -580,7 +605,7 @@ void lambdanative_cutoff_unwind()
     fprintf(stderr, "lambdanative_cutoff_unwind failed to register cleanup procedure, exiting\n");
     _exit(1);
   }
-*/
+//*/
  }
 }
 
