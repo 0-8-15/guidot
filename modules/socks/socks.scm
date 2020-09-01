@@ -43,7 +43,7 @@
 (define (close-port/no-exception port)
   (with-exception-catcher
    (lambda (exn) (handle-debug-exception exn) #f)
-   (close-port port)))
+   (lambda () (close-port port))))
 
 (define (port-pipe+close! in out #!optional (MTU 3000))
   (with-exception-catcher
