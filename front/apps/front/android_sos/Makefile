@@ -19,6 +19,7 @@ MATCH_FILE = $(shell echo $(SYS_MOD_PATH)/akwmatch/akwmatch.scm |cksum|cut -f 1 
 LWIP_FILE =  $(shell echo $(SYS_MOD_PATH)/lwip/lwip.scm |cksum|cut -f 1 -d " ")
 SOCKS_FILE =  $(shell echo $(SYS_MOD_PATH)/socks/socks.scm |cksum|cut -f 1 -d " ")
 UNSOCKET_FILE =  $(shell echo $(SYS_MOD_PATH)/unsocket/unsocket.scm |cksum|cut -f 1 -d " ")
+DAEMONIAN_FILE =  $(shell echo $(SYS_MOD_PATH)/daemonian/daemonian.scm |cksum|cut -f 1 -d " ")
 IRREGEX_FILE =  $(shell echo $(SYS_MOD_PATH)/irregex2/irregex2.scm |cksum|cut -f 1 -d " ")
 
 BEAVER_FILE =  $(shell echo $(SYS_MOD_PATH)/beaver/beaver.scm |cksum|cut -f 1 -d " ")
@@ -61,11 +62,13 @@ CXXFLAGS+=$(INCLUDES)
 00OT0_CLI_GAMBITC_FILES=$(SYS_BUILD_DIR)/$(LIKELY_FILE).c $(SYS_BUILD_DIR)/$(MATCH_FILE).c \
 	$(OT0_LIBSRC_DIR)/ot0.c \
 	$(SYS_BUILD_DIR)/$(IRREGEX_FILE).c $(SYS_BUILD_DIR)/$(UNSOCKET_FILE).c $(SYS_BUILD_DIR)/$(SOCKS_FILE).c \
+	$(DAEMONIAN_FILE).c \
 	$(SYS_BUILD_DIR)/$(LWIP_FILE).c \
 	$(OT0_LIBSRC_DIR)/ot0use.c $(OT0_LIBSRC_DIR)/ot0cli.c
 
 OT0_CLI_GAMBITC_FILES=$(SYS_BUILD_DIR)/$(LIKELY_FILE).c $(SYS_BUILD_DIR)/$(MATCH_FILE).c \
 	$(SYS_BUILD_DIR)/$(LWIP_FILE).c \
+	$(DAEMONIAN_FILE).c \
 	$(SYS_BUILD_DIR)/$(BEAVER_FILE).c \
 	$(SYS_BUILD_DIR)/$(IRREGEX_FILE).c $(SYS_BUILD_DIR)/$(UNSOCKET_FILE).c $(SYS_BUILD_DIR)/$(SOCKS_FILE).c
 
@@ -76,13 +79,14 @@ ot0cli_.c: $(OT0_CLI_GAMBITC_FILES)
 	$(OT0_LIBSRC_DIR)/ot0-hooks.o $(OT0_LIBSRC_DIR)/ot0.o \
 	$(SYS_BUILD_DIR)/$(IRREGEX_FILE).o $(SYS_BUILD_DIR)/$(UNSOCKET_FILE).o $(SYS_BUILD_DIR)/$(SOCKS_FILE).o \
 	$(SYS_BUILD_DIR)/$(LWIP_FILE).o \
-	$(OT0_LIBSRC_DIR)/ot0use.o $(OT0_LIBSRC_DIR)/ot0cli.o
+	$(OT0_LIBSRC_DIR)/ot0use.o $(DAEMONIAN_FILE).o $(OT0_LIBSRC_DIR)/ot0cli.o
 
 OT0_CLI_OBJECTS = $(SYS_BUILD_DIR)/$(LIKELY_FILE).o $(SYS_BUILD_DIR)/$(MATCH_FILE).o \
 	$(SYS_BUILD_DIR)/$(BEAVER_FILE).o \
 	$(SYS_BUILD_DIR)/$(IRREGEX_FILE).o $(SYS_BUILD_DIR)/$(UNSOCKET_FILE).o $(SYS_BUILD_DIR)/$(SOCKS_FILE).o \
 	$(SYS_BUILD_DIR)/$(LWIP_FILE).o \
-	$(OT0_LIBSRC_DIR)/ot0.o $(OT0_LIBSRC_DIR)/ot0use.o # $(OT0_LIBSRC_DIR)/ot0cli.o
+	$(OT0_LIBSRC_DIR)/ot0.o $(OT0_LIBSRC_DIR)/ot0use.o \
+	$(DAEMONIAN_FILE).o # $(OT0_LIBSRC_DIR)/ot0cli.o
 
 REALLY_STATIC=-static -pthread
 

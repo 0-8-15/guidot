@@ -169,7 +169,9 @@ spool.db-journal
 
 (define (kernel-send-stop!) (kernel-control-send! 'stop!))
 
-(define (kernel-control-set-running! flag) (kernel-control-send! 'set-running flag))
+(define (kernel-control-set-running! flag)
+  ;; FIXME: control via ball-kernel-enabled:=
+  (kernel-control-send! 'set-running flag))
 
 (define (close-kernel-connection!) (kernel-control-send! 'close!))
 
@@ -683,15 +685,6 @@ void lambdanative_cutoff_unwind()
 #endif
 }
 
- #include <fcntl.h>
- static int log_to_file(char *fn)
- {
-  if(freopen(fn, "a", stdout) == NULL) return 1;
-  if(freopen(fn, "a", stderr) == NULL) return 2;
-  // if(fprintf(stderr, "%s", "\r\nredirected output into this file\r\n")<0) return 3;
-  // if(fflush(stderr)!=0) return 4;
-  return 0;
- }
 end-of-c-declare
 )
 
@@ -707,33 +700,14 @@ end-of-c-declare
 
 (define (redirect-standard-ports-for-logging)
   (if log:on
-      (let* ((clfn (if #t log:file
-                       (string-append log:file ".C.txt")))
-             (rc ((c-lambda (char-string) int "log_to_file") clfn)))
-        (if (eq? rc 0)
-            (begin
-              (current-error-port (##open-predefined 2 clfn 2))
-              (current-output-port (##open-predefined 2 clfn 1)))
-            (log-error "redirect failed rc " rc " to file " clfn)))
-      #;(if (member (system-platform) '("android"))
-          (unless
-           ((c-lambda (char-string) bool "log_to_file") "/dev/null")
-           (log-error "redirect failed to file " "/dev/null")))))
+      (let ((clfn (if #t log:file
+                      (string-append log:file ".C.txt"))))
+        (or (and (redirect-standard-port! 1 clfn)
+                 (redirect-standard-port! 2 clfn))
+            (log-error "redirect failed rc " rc " to file " clfn)))))
 
 (c-declare
 #<<end-of-c-declare
-#if defined(ANDROID) || defined(LINUX)
-#include <sys/prctl.h>
-#include <errno.h>
-#define proc_name_buf_size 15
-static void set_proc_name(const char* name) {
-  static char buf[proc_name_buf_size+1];
-  strncpy(buf, name, proc_name_buf_size);
-  if(prctl(PR_SET_NAME, (unsigned long) buf, 0, 0, 0))
-    fprintf(stderr, "ERROR: PR_SET_NAME %s\n", strerror(errno));
-  // else fprintf(stderr, "PR_SET_NAME success: %s\n", buf);
-}
-#endif
 
 static void ballcontrol_daemonize()
 {
@@ -760,17 +734,13 @@ static int ln_fork()
  lambdanative_cutoff_unwind();
  for(i=1;i<NSIG;++i) signal(i,SIG_DFL);
  umask(0);
- for(i=3;i<FD_SETSIZE;++i) close(i);
+ for(i=4;i<FD_SETSIZE;++i) close(i);
  return 0;
 }
 end-of-c-declare
 )
 
 (define (fork-and-call watchdog-style cmd args)
-  (define set-process-name!
-    (cond-expand
-     ((or android #;linux) (c-lambda (char-string) void "set_proc_name"))
-     (else (lambda (n) (debug 'set-process-name! 'ignored) #f))))
   (define _exit (c-lambda (int) void "_exit"))
   (define (watchdog kind name proc args)
     (set-process-name! (string-append "watchdog:" name))
@@ -832,7 +802,7 @@ end-of-c-declare
                (log-status "Watchdog running as PID " pid)
                pid)
               (else
-               (log-status "Forked watchdog deamon for " cmd)
+               (log-status "Forked watchdog daemon for " cmd)
                ;; FIXME: what should we return here? #t, #f, 0, 1 all result in garbage
                pid)))))
 	(error "no procedure registered for command " cmd))))

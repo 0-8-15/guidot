@@ -208,16 +208,21 @@ NULL;
      ((and e (not u)) (front-beaver-start!))
      ((and u (not e)) (front-beaver-stop!)))))
 
+(define (front-beaver-reset-logging! #!key (on log:on) (to log:file))
+  (if (front-beaver-up??)
+      (front-beaver-call `(ot0cli-process-commands '("-change" "daemonian-stderr-file" ,(if on to "/dev/null") ":")))))
+
 (wire!
  (list front-beaver-enabled:= front-beaver-up??)
  post: front-trigger-beaver-start-stop!)
 
 (thread-start!
+ ;; NOTE: we might not need this thread at all.
  (make-thread
   (lambda ()
-    (do () (#t)
-      (thread-sleep! 10)
-      (let ((active (debug 'BA (front-test-beaver-active))))
+    (do () (#f)
+      (thread-sleep! 60)
+      (let ((active (front-test-beaver-active)))
         (unless (eq? active (front-beaver-up??))
           (kick! (lambda () (front-beaver-up?? active)))))))
   'watch-beaver))
@@ -867,6 +872,7 @@ NULL;
 (define (reset-logging!)
   (log-reset!)
   (reset-kernel-logging!)
+  (front-beaver-reset-logging!)
   (log-status "Log of " (public-oid) " " (allioideae-address))
   (call-kernel 'begin '(log-reset!)))
 
@@ -1495,9 +1501,9 @@ Is the service not yet running?")))
                       (terminate))))))
       (spacer)
       ,@(if (eq? (subprocess-style) 'fork)
-            `((button text "Kill Kernel Server" action ,(lambda () (kernel-server-kill!) (update-pages!)))
+            `((button text "Kill Kernel Server" action ,(lambda () (kernel-server-kill!) (front-beaver-stop!) (update-pages!)))
               (spacer)
-              (button text "Restart Kernel Server" action ,(lambda () (call-kernel 'begin '(exit 1)) (chached-kernel-values-flush!) (update-pages!))))
+              (button text "Restart Kernel Server" action ,(lambda () (call-kernel 'begin '(exit 1)) (front-beaver-stop!) (chached-kernel-values-flush!) (update-pages!))))
             '((spacer)))
       #;,(lambda ()
 	 (if upnrunning
