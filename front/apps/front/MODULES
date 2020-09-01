@@ -1,3 +1,3 @@
 config eventloop ln_core ln_glcore ln_glgui magic
-likely akwmatch unsocket chckn ballcontrol lwip socks beaver daemonian
+likely akwmatch unsocket daemonian chckn ballcontrol lwip socks beaver
 uiform androidforeground

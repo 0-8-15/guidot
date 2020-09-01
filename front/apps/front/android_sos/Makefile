@@ -25,12 +25,13 @@ IRREGEX_FILE =  $(shell echo $(SYS_MOD_PATH)/irregex2/irregex2.scm |cksum|cut -f
 BEAVER_FILE =  $(shell echo $(SYS_MOD_PATH)/beaver/beaver.scm |cksum|cut -f 1 -d " ")
 
 show:
-	echo likely $(LIKELY_FILE)
-	echo match $(MATCH_FILE)
-	echo lwip $(LWIP_FILE)
-	echo socks $(SOCKS_FILE)
-	echo unsocket $(UNSOCKET_FILE)
-	echo irregex $(IRREGEX_FILE)
+	@echo likely $(LIKELY_FILE)
+	@echo match $(MATCH_FILE)
+	@echo lwip $(LWIP_FILE)
+	@echo socks $(SOCKS_FILE)
+	@echo unsocket $(UNSOCKET_FILE)
+	@echo beaver $(BEAVER_FILE)
+	@echo daemonian $(DAEMONIAN_FILE)
 
 OT0_LIBSRC_DIR = $(SYS_PREFIX)/lib/onetierzero
 
@@ -62,13 +63,13 @@ CXXFLAGS+=$(INCLUDES)
 00OT0_CLI_GAMBITC_FILES=$(SYS_BUILD_DIR)/$(LIKELY_FILE).c $(SYS_BUILD_DIR)/$(MATCH_FILE).c \
 	$(OT0_LIBSRC_DIR)/ot0.c \
 	$(SYS_BUILD_DIR)/$(IRREGEX_FILE).c $(SYS_BUILD_DIR)/$(UNSOCKET_FILE).c $(SYS_BUILD_DIR)/$(SOCKS_FILE).c \
-	$(DAEMONIAN_FILE).c \
+	$(SYS_BUILD_DIR)/$(DAEMONIAN_FILE).c \
 	$(SYS_BUILD_DIR)/$(LWIP_FILE).c \
 	$(OT0_LIBSRC_DIR)/ot0use.c $(OT0_LIBSRC_DIR)/ot0cli.c
 
 OT0_CLI_GAMBITC_FILES=$(SYS_BUILD_DIR)/$(LIKELY_FILE).c $(SYS_BUILD_DIR)/$(MATCH_FILE).c \
 	$(SYS_BUILD_DIR)/$(LWIP_FILE).c \
-	$(DAEMONIAN_FILE).c \
+	$(SYS_BUILD_DIR)/$(DAEMONIAN_FILE).c \
 	$(SYS_BUILD_DIR)/$(BEAVER_FILE).c \
 	$(SYS_BUILD_DIR)/$(IRREGEX_FILE).c $(SYS_BUILD_DIR)/$(UNSOCKET_FILE).c $(SYS_BUILD_DIR)/$(SOCKS_FILE).c
 
@@ -78,15 +79,16 @@ ot0cli_.c: $(OT0_CLI_GAMBITC_FILES)
 00OT0_CLI_OBJECTS = $(SYS_BUILD_DIR)/$(LIKELY_FILE).o $(SYS_BUILD_DIR)/$(MATCH_FILE).o \
 	$(OT0_LIBSRC_DIR)/ot0-hooks.o $(OT0_LIBSRC_DIR)/ot0.o \
 	$(SYS_BUILD_DIR)/$(IRREGEX_FILE).o $(SYS_BUILD_DIR)/$(UNSOCKET_FILE).o $(SYS_BUILD_DIR)/$(SOCKS_FILE).o \
-	$(SYS_BUILD_DIR)/$(LWIP_FILE).o \
-	$(OT0_LIBSRC_DIR)/ot0use.o $(DAEMONIAN_FILE).o $(OT0_LIBSRC_DIR)/ot0cli.o
+	$(SYS_BUILD_DIR)/$(LWIP_FILE).o  $(SYS_BUILD_DIR)/$(DAEMONIAN_FILE).o \
+	$(OT0_LIBSRC_DIR)/ot0use.o $(OT0_LIBSRC_DIR)/ot0cli.o
 
 OT0_CLI_OBJECTS = $(SYS_BUILD_DIR)/$(LIKELY_FILE).o $(SYS_BUILD_DIR)/$(MATCH_FILE).o \
 	$(SYS_BUILD_DIR)/$(BEAVER_FILE).o \
 	$(SYS_BUILD_DIR)/$(IRREGEX_FILE).o $(SYS_BUILD_DIR)/$(UNSOCKET_FILE).o $(SYS_BUILD_DIR)/$(SOCKS_FILE).o \
 	$(SYS_BUILD_DIR)/$(LWIP_FILE).o \
+	$(SYS_BUILD_DIR)/$(DAEMONIAN_FILE).o \
 	$(OT0_LIBSRC_DIR)/ot0.o $(OT0_LIBSRC_DIR)/ot0use.o \
-	$(DAEMONIAN_FILE).o # $(OT0_LIBSRC_DIR)/ot0cli.o
+	# $(OT0_LIBSRC_DIR)/ot0cli.o
 
 REALLY_STATIC=-static -pthread
 
@@ -101,7 +103,7 @@ ot0_real:	ot0cli_.o
 ot0cli.o: $(OT0_LIBSRC_DIR)/ot0cli.c
 	$(SYS_CC) -c -o $@ $<
 
-ot0: $(00OT0_CLI_OBJECTS) ot0cli_.o show
+ot0:  show $(00OT0_CLI_OBJECTS) ot0cli_.o
 	$(SYS_CXX) -o $@ $(REALLY_STATIC) -L. -L $(SYS_PREFIX)/lib -L $(SYS_ROOT)/lib -L $(GSC_SYSPREFIX)/lib \
 	 $(00OT0_CLI_OBJECTS) ot0cli_.o \
 	 -llwipcore -lgambit -lzerotiercore -ldl -lc # -lutil -lpthread -lc

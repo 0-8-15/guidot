@@ -135,6 +135,8 @@ end-of-c-declare
 EOF
 ))
 
+(include "~~lib/onetierzero/src/observable-notational-conventions.scm")
+
 (define daemonian-stdout-file
   (make-pin
    initial: #f

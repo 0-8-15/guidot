@@ -10,8 +10,6 @@
     #!void))
  (else #f))
 
-(include "~~lib/onetierzero/src/observable-notational-conventions.scm")
-
 (include "hook.scm")
 
 (define getpid (c-lambda () int "getpid"))
