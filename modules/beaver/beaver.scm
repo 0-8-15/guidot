@@ -10,10 +10,10 @@
   )
  (else
 
+  (define-cond-expand-feature embedded-module)
+
   (include "~~/lib/onetierzero/ot0.scm")
   (include "~~/lib/onetierzero/src/ot0use.scm")
-
-  (define-cond-expand-feature embedded-module)
 
   (include "~~/lib/onetierzero/src/ot0cli.scm")
 
