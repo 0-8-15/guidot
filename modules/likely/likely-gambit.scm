@@ -76,6 +76,8 @@
   (stm-current-global-clock exported-stm-current-global-clock)
   $async-exceptions
   $debug-trace-triggers
+  ;; Higher level (kinds)
+  make-pin pin? PIN
   ;; Debug & Deprecated
   ;;
   stm-atomic?
@@ -86,6 +88,7 @@
   (include "0011-stm-imports.scm")
   (include "0020-stm-impl.scm")
   (include "0100-observable.scm")
+  (include "0110-observable-kinds.scm")
   ;; NOTE: The module-end MUST be within the let form.
   (module-likely-end))
 
