@@ -47,19 +47,20 @@ lwip_build() # build using plain make
     # rm -rf ${BUILD_TMP}
     NORMALIZED_OSNAME=$OSNAME
     lncc=`echo $SYS_CC| cut -d ' ' -f 1`
-    EXTRACONF="$EXTRACONF -DCMAKE_C_COMPILER=${lncc}"
-    EXTRACONF="$EXTRACONF -DCMAKE_CXX_COMPILER=${lncc}"
+    EXTRACONF=""
+    # EXTRACONF="$EXTRACONF -DCMAKE_C_COMPILER=${lncc}"
+    # EXTRACONF="$EXTRACONF -DCMAKE_CXX_COMPILER=${lncc}"
     lnccflags0=`echo $SYS_CC| cut -d ' ' -f 2-`
     LWIP_ARCH=$SYS_ARCH # $(uname -m)
     case $SYS_PLATFORM in
         linux)
-            EXTRACONF="$EXTRACONF -DCMAKE_SYSTEM_NAME=Linux"
+            # EXTRACONF="$EXTRACONF -DCMAKE_SYSTEM_NAME=Linux"
             LWIP_PORT_DEF=""
             LWIP_PORT_TARGET=lwipcontribportunix
             LWIP_PORT_I=contrib/ports/unix/port
             LWIP_PORT=ports/unix;;
         android)
-            EXTRACONF="$EXTRACONF -DCMAKE_SYSTEM_NAME=Android -DCMAKE_ANDROID_API=${ANDROIDAPI} -DCMAKE_ANDROID_STANDALONE_TOOLCHAIN=${android_customtoolchain}"
+            # EXTRACONF="$EXTRACONF -DCMAKE_SYSTEM_NAME=Android -DCMAKE_ANDROID_API=${ANDROIDAPI} -DCMAKE_ANDROID_STANDALONE_TOOLCHAIN=${android_customtoolchain}"
             LWIP_ARCH_VARIANT=Android
             LWIP_PORT_DEF="-fPIC"
             LWIP_PORT_TARGET=lwipcontribportunix
@@ -71,14 +72,17 @@ lwip_build() # build using plain make
             EXTRACONF="$EXTRACONF -DCMAKE_SYSTEM_NAME=Win32"
             LWIP_PORT_TARGET=lwipcontribportwindows
             LWIP_PORT_I=contrib/ports/win32
-            LWIP_PORT=ports/win32 ;;
+            LWIP_PORT=ports/win32
+            cp ${D0}/contrib/examples/example_app/lwipcfg.h.example ${D0}/contrib/ports/win32/include/lwipcfg.h
+            EXTRACONF="PCAP_DIR=$SYS_PREFIX"
+            ;;
         *) echo lwip/make.sh unhandled target platform '"'$SYS_PLATFORM'"' ;;
     esac
     # Where to place results
     test -f ${D0}/src/include/lwip/lwipopts.h || cp $libdir/lwipopts.h ${D0}/src/include/lwip/
 # TODO make ...
     cp $libdir/BuildMakefile ${D0}/Makefile
-    make -C ${D0} LWIPARCH=${LWIP_PORT_I} LWIP_PORT=${LWIP_PORT} LWIP_ARCH_VARIANT=${LWIP_ARCH_VARIANT} CC=${lncc} "LWIP_PORT_DEF=${LWIP_PORT_DEF}" # $EXTRACONF
+    make -C ${D0} LWIPARCH=${LWIP_PORT_I} LWIP_PORT=${LWIP_PORT} LWIP_ARCH_VARIANT=${LWIP_ARCH_VARIANT} CC=${lncc} "LWIP_PORT_DEF=${LWIP_PORT_DEF}" $EXTRACONF
     # install
     cp -ar ${D0}/${LWIP_PORT_I}/include/* $SYS_PREFIX/include/
     cp -ar src/include/* $SYS_PREFIX/include/

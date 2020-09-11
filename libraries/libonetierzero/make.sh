@@ -1,6 +1,6 @@
 VERSION=0.1.4
 PKGURL=onetierzero-$VERSION.tar.gz
-PKGHASH=f85dd72e84894cce3ee309159457d26ab413da2e
+PKGHASH=a46b827feb0025113facc4bf4721ca9cf9a824fb
 
 if [ ! -f testing ]; then
 
@@ -19,6 +19,7 @@ case $SYS_PLATFORM in
     win32)
      TARGET_FEATURES="-feature mingw32 -feature windows"
      EXTRACONF="$EXTRACONF OSTYPE=Win32"
+     CXXFLAGS="${CXXFLAGS} -D_WIN32"
      ;;
     win64) TARGET_FEATURES="-feature mingw64 -feature windows"
            EXTRACONF="$EXTRACONF OSTYPE=Win64"

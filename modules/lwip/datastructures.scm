@@ -266,6 +266,26 @@ ___return(result);"))))
   (nw-vector-range+pos-assert ip6addr->string 1 u8 offset 16)
   ((c-lambda (scheme-object) char-string "___return(local_ip6addr_ntoa(___BODY(___arg1)));") u8))
 
+(c-declare "static inline char * local_ip4addr_ntoa(const ip4_addr_p_t *addr) {
+ static char buf[16]; char *p;
+ ip4addr_ntoa_r(addr, buf, 16);
+ return buf;
+}")
+
+(define (ip4addr->string u8 #!optional (offset 0))
+  (nw-vector-range+pos-assert ip4addr->string 1 u8 offset 4)
+  ((c-lambda (scheme-object) char-string "___return(local_ip4addr_ntoa(___BODY(___arg1)));") u8))
+
+(define (ipaddr->string vec)
+  (cond
+   ((and (u16vector? vec) (eqv? (u16vector-length vec) 8))
+    ((c-lambda (scheme-object) char-string "___return(local_ip6addr_ntoa(___BODY(___arg1)));") vec))
+   ((and (u8vector? vec) (eqv? (u8vector-length vec) 16))
+    ((c-lambda (scheme-object) char-string "___return(local_ip6addr_ntoa(___BODY(___arg1)));") vec))
+   ((and (u8vector? vec) (eqv? (u8vector-length vec) 4))
+    ((c-lambda (scheme-object) char-string "___return(local_ip4addr_ntoa(___BODY(___arg1)));") vec))
+   (else (error "ipaddr->string: not a IP address" vec))))
+
 (c-declare "static inline char * local_IP6H_SRC_s(const struct ip6_hdr *hdr)
 {return local_ip6addr_ntoa(&hdr->src);}")
 

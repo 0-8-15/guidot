@@ -166,6 +166,8 @@ ___return(result);"))
       str result)
      result)))
 
+(define (lwip-string->ip-address str) (or (lwip-string->ip6-address str) (lwip-string->ip4-address str)))
+
 ;;; C Types
 
 (c-define-type void* (pointer "void"))
@@ -199,8 +201,58 @@ static int call_scm_lwip_nd6_get_gw(void *in, struct lwip_nd6_get_gw__args *args
 }
 
 // just for gambit_lwip_nd6_get_gw debugging
+#if WIN32
+#include <windows.h>
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#define lwip_inet_ntop inet_ntop
+#define lwip_inet_pton inet_pton
+#define EAFNOSUPPORT WSAEAFNOSUPPORT
+#else
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <errno.h>
+#endif
+
+const char *lwip_inet_ntop(int af, const void *src, char *dst, socklen_t size)
+{
+ struct sockaddr* sa = src;
+ if(sa->sa_family == AF_INET6) {
+   struct sockaddr_in6* sin6 = (struct sockaddr_in6*) sa;
+   ip6addr_ntoa_r(&sin6->sin6_addr, dst, size);
+   return dst;
+ } else if (sa->sa_family == AF_INET) {
+   struct sockaddr_in* sin = (struct sockaddr_in*) sa;
+   ip4addr_ntoa_r(&sin->sin_addr, dst, size);
+   return dst;
+ } else {
+   *dst='\0';
+   errno = EAFNOSUPPORT;
+   return NULL;
+ }
+}
+int lwip_inet_pton(int af, const char *src, void *dst)
+{
+ int err;
+ switch (af) {
+  case AF_INET:
+   err = ip4addr_aton(src, (ip4_addr_t *)dst);
+   break;
+  case AF_INET6: {
+   ip6_addr_t addr;
+   err = ip6addr_aton(src, &addr);
+   if (err) {
+    memcpy(dst, &addr.addr, sizeof(addr.addr));
+   }
+   break;
+  }
+  default:
+   err = -1;
+   errno = EAFNOSUPPORT;
+   break;
+ }
+ return err;
+}
 
 const ip6_addr_t *gambit_lwip_nd6_get_gw(struct netif *netif, const ip6_addr_t *dest)
 {
@@ -210,7 +262,7 @@ const ip6_addr_t *gambit_lwip_nd6_get_gw(struct netif *netif, const ip6_addr_t *
  lwip_calling_back(NULL, call_scm_lwip_nd6_get_gw, &r);
  return r.result;
  */
- char buf[46];
+ char buf[INET6_ADDRSTRLEN];
 ip6_addr_t dummy;
 ip6_addr_set(&dummy, dest);
 inet_ntop(AF_INET6, dest->addr, buf, INET6_ADDRSTRLEN);
@@ -471,8 +523,10 @@ lwip-core-lock-end
 
 #include "lwip/init.h" // do we REALLY need that?
 
+#if WIN32
+#else
 #include <sys/socket.h>
-#include <netinet/in.h>
+#endif
 
 /* Define those to better describe your network interface. */
 #define IFNAME0 'e'

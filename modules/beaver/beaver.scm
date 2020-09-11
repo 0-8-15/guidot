@@ -12,10 +12,22 @@
 
   (define-cond-expand-feature embedded-module)
 
-  (include "~~/lib/onetierzero/ot0.scm")
-  (include "~~/lib/onetierzero/src/ot0use.scm")
+  (c-declare
+   #<<end-of-c-declare
 
-  (include "~~/lib/onetierzero/src/ot0cli.scm")
+#if WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <time.h>
+#endif
+
+end-of-c-declare
+)
+
+  (include "~~tgtlib/onetierzero/ot0.scm")
+  (include "~~tgtlib/onetierzero/src/ot0use.scm")
+
+  (include "~~tgtlib/onetierzero/src/ot0cli.scm")
 
   (define beaver-start! ot0cli-process-commands)
 
