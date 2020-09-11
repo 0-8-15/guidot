@@ -1,1 +1,1 @@
-config ln_core gamsock likely zerotiercore lwip socks
+config ln_core likely akwmatch unsocket daemonian lwip socks beaver httpproxy
