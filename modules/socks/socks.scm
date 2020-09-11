@@ -8,15 +8,18 @@
   (##default-display-exception e (current-error-port))
   #!void)
 
-(define (read-line/null-terminated port #!optional (mxlen 64))
-  ;;(define (read-line/null-terminated port) (read-line port #\nul))
+(define (u8-read-line2 port separator #!optional (mxlen 128))
+  ;; avoid character buffer which disturbs when using bulk io.
   (let ((in (make-string mxlen)))
     (do ((off 0 (+ off 1))
          (n (read-u8 port) (read-u8 port)))
-        ((or (eqv? n 0) (eof-object? n))
+        ((or (eqv? n separator) (eof-object? n))
          (substring in 0 off))
-      ;; overflows at 64 - is just a PoC
+      ;; overflows at mxlength - is just a PoC
       (string-set! in off (integer->char n)))))
+
+(define (read-line/null-terminated port #!optional (mxlen 128))
+  (u8-read-line2 port 0))
 
 (define (port-copy-through in out #!optional (MTU 3000))
   ;; Copy `in` to `out` and close the input side of `in` and the
