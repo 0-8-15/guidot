@@ -37,7 +37,7 @@ end-of-c-declare
 
 (cond-expand
  ((or debug enable-beaver-debug)
-  (define-macro (beaver-debug l v) `(debug ,l ,v)))
+  (define-macro (beaver-debug l v) `(log-debug ,l 1 ": " (debug ,l ,v))))
  (else
   (define-macro (beaver-debug l v) #!void)))
 

@@ -35,9 +35,7 @@
 	  (os-exception-code exc)
 	  (err-code->string (os-exception-code exc))
 	  (os-exception-message exc)))
-   ((unbound-global-exception? exc)
-    (println port: port "Unbound variable " (unbound-global-exception-variable exc)))
-   (else exc)))
+   (else (call-with-output-string (lambda (port) (display-exception exc port))))))
 
 #|
 (let ((o mutex-lock!))
@@ -330,7 +328,7 @@ set_socket_name(sa_un, ___arg2);
     (log-ballcontrol "try-restart: connection " conn)
     ;;(run/boolean "ps" "-a")
     (unless conn (retry-to-connect 10)
-            (log-ballcontrol "re-establisch connection?: " conn)
+            (log-ballcontrol "re-established connection?: " conn)
             (unless conn (restart-kernel-and-custom-services!))))
   (define (idle)
     (if conn
@@ -700,9 +698,10 @@ end-of-c-declare
   (if log:on
       (let ((clfn (if #t log:file
                       (string-append log:file ".C.txt"))))
-        (or (and (redirect-standard-port! 1 clfn)
-                 (redirect-standard-port! 2 clfn))
-            (log-error "redirect failed rc " rc " to file " clfn)))))
+        (or (redirect-standard-port! 1 clfn)
+            (log-error "failed to redirect stdout to file " clfn))
+        (or (redirect-standard-port! 2 clfn)
+            (log-error "failed to redirect stderr to file " clfn)))))
 
 (c-declare
 #<<end-of-c-declare

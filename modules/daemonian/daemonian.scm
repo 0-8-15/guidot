@@ -54,6 +54,7 @@ static int redirect_to_file(int n, char *fn)
  return 0;
 }
 
+#if !WIN32
 static void daemonian_daemonize()
 {
  unsigned int i=0;
@@ -71,6 +72,7 @@ static void daemonian_daemonize()
  // for(i=3;i<FD_SETSIZE;++i) close(i);
  if(setsid() == -1) fprintf(stderr, "ERROR: setsid: %s\n", strerror(errno));
 }
+#endif
 
 extern ___SCMOBJ ___setup_child_interrupt_handling();
 
@@ -99,10 +101,35 @@ end-of-c-declare
 (define (_exit #!optional (code 0))
   ((c-lambda (int) void "_exit") code))
 
-(define (daemonize thunk #!optional (exit-procedure _exit))
-  (if exit-procedure (set! exit exit-procedure))
-  ((c-lambda () void "daemonian_daemonize"))
-  (thunk))
+(cond-expand
+ (win32
+  (define (daemonize thunk #!optional (exit-procedure _exit))
+    (cond
+     ((procedure? thunk) (error "Not implemented: `daemonize thunk` on windows"))
+     ((pair? thunk)
+      (let ((port (semi-fork (car thunk) (cdr thunk))))
+        (close-port port)
+        (thread-sleep! 2)  ;; otherwise forked process will die during startup
+        (exit 0)
+        (debug 'STATUS (process-status port))))
+     (else (error "daemonize: illegal argument" thunk)))))
+ (else
+  (define (daemonize thunk #!optional (exit-procedure _exit))
+    (if exit-procedure (set! exit exit-procedure))
+    ((c-lambda () void "daemonian_daemonize"))
+    (cond
+     ((procedure? thunk)
+      ((c-lambda () void "daemonian_daemonize"))
+      (thunk))
+     ((pair? thunk)
+      (let ((port (semi-fork (car thunk) (cdr thunk))))
+        (close-port port)
+        (thread-sleep! 2)  ;; otherwise forked process will die during startup
+        (exit 0)
+        (debug 'STATUS (process-status port)))
+      ;; does not work (open-process '(path: "stty" arguments: ("sane") stdout-redirection: #f stdin-redirection: #f))
+      (_exit 0))
+     (else (error "daemonize: illegal argument" thunk))))))
 
 (define (cerberus cmd args #!key (input #f) (max-fast-restarts 5) (restart-time-limit 10))
   (define (once!)
@@ -128,14 +155,18 @@ end-of-c-declare
 (define readlink
   (c-lambda (char-string) char-string
 #<<EOF
+#if WIN32
+fprintf(stderr, "NYI readlink on windows");
+#else
   char buf[1024];
   int len=readlink(___arg1, buf, 1024);
   if(len>0) ___return(buf);
+#endif
   ___return(NULL);
 EOF
 ))
 
-(include "~~lib/onetierzero/src/observable-notational-conventions.scm")
+(include "~~tgtlib/onetierzero/src/observable-notational-conventions.scm")
 
 (define daemonian-stdout-file
   (make-pin
@@ -161,27 +192,37 @@ EOF
    pred: output-port?
    name: 'daemonian-stderr-port))
 
-(namespace ("daemonian#" standard-file-change!))
+(define (daemonian-redirect-standard-file-descriptors) #f)
+
+(namespace ("daemonian#" standard-file-change! standard-port-change!))
 
 (define (standard-file-change! old1 new1 old2 new2)
   (define (file-change! out-pin param key old new)
-    (if (and (not (equal? old new))
-             (redirect-standard-fd! key new))
-        ;; FIXME: ##open-predefined leaks memory, open-fd-port does not handle ioctrl
-        (let ((port (#;open-fd-port ##open-predefined 2 new key)))
-          (param port)
-          (lambda () (out-pin port)))
+    (if (not (equal? old new))
+        (let ((port (open-output-file `(path: ,new append: #t))))
+          (and
+           (port? port)
+           (begin
+             (when (daemonian-redirect-standard-file-descriptors)
+               (unless (redirect-standard-fd! key new)
+                 (println port: (current-error-port) "Error: failed to redirect fd " key " to file: " new)))
+             (param port)
+             (lambda () (out-pin port)))))
         #f))
   (let ((o (file-change! daemonian-stdout-port current-output-port 1 old1 new1))
         (e (file-change! daemonian-stderr-port current-error-port 2 old2 new2)))
-    (and (or o e) (kick! (lambda () (if o (o)) (if e (e)))))))
+    (and (or o e) (kick! (lambda () (if o (o)) (if e (e)) #f)))))
 
 (wire! (list daemonian-stdout-file daemonian-stderr-file)
        sequence: standard-file-change!)
 
-(define (standard-port-change! old1 new1 old2 new2)
-  (if old1 (close-output-port old1))
-  (if old2 (close-output-port old2)))
+(define standard-port-change!
+  (let ((dont (list (current-output-port) (current-error-port))))
+    (define (standard-port-change! old1 new1 old2 new2)
+      (if (and old1 (not (memq old1 dont))) (close-output-port old1))
+      (if (and old2 (not (memq old2 dont))) (close-output-port old2))
+      #f)
+    standard-port-change!))
 
 (wire! (list daemonian-stdout-port daemonian-stderr-port)
-       post-changes: standard-port-change!)
+       sequence: standard-port-change!)

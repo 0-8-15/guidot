@@ -360,7 +360,9 @@ C-END
   (define (wait-for-connection sockaddr)
       (define (wait-for-socket n)
         (or (with-exception-catcher
-             (lambda (exn) #f)
+             (lambda (ex)
+               ;; (log-error "open-unix-client: " spec (debug 'EXN (exception-->printable ex)))
+               #f)
              (lambda () (open-unix-client* sockaddr)))
             (let ((sleep-time (* scale (expt base n))))
               (if (> sleep-time limit)

@@ -12,13 +12,14 @@ SYS_PATH ?= $(SYS_PREFIX)/lib/
 SYS_PATH2 = $(shell echo $(SYS_PATH) | cut -f2 -d:)
 SYS_MOD_PATH ?= $(SYS_PATH2)/modules
 
-ot0:	# Main target
+all: ot0	# Main target
 
 LIKELY_FILE = $(shell echo $(SYS_MOD_PATH)/likely/likely.scm |cksum|cut -f 1 -d " ")
 MATCH_FILE = $(shell echo $(SYS_MOD_PATH)/akwmatch/akwmatch.scm |cksum|cut -f 1 -d " ")
 LWIP_FILE =  $(shell echo $(SYS_MOD_PATH)/lwip/lwip.scm |cksum|cut -f 1 -d " ")
 SOCKS_FILE =  $(shell echo $(SYS_MOD_PATH)/socks/socks.scm |cksum|cut -f 1 -d " ")
 UNSOCKET_FILE =  $(shell echo $(SYS_MOD_PATH)/unsocket/unsocket.scm |cksum|cut -f 1 -d " ")
+HTTPPROXY_FILE =  $(shell echo $(SYS_MOD_PATH)/httpproxy/httpproxy.scm |cksum|cut -f 1 -d " ")
 DAEMONIAN_FILE =  $(shell echo $(SYS_MOD_PATH)/daemonian/daemonian.scm |cksum|cut -f 1 -d " ")
 IRREGEX_FILE =  $(shell echo $(SYS_MOD_PATH)/irregex2/irregex2.scm |cksum|cut -f 1 -d " ")
 
@@ -49,7 +50,7 @@ CFLAGS += $(CFLAGS_COMMON) -O3
 # STRIP=true
 STRIP ?= $(SYS_STRIP)
 
-SYS_BUILD_DIR=$(SYS_PREFIX)/build
+SYS_BUILD_DIR ?= $(SYS_PREFIX)/build
 
 CC=$(SYS_CC)
 CXX=$(SYS_CXX)
@@ -65,26 +66,28 @@ CXXFLAGS+=$(INCLUDES)
 	$(SYS_BUILD_DIR)/$(IRREGEX_FILE).c $(SYS_BUILD_DIR)/$(UNSOCKET_FILE).c $(SYS_BUILD_DIR)/$(SOCKS_FILE).c \
 	$(SYS_BUILD_DIR)/$(DAEMONIAN_FILE).c \
 	$(SYS_BUILD_DIR)/$(LWIP_FILE).c \
-	$(OT0_LIBSRC_DIR)/ot0use.c $(OT0_LIBSRC_DIR)/ot0cli.c
+	$(OT0_LIBSRC_DIR)/ot0use.c $(SYS_BUILD_DIR)/$(HTTPPROXY_FILE).c $(OT0_LIBSRC_DIR)/ot0cli.c
 
 OT0_CLI_GAMBITC_FILES=$(SYS_BUILD_DIR)/$(LIKELY_FILE).c $(SYS_BUILD_DIR)/$(MATCH_FILE).c \
 	$(SYS_BUILD_DIR)/$(LWIP_FILE).c \
 	$(SYS_BUILD_DIR)/$(DAEMONIAN_FILE).c \
 	$(SYS_BUILD_DIR)/$(BEAVER_FILE).c \
-	$(SYS_BUILD_DIR)/$(IRREGEX_FILE).c $(SYS_BUILD_DIR)/$(UNSOCKET_FILE).c $(SYS_BUILD_DIR)/$(SOCKS_FILE).c
+	$(SYS_BUILD_DIR)/$(IRREGEX_FILE).c $(SYS_BUILD_DIR)/$(UNSOCKET_FILE).c $(SYS_BUILD_DIR)/$(HTTPPROXY_FILE).c $(SYS_BUILD_DIR)/$(SOCKS_FILE).c
 
-ot0cli_.c: $(OT0_CLI_GAMBITC_FILES)
-	$(GSC) $(GSCFLAGS) -o ot0cli_.c -link $(00OT0_CLI_GAMBITC_FILES)
+$(SYS_BUILD_DIR)/libbeaver_.c: $(OT0_CLI_GAMBITC_FILES)
+	$(GSC) $(GSCFLAGS) -o $@ -link $(00OT0_CLI_GAMBITC_FILES)
 
 00OT0_CLI_OBJECTS = $(SYS_BUILD_DIR)/$(LIKELY_FILE).o $(SYS_BUILD_DIR)/$(MATCH_FILE).o \
 	$(OT0_LIBSRC_DIR)/ot0-hooks.o $(OT0_LIBSRC_DIR)/ot0.o \
 	$(SYS_BUILD_DIR)/$(IRREGEX_FILE).o $(SYS_BUILD_DIR)/$(UNSOCKET_FILE).o $(SYS_BUILD_DIR)/$(SOCKS_FILE).o \
+	$(SYS_BUILD_DIR)/$(HTTPPROXY_FILE).o \
 	$(SYS_BUILD_DIR)/$(LWIP_FILE).o  $(SYS_BUILD_DIR)/$(DAEMONIAN_FILE).o \
 	$(OT0_LIBSRC_DIR)/ot0use.o $(OT0_LIBSRC_DIR)/ot0cli.o
 
 OT0_CLI_OBJECTS = $(SYS_BUILD_DIR)/$(LIKELY_FILE).o $(SYS_BUILD_DIR)/$(MATCH_FILE).o \
 	$(SYS_BUILD_DIR)/$(BEAVER_FILE).o \
 	$(SYS_BUILD_DIR)/$(IRREGEX_FILE).o $(SYS_BUILD_DIR)/$(UNSOCKET_FILE).o $(SYS_BUILD_DIR)/$(SOCKS_FILE).o \
+	$(SYS_BUILD_DIR)/$(HTTPPROXY_FILE).o \
 	$(SYS_BUILD_DIR)/$(LWIP_FILE).o \
 	$(SYS_BUILD_DIR)/$(DAEMONIAN_FILE).o \
 	$(OT0_LIBSRC_DIR)/ot0.o $(OT0_LIBSRC_DIR)/ot0use.o \
@@ -92,7 +95,7 @@ OT0_CLI_OBJECTS = $(SYS_BUILD_DIR)/$(LIKELY_FILE).o $(SYS_BUILD_DIR)/$(MATCH_FIL
 
 REALLY_STATIC=-static -pthread
 
-ot0cli_.o: ot0cli_.c
+$(SYS_BUILD_DIR)/libbeaver_.o: $(SYS_BUILD_DIR)/libbeaver_.c
 	$(SYS_CC) $(CFLAGS_COMMON) -c -o $@ $<
 
 ot0_real:	ot0cli_.o
@@ -103,12 +106,19 @@ ot0_real:	ot0cli_.o
 ot0cli.o: $(OT0_LIBSRC_DIR)/ot0cli.c
 	$(SYS_CC) -c -o $@ $<
 
-ot0:  show $(00OT0_CLI_OBJECTS) ot0cli_.o
+$(SYS_PREFIX)/lib/libbeaver.so:  show $(00OT0_CLI_OBJECTS) $(SYS_BUILD_DIR)/libbeaver_.o
 	$(SYS_CXX) -o $@ $(REALLY_STATIC) -L. -L $(SYS_PREFIX)/lib -L $(SYS_ROOT)/lib -L $(GSC_SYSPREFIX)/lib \
-	 $(00OT0_CLI_OBJECTS) ot0cli_.o \
+	 $(00OT0_CLI_OBJECTS) $(SYS_BUILD_DIR)/libbeaver_.o \
 	 -llwipcore -lgambit -lzerotiercore -ldl -lc # -lutil -lpthread -lc
 	$(SYS_STRIP) $@
-	mv $@ ../libs/$(APP_ABI)/libbeaver.so
+
+ot0:	$(SYS_PREFIX)/lib/libbeaver.so force
+	echo copying $(SYS_PREFIX)/lib/libbeaver.so to $(INSTALL_DIR)
+	# cp $(SYS_PREFIX)/lib/libbeaver.so $(INSTALL_DIR)/libbeaver.so
+
+clean:	force
+clean:
+	rm -f ot0cli_.*
 
 force:
 

@@ -74,7 +74,7 @@ NULL;
   (or (not obj) (and (fixnum? obj) (>= obj 0) (<= obj #xffff))))
 
 (define (front-pin-attach-log! pin msg)
-  (wire! pin post: (lambda () (log-debug msg 1 (debug msg (pin))))))
+  (wire! pin post: (lambda () (log-debug msg 1 " " (debug msg (pin))))))
 
 (define (front-beaver-directory-default)
   (make-pathname
