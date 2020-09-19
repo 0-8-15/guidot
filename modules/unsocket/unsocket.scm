@@ -169,10 +169,9 @@ sa_st->ss_family = AF_UNSPEC;
                      ;; (thread-yield!) ; to avoid tying up the CPU
                      (,loop ,expr))
                    (##raise-os-exception
-                    #f
+                    (err-code->string ,e)
                     ,e
                     ,proc
-                    (err-code->string ,e)
                     ,@args
                     )))
              ,b)))))
@@ -183,7 +182,7 @@ sa_st->ss_family = AF_UNSPEC;
 (define-macro (unsocket-os-exception proc . args)
   (let ((errno (gensym 'errno)))
     `(let ((,errno (c-errno)))
-       (##raise-os-exception #f ,errno ,proc (strerror ,errno) ,@args))))
+       (##raise-os-exception (strerror ,errno) ,errno ,proc ,@args))))
 
 (define
   c-socket
