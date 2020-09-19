@@ -72,3 +72,8 @@ end-of-c-declare
        (lambda (expr) (with-unix-client sockaddr 'Q expr))
        ;; make-beaver-caller
        (lambda (expr) (with-unix-client sockaddr 'P expr))))))
+
+(define (beaver-process-commands args)
+  (define (convert obj)
+    (if (string? obj) obj (object->string obj)))
+  (ot0cli-process-commands (map convert args)))
