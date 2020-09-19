@@ -587,57 +587,6 @@ set_socket_name(sa_un, ___arg2);
     ((fork) (fork-and-call watchdog cmd args))
     (else (error "internal error, unknown subprocess style"))))
 
-(define (semi-fork cmd args)
-  ;; (debug 'semi-fork `(,cmd . ,args))
-  (log-debug "semi-fork " 1 cmd " on " args)
-  (cond-expand
-   (android
-    (let ((datadir
-           (jscheme-eval
-            `(let* ((app ,(android-app-class))
-                    (this ((method "me" app)))
-                    )
-               (let (
-                     (getApplicationContext (method "getApplicationContext" app))
-                     ;; getDataDir is new in API24 and deprecated
-                     ;; (getDataDir (method "getDataDir" "android.content.Context"))
-                     (getDataDir
-                      (let ((getFilesDir (method "getFilesDir" "android.content.Context"))
-                            (getParent (method "getParent" "java.io.File")))
-                        (lambda (ctx) (getParent (getFilesDir ctx)))))
-                     )
-                 (getDataDir (getApplicationContext this)))))))
-      (if datadir
-          (let ((exe (make-pathname (list (object->string datadir) "lib") (string-append "lib" cmd ".so"))))
-            (with-exception-catcher
-             (lambda (exn) (log-debug "open-process failed " 1 (debug 'fail (exception-->printable exn))) #f)
-             (lambda () (open-process `(path: ,exe arguments: ,args stdout-redirection: #f))))))))
-   (linux
-    (open-process `(path: ,(system-cmdargv 0) arguments: ("-s" ,cmd . ,args) stdout-redirection: #f)))
-   (else
-    (with-exception-catcher
-     (lambda (exn) (log-debug "open-process failed " 1 (debug 'fail (exception-->printable exn))) #f)
-     (lambda () (debug 'Got (open-process `(path: #;"/proc/self/exe" ,(system-cmdargv 0) arguments: ("-s" ,cmd . ,args) stdout-redirection: #f))))))))
-
-(define (semi-run cmd args)
-  (let ((port (semi-fork cmd args)))
-    (and (port? port)
-         (begin
-           (close-port port)
-           (eqv? (debug 'ProcessStatus (process-status port)) 0)))))
-
-(define (semi-fork& cmd args)
-  (let ((port (semi-fork cmd args)))
-    (and (port? port)
-         (begin
-           (close-port port)
-           port))))
-
-(define *registered-commands* '())
-
-(define (register-command! cmd procedure)
-  (set! *registered-commands* `((,cmd . ,procedure) . ,*registered-commands*)))
-
 (c-declare
  #<<end-of-c-declare
  #include <unistd.h>

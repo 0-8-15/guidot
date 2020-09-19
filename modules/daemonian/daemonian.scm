@@ -101,6 +101,86 @@ end-of-c-declare
 (define (_exit #!optional (code 0))
   ((c-lambda (int) void "_exit") code))
 
+;;; semi-fork
+
+(define daemonian-semifork-key (make-parameter "-s"))
+
+(define *registered-commands* '())
+
+(define (register-command! cmd procedure)
+  (set! *registered-commands* `((,cmd . ,procedure) . ,*registered-commands*)))
+
+(define (semi-fork cmd args)
+  ;; (debug 'semi-fork `(,cmd . ,args))
+  (log-debug "semi-fork " 1 cmd " on " args)
+  (cond-expand
+   (android
+    (let ((datadir
+           (jscheme-eval
+            `(let* ((app ,(android-app-class))
+                    (this ((method "me" app)))
+                    )
+               (let (
+                     (getApplicationContext (method "getApplicationContext" app))
+                     ;; getDataDir is new in API24 and deprecated
+                     ;; (getDataDir (method "getDataDir" "android.content.Context"))
+                     (getDataDir
+                      (let ((getFilesDir (method "getFilesDir" "android.content.Context"))
+                            (getParent (method "getParent" "java.io.File")))
+                        (lambda (ctx) (getParent (getFilesDir ctx)))))
+                     )
+                 (getDataDir (getApplicationContext this)))))))
+      (if datadir
+          (let ((exe (make-pathname (list (object->string datadir) "lib") (string-append "lib" cmd ".so"))))
+            (log-debug "open-process " 1 exe " file exists? " (file-exists? exe))
+            (with-exception-catcher
+             (lambda (exn) (log-debug "open-process failed " 1 (debug 'fail (exception-->printable exn))) #f)
+             (lambda () (open-process `(path: ,exe arguments: ,args  stdout-redirection: #f stdin-redirection: #f))))))))
+   (linux
+    (open-process `(path: ,(system-cmdargv 0) arguments: (,(daemonian-semifork-key) ,cmd . ,args) stdout-redirection: #t stdin-redirection: #t)))
+   (else
+    (with-exception-catcher
+     (lambda (exn) (log-debug "open-process failed " 1 (debug 'fail (exception-->printable exn))) #f)
+     (lambda () (open-process `(path: #;"/proc/self/exe" ,(system-cmdargv 0) arguments: (,(daemonian-semifork-key) ,cmd . ,args) stdout-redirection: #t stdin-redirection: #t)))))))
+
+(define (semi-run cmd args)
+  (let ((port (semi-fork cmd args)))
+    (and (port? port)
+         (begin
+           (close-port port)
+           (eqv? (debug 'ProcessStatus (process-status port)) 0)))))
+
+(define (semi-fork& cmd args)
+  (let ((port (semi-fork cmd args)))
+    (and (port? port)
+         (begin
+           (close-port port)
+           port))))
+
+(define (system-command-line* offset) ;; FIXME: depends on lambdanative!
+  (let loop ((n (system-cmdargc)) (r '()))
+    (if (< n offset) r
+	(let ((i (- n 1)))
+	  (loop i (cons (system-cmdargv i) r))))))
+
+(define (daemonian-execute-registered-command cmd args)
+  ;; (##clear-exit-jobs!)
+  ;; (println "execute registered command")
+  ;; (set! exit (lambda x ((c-lambda (int) void "exit") (if (pair? x) (car x) 0)))) ;; dunno yet where this segfaults
+  ;; ((c-lambda () void "lambdanative_cutoff_unwind"))
+  (let ((exe (system-cmdargv 0)))
+    (let ((e (assoc cmd *registered-commands*)))
+      (if e ;; (debug 'CmdEntry e)
+	  (begin
+            (with-exception-catcher
+             handle-replloop-exception
+             (lambda ()
+               ((cdr e) (if (fixnum? args) (system-command-line* args) args))
+               (exit 0)))
+            (exit 42))
+	  (exit 1)))))
+;;;
+
 (cond-expand
  (win32
   (define (daemonize thunk #!optional (exit-procedure _exit))
@@ -108,49 +188,87 @@ end-of-c-declare
      ((procedure? thunk) (error "Not implemented: `daemonize thunk` on windows"))
      ((pair? thunk)
       (let ((port (semi-fork (car thunk) (cdr thunk))))
-        (close-port port)
-        (thread-sleep! 2)  ;; otherwise forked process will die during startup
-        (exit 0)
-        (debug 'STATUS (process-status port))))
+        (when (port? port)
+          (close-port port)
+          (thread-sleep! 2)  ;; otherwise forked process may die during startup
+          (exit 0))
+        (error "failed on" thunk))
+      (exit 0))
      (else (error "daemonize: illegal argument" thunk)))))
  (else
   (define (daemonize thunk #!optional (exit-procedure _exit))
-    (if exit-procedure (set! exit exit-procedure))
-    ((c-lambda () void "daemonian_daemonize"))
+    ;; (if exit-procedure (set! exit exit-procedure))
     (cond
      ((procedure? thunk)
       ((c-lambda () void "daemonian_daemonize"))
       (thunk))
      ((pair? thunk)
       (let ((port (semi-fork (car thunk) (cdr thunk))))
-        (close-port port)
-        (thread-sleep! 2)  ;; otherwise forked process will die during startup
-        (exit 0)
-        (debug 'STATUS (process-status port)))
+        (when (port? port)
+          (close-port port)
+          (thread-sleep! 2) ;; otherwise forked process will die during startup
+          (exit 0))
+        (error "failed on" thunk))
       ;; does not work (open-process '(path: "stty" arguments: ("sane") stdout-redirection: #f stdin-redirection: #f))
-      (_exit 0))
+      (exit 0))
      (else (error "daemonize: illegal argument" thunk))))))
 
-(define (cerberus cmd args #!key (input #f) (max-fast-restarts 5) (restart-time-limit 10))
-  (define (once!)
-    (let ((port (open-process `(path: ,cmd arguments: ,args stdout-redirection: #f))))
-      (and (port? port)
-           (begin
-             (if input (write input port))
-             (close-port port)
-             (eqv? (process-status port) 0)))))
-  (set-process-name! (string-append "cerberus " cmd))
-  ((c-lambda () scheme-object "___setup_child_interrupt_handling"))
+(define (cerberus-watch
+         once #!key
+         (input #f) (post-exit-delay 1) (max-fast-restarts 5) (restart-time-limit 10))
   (let loop ((start (current-time)))
     (let fast ((i 1))
-      (or (once!)
+      (or (once)
           (let ((end (current-time)))
             (if (< (- (time->seconds end) (time->seconds start))
                    restart-time-limit)
                 (if (< i max-fast-restarts)
-                    (fast (fx+ i 1))
+                    (begin
+                      (and post-exit-delay (thread-sleep! post-exit-delay))
+                      (fast (fx+ i 1)))
                     #f)
-                (loop end)))))))
+                (begin
+                  (and post-exit-delay (thread-sleep! post-exit-delay))
+                  (loop end))))))))
+
+(define (cerberus
+         cmd args #!key
+         (input #f) (startup-delay 1) (post-exit-delay 1) (max-fast-restarts 5) (restart-time-limit 10)
+         (stdout-redirection #t) (stderr-redirection #f))
+  (define (once!)
+    (let ((port (open-process
+                 `(path: ,cmd arguments: ,args
+                         stdout-redirection: ,stdout-redirection stderr-redirection: ,stderr-redirection))))
+      (and (port? port)
+           (begin
+             (thread-sleep! startup-delay) ;; give it time to start up
+             (let ((terminated (process-status port 0 #f)))
+               (if terminated
+                   (begin
+                     (close-port port)
+                     ;; should at least run for startup-delay
+                     #f)
+                   (begin
+                     (if input (write input port))
+                     (close-port port)
+                     ;; BEWARE: FIXME: HACK: A println was required (on
+                     ;; Linux) avoid hanging gambit in a endless loop eating
+                     ;; all memory!
+                     (if (cerberus-verbose)
+                         (eqv? (debug cmd (process-status (debug 'waiting-for port))) 0)
+                         (eqv? (process-status port) 0)))))))))
+  (define (run)
+    (cerberus-watch
+     once!
+     input: input
+     post-exit-delay: post-exit-delay
+     max-fast-restarts: max-fast-restarts restart-time-limit: restart-time-limit))
+  ;; (set-process-name! (string-append "cerberus " (car args)))
+  (debug 'cerberus ((c-lambda () int "getpid")))
+  (setup-child-interrupt-handling!)
+  (_exit (if (with-exception-catcher (lambda (exn) #f) run) 0 1)))
+
+(define setup-child-interrupt-handling! (c-lambda () scheme-object "___setup_child_interrupt_handling"))
 
 (define readlink
   (c-lambda (char-string) char-string
@@ -167,6 +285,8 @@ EOF
 ))
 
 (include "~~tgtlib/onetierzero/src/observable-notational-conventions.scm")
+
+(define cerberus-verbose (make-pin initial: #t name: "Trace Cerberus"))
 
 (define daemonian-stdout-file
   (make-pin

@@ -1,3 +1,8 @@
+(define normal-exit exit)
+;;(set! exit _exit) ;; FIXME: with lambdanative we see exit 0 always!
+
+(set! exit (c-lambda (int) void "ln_exit"))
+
 (include "DejaVuSans-14,24,32.scm")
 
 (define (debug l v)
@@ -287,13 +292,36 @@
  suspend: terminate)
 |#
 
-(cond
- ((and (>= (system-cmdargc) 2)
-       (file-exists? (system-cmdargv 1)))
-  (load (system-cmdargv 1)))
- ((and (>= (system-cmdargc) 3)
-       (file-exists? (system-cmdargv 2)))
-  (load (system-cmdargv 2)))
- (else (replloop)))
+
+(define beaver-stdout-redirection #t)
+
+(register-command!
+ "cerberus"
+ (lambda (args)
+   (cerberus (system-cmdargv 0) (cdr args) startup-delay: 2 max-fast-restarts: 2
+             stdout-redirection: beaver-stdout-redirection)))
+
+(register-command! "beaver" beaver-process-commands)
+
+(let ()
+  (define (load-file-with-arguments file args)
+    (load file))
+  (define parse
+    (match-lambda
+     ((CMD) (replloop))
+     ((CMD (? (lambda (key) (equal? (daemonian-semifork-key) key))) loadkey . more)
+      (daemonian-execute-registered-command loadkey more))
+     ((CMD "-l" FILE . more)
+      (load-file-with-arguments FILE more))
+     ((CMD (? file-exists? FILE) . more) (parse `(,CMD "-l" ,FILE ,@more)))
+     ((CMD . more)
+      (println port: (current-error-port) "Warning: " CMD " did not parse: " (object->string more))
+      (println port: (current-error-port) "Assuming: " (object->string `(,(daemonian-semifork-key) "beaver" ,@more)))
+      (ot0cli-process-commands more)
+      (exit 42))
+     (otherwise
+      (println port: (current-error-port) "Error: " (system-cmdargv 0) " did not parse: " (object->string otherwise))
+      (exit 23))))
+  (parse (command-line)))
 
 ;; eof

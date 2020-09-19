@@ -10,98 +10,25 @@
 ;;|#
 
 (define normal-exit exit)
-(set! exit _exit) ;; FIXME: with lambdanative we see exit 0 always!
+;;(set! exit _exit) ;; FIXME: with lambdanative we see exit 0 always!
 
-(define *registered-commands* '())
+(set! exit (c-lambda (int) void "ln_exit"))
 
-(define (register-command! cmd procedure)
-  (set! *registered-commands* `((,cmd . ,procedure) . ,*registered-commands*)))
+(setup-child-interrupt-handling!)
 
-(define (cerberus1 cmd args #!key (input #f) (max-fast-restarts 5) (restart-time-limit 10))
-  (define (once!)
-    (let ((port (open-process `(path: ,cmd arguments: ,args stdout-redirection: #f))))
-      (and (port? port)
-           (begin
-             (if input (write input port))
-             (close-port port)
-             ;; BEWARE: FIXME: HACK: This println is required (on
-             ;; Linux) avoid hanging gambit in a endless loop eating
-             ;; all memory!
-             (println port: (current-error-port) "Watching " port)
-             (eqv? (process-status port) 0)))))
-  (define (endlessly!) (or (once!) (endlessly!)))
-  ;; (set-process-name! (string-append "cerberus " (car args)))
-  (_exit (if (with-exception-catcher (lambda (exn) #f) endlessly!) 0 1)))
+(kick/sync! (lambda () (cerberus-verbose #f)))
 
-(register-command! "cerberus" (lambda (args) (cerberus1 (system-cmdargv 0) (cdr args))))
+(define beaver-stdout-redirection #t)
 
-(define (semi-fork cmd args)
-  ;; (debug 'semi-fork `(,cmd . ,args))
-  (log-debug "semi-fork " 1 cmd " on " args)
-  (cond-expand
-   (android
-    (let ((datadir
-           (jscheme-eval
-            `(let* ((app ,(android-app-class))
-                    (this ((method "me" app)))
-                    )
-               (let (
-                     (getApplicationContext (method "getApplicationContext" app))
-                     ;; getDataDir is new in API24 and deprecated
-                     ;; (getDataDir (method "getDataDir" "android.content.Context"))
-                     (getDataDir
-                      (let ((getFilesDir (method "getFilesDir" "android.content.Context"))
-                            (getParent (method "getParent" "java.io.File")))
-                        (lambda (ctx) (getParent (getFilesDir ctx)))))
-                     )
-                 (getDataDir (getApplicationContext this)))))))
-      (if datadir
-          (let ((exe (make-pathname (list (object->string datadir) "lib") (string-append "lib" cmd ".so"))))
-            (log-debug "open-process " 1 exe " file exists? " (file-exists? exe))
-            (with-exception-catcher
-             (lambda (exn) (log-debug "open-process failed " 1 (debug 'fail (exception-->printable exn))) #f)
-             (lambda () (open-process `(path: ,exe arguments: ,args  stdout-redirection: #f stdin-redirection: #f))))))))
-   (linux
-    (open-process `(path: ,(system-cmdargv 0) arguments: ("-s" ,cmd . ,args) stdout-redirection: #t stdin-redirection: #t)))
-   (else
-    (with-exception-catcher
-     (lambda (exn) (log-debug "open-process failed " 1 (debug 'fail (exception-->printable exn))) #f)
-     (lambda () (debug 'Nun (open-process `(path: #;"/proc/self/exe" ,(system-cmdargv 0) arguments: ("-s" ,cmd . ,args) stdout-redirection: #t stdin-redirection: #t))))))))
-
-(define (semi-run cmd args)
-  (let ((port (semi-fork cmd args)))
-    (and (port? port)
-         (begin
-           (close-port port)
-           (eqv? (debug 'ProcessStatus (process-status port)) 0)))))
-
-(define (system-command-line* offset)
-  (let loop ((n (system-cmdargc)) (r '()))
-    (if (< n offset) r
-	(let ((i (- n 1)))
-	  (loop i (cons (system-cmdargv i) r))))))
-
-(define (execute-registered-command)
-  ;; (##clear-exit-jobs!)
-  ;; (println "execute registered command")
-  ;; (set! exit (lambda x ((c-lambda (int) void "exit") (if (pair? x) (car x) 0)))) ;; dunno yet where this segfaults
-  ;; ((c-lambda () void "lambdanative_cutoff_unwind"))
-  (let ((exe (system-cmdargv 0))
-	(cmd (system-cmdargv 2)))
-    (let ((e (assoc cmd *registered-commands*)))
-      (if e ;; (debug 'CmdEntry e)
-	  (begin
-            (with-exception-catcher
-             handle-replloop-exception
-             (lambda ()
-               ((cdr e) (system-command-line* 4))
-               (exit 0)))
-            (exit 42))
-	  (exit 1)))))
+(register-command!
+ "cerberus"
+ (lambda (args)
+   (cerberus (system-cmdargv 0) (cdr args) startup-delay: 3 max-fast-restarts: 2
+             stdout-redirection: beaver-stdout-redirection)))
 
 (cond
- ((and (>= (system-cmdargc) 3) (equal? (system-cmdargv 1) "-s"))
-  (execute-registered-command))
+ ((and (>= (system-cmdargc) 3) (equal? (system-cmdargv 1) (daemonian-semifork-key)))
+  (daemonian-execute-registered-command (system-cmdargv 2) 4))
  (else #!void))
 
 (cond-expand
