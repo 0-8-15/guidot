@@ -319,7 +319,7 @@ EOF
 (define (standard-file-change! old1 new1 old2 new2)
   (define (file-change! out-pin param key old new)
     (if (not (equal? old new))
-        (let ((port (open-output-file `(path: ,new append: #t))))
+        (let ((port (open-output-file `(path: ,new append: #t buffering: line))))
           (and
            (port? port)
            (begin
