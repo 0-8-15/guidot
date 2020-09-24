@@ -166,7 +166,7 @@ sa_st->ss_family = AF_UNSPEC;
                     (= ,e ##err-code-EAGAIN)
                     (= ,e ##err-code-EINTR))
                    (begin
-                     ;; (thread-yield!) ; to avoid tying up the CPU
+                     (thread-yield!) ;; to avoid tying up the CPU
                      (,loop ,expr))
                    (##raise-os-exception
                     (err-code->string ,e)
