@@ -20,7 +20,7 @@
   ($async-exceptions 'catch)
   ) (else #f))
 
-(define (front-pin-attach-log! pin msg)
+(define (pin-attach-log! pin msg)
   (wire! pin post: (lambda () (log-debug msg 1 (debug msg (pin))))))
 
 (define make-beaver-api
@@ -80,11 +80,15 @@
     pin))
 (kick/sync! (lambda () (front-beaver-directory (front-beaver-directory-default))))
 
-(define command-line
+#| Moved into daemonian - and that's (now) included
+(define (ln-system-command-line* offset) ;; FIXME: depends on lambdanative!
   (let loop ((n (system-cmdargc)) (r '()))
-    (if (< n 1) (lambda () r)
+    (if (< n offset) r
 	(let ((i (- n 1)))
 	  (loop i (cons (system-cmdargv i) r))))))
+
+(define (command-line) (ln-system-command-line* 1))
+;;|#
 
 ;; GUI helpers
 
@@ -234,7 +238,7 @@
     (load file))
   (define parse
     (match-lambda
-     ((CMD) (replloop))
+     ((CMD) (replloop) (exit 0))
      ((CMD (? (lambda (key) (equal? (daemonian-semifork-key) key))) loadkey . more)
       (daemonian-execute-registered-command loadkey more))
      ((CMD "-l" FILE . more)
@@ -249,5 +253,7 @@
       (println port: (current-error-port) "Error: " (system-cmdargv 0) " did not parse: " (object->string otherwise))
       (exit 23))))
   (parse (command-line)))
+
+(if (eq? *glgui-main* main) (exit 0))
 
 ;; eof
