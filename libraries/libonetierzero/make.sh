@@ -1,6 +1,6 @@
 VERSION=0.1.4
 PKGURL=onetierzero-$VERSION.tar.gz
-PKGHASH=4d33000c69ff8351ff5d7333b034d3edaec0ffb9
+PKGHASH=9908e6781134a2c41f443c8dff0160f7a0791863
 
 if [ ! -f testing ]; then
 
