@@ -346,3 +346,21 @@ EOF
 
 (wire! (list daemonian-stdout-port daemonian-stderr-port)
        sequence: standard-port-change!)
+
+;; HACK, FIXME: make it work on lambdanative/android
+(define (ln-system-command-line* offset) ;; FIXME: depends on lambdanative!
+  (log-status "faking command line from offset " offset)
+  (log-status "system-cmdargc: " (system-cmdargc))
+  (let loop ((n (system-cmdargc)) (r '()))
+    (if (< n offset) r
+	(let ((i (- n 1)))
+          (log-status "n: " i)
+          (log-status "system-cmdargv: " system-cmdargv)
+          (log-status "system-cmdargv[i]: " i (system-cmdargv i))
+	  (loop i (cons (system-cmdargv i) r))))))
+
+(cond-expand
+ (android
+  (define (command-line) (cons "unknown-on-adroid" (ln-system-command-line* 1))))
+ (else
+  (define (command-line) (ln-system-command-line* 1))))
