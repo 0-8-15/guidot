@@ -78,10 +78,13 @@
   $debug-trace-triggers
   ;; Higher level (kinds)
   make-pin pin? PIN
+  (observable-filter-eq filter-eq) (observable-filter-eqv filter-eqv) (observable-filter-equal filter-equal)
+  pin-filter!
   ;; Debug & Deprecated
   ;;
   stm-atomic?
   $kick-style
+  kick-style
   ))
 
 (let ()

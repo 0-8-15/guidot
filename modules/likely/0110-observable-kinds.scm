@@ -1,3 +1,25 @@
+(define filter-eq #f) ;; use default
+
+(define (filter-eqv old new)
+  (if (eqv? old new) old new))
+
+(define (filter-equal old new)
+  (if (equal? old new) old new))
+
+(define (pin-filter! pin pred)
+  ;; like srfi-1 but: change arg order and cause side effect
+  ;;
+  ;; set `pin` - which must hold a list - removing all elements not
+  ;; passing `pred`
+  (kick!
+   (lambda ()
+     (let* ((init (pin))
+            (change #f)
+            (keep (lambda (element)
+                    (if (pred element) #t (begin (set! change #t) #f))))
+            (new (filter keep init)))
+       (pin (if change new init))))))
+
 (define pin?)
 
 (define make-pin
@@ -17,3 +39,12 @@
     #;make-pin))
 
 (define PIN make-pin)
+
+(define kick-style
+  (make-pin
+   initial: ($kick-style)
+   pred: (lambda (v) (member v '(async sync #f)))
+   name: "$kick-style as PIN"))
+
+(define (kick-style-pin-to-parameter) ($kick-style (kick-style)))
+(wire! kick-style post: kick-style-pin-to-parameter)

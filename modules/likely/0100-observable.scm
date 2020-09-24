@@ -174,7 +174,7 @@
      ((procedure? x) (start-async! (lambda () (kick! x)) 'consequence #f))
      ((and (box? x) (let ((t (unbox x))) (and (procedure? t) t))) =>
       (lambda (thunk)
-        (stm-log 'atomic-with-consequence " starting new thread" thunk)
+        ;; (stm-log 'atomic-with-consequence " starting new thread" thunk)
         (start-async!
          (lambda ()
            (let ((kicking (thunk)))
