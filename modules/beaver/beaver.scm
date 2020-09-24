@@ -1,5 +1,5 @@
 (cond-expand
- (android
+ (android-nonotnow
 
   (define beaver-start!
     (match-lambda
