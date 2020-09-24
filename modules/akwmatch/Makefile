@@ -2,10 +2,11 @@
 
 SYS_HOSTPREFIX?=/home/u/.cache/lambdanative/linux
 
-SYS_ROOT?=$(SYS_HOSTPREFIX)
+SYS_PREFIX?=$(SYS_HOSTPREFIX)
+SYS_ROOT?=$(SYS_PREFIX)
 
-GSC?=$(SYS_ROOT)/bin/gsc
-GSI=$(SYS_ROOT)/bin/gsi
+GSC?=$(SYS_PREFIX)/bin/gsc
+GSI?=$(SYS_PREFIX)/bin/gsi
 
 GSCFLAGS?= # -keep-c #-debug
 
