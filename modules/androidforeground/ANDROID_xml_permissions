@@ -14,3 +14,4 @@ and modify ANDROID_java_activityadditions to use the alternative,
 
 -->
 <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" android:required="false" />
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE" android:required="true" />
