@@ -24,10 +24,10 @@
 end-of-c-declare
 )
 
-  (include "~~tgtlib/onetierzero/ot0.scm")
-  (include "~~tgtlib/onetierzero/src/ot0use.scm")
+  (include "~~tgt/lib/onetierzero/ot0.scm")
+  (include "~~tgt/lib/onetierzero/src/ot0use.scm")
 
-  (include "~~tgtlib/onetierzero/src/ot0cli.scm")
+  (include "~~tgt/lib/onetierzero/src/ot0cli.scm")
 
   (define beaver-start! ot0cli-process-commands)
 

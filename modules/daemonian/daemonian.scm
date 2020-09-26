@@ -284,7 +284,7 @@ fprintf(stderr, "NYI readlink on windows");
 EOF
 ))
 
-(include "~~tgtlib/onetierzero/src/observable-notational-conventions.scm")
+(include "~~tgt/lib/onetierzero/src/observable-notational-conventions.scm")
 
 (define cerberus-verbose (make-pin initial: #t name: "Trace Cerberus"))
 
