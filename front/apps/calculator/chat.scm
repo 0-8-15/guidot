@@ -81,20 +81,20 @@
   (let ((font (select-font height: line-height)))
     (lambda (lst cb #!key (permanent #f))
       (let* ((n (length lst))
-             (border-width 1)
+             (border-width 2)
              (line-height line-height)
              (border-left line-height)
              (border-right border-left)
-             (element-height (+ line-height #;(* 2 border-width)))
+             (element-height (ceiling (+ (* 1.1 line-height) (* 2 border-width))))
              (usable-n 0))
         (define (list-element obj)
           (let ((display-string (if (string? obj) obj (object->string obj))))
             (lambda (g wgt x y w h selected)
               (glgui:draw-text-left
-               (+ x border-left) y
+               (+ x border-left) (- y border-width)
                (- w border-right) (- h 1 (* 2 border-width))
                display-string font color))))
-        (let ((wgt (glgui-list gui x y w h line-height '() #f))
+        (let ((wgt (glgui-list gui x y w h element-height '() #f))
               (offset 0))
           (define (del) (glgui-widget-delete gui wgt))
           (define (set-content . new)
@@ -326,7 +326,7 @@
   (make-pathname (ot0-context) "chat.data"))
 
 (define (current-persistant-data)
-  (vector chat-partners (chat-pending-messages)))
+  (vector chat-partners (chat-pending-messages) (chat-inbox-senders)))
 
 (define-pin persistent-data
   initial: (current-persistant-data)
@@ -346,6 +346,8 @@
     (kick/sync
      (set! chat-partners (vector-ref current 0))
      (chat-pending-messages (vector-ref current 1))
+     (when (> (vector-length current) 2)
+       (chat-inbox-senders (vector-ref current 2)))
      (wire! persistent-data post: write-persistent-data)
      (wire! (list #;chat-partners chat-pending-messages)
             post: (lambda () (persistent-data (current-persistant-data)))))))
@@ -596,10 +598,11 @@
           (setter)
           (wire! chat-pending-messages post: setter)))
       (let* ((border line-height)
+             (line-height-selectable 28)
              (ctrl
               ((Xglgui-select
                 bag border border (- w (* 2 border)) (- h (* 2 border))
-                line-height: line-height color: White)
+                line-height: line-height-selectable color: White)
                '()
                (lambda (sel)
                  (if (>= sel 0)
@@ -629,11 +632,12 @@
            (cw w)
            (ch (/ h 2))
            (line-height 20)
+           (line-height-selectable 28)
            (text-keypad keypad:simplified)
            (dial-keypad keypad:numeric)
            (keypad (glgui-keypad bag 0 0 w (- clly line-height line-height) fnt)))
       (define (callback gui wgt type x y)
-        (debug 'chat-callback args)
+        (debug 'chat-callback y)
         #f)
       (define (update-keypad)
         (glgui-widget-set! bag keypad 'keypad (if (number? (chat-address)) text-keypad dial-keypad)))
@@ -671,7 +675,7 @@
             (set! ponebook-dialog
                   ((Xglgui-select
                     bag border border (- w (* 2 border)) (- h (* 2 border))
-                    line-height: line-height color: White)
+                    line-height: line-height-selectable color: White)
                    (map car all)
                    (lambda (sel)
                      (if (>= sel 0)
@@ -817,7 +821,8 @@
              (set! tool-switcher dd)))))
       (set! about-container (make-about-container gui w (- h mh)))
       (set! chat-container (make-chat-container gui w (- h mh)))
-      (glgui-widget-set! gui about-container 'hidden #t)
+      (when (null? (chat-inbox-senders))
+        (glgui-widget-set! gui about-container 'hidden #t))
       (receive (container update!) (calculatorcontainer-init! calculator-container w (- h mh))
         (kick (selected-display "calculator"))
         (values gui update!))))
