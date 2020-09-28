@@ -1,7 +1,5 @@
 (log-status "Startup")
 
-(set! exit (c-lambda (int) void "ln_exit"))
-
 (include "../glgui/DejaVuSans-14,24,32.scm")
 
 (define (debug l v)
@@ -127,19 +125,23 @@ NULL;
 ;; GUI helpers
 
 (define (update-pages!)
-  (front-trigger-update-of-pages!)
+  (glgui-wakeup!)
   #f)
 
-(define *front-pages-update-mux* (make-mutex '*front-pages-update-required*))
-(define *front-pages-update-cv* (make-condition-variable '*front-pages-update-required*))
-
-(define (front-trigger-update-of-pages!)
-  ;;(mutex-lock! *front-pages-update-mux*)
-  (mutex-specific-set! *front-pages-update-mux* #t)
-  ;;(mutex-unlock! *front-pages-update-mux*)
-  (condition-variable-signal! *front-pages-update-cv*))
-
-(define gui-expecting-progress (make-parameter #f))
+(cond-expand
+ (android
+  (define-macro (please-do-me-the-favor-and-make-progress! n)
+    (if (= n 0)
+        `(begin
+           (thread-yield!)
+           (thread-yield!))
+        `(do ((i 0 (fx+ i 1)))
+             ((fx= i ,n))
+           (##thread-heartbeat!)
+           (thread-yield!)
+           (thread-yield!)))))
+ (else
+  (define-macro (please-do-me-the-favor-and-make-progress! n) '#!void)))
 
 (define glgui-dispatch-event
   (let ((check-magic-keys
@@ -161,45 +163,14 @@ NULL;
           ;; (check-magic-keys gui op t x y)
           (glgui-event gui t x y)))))
      (else
-      (let ((frame-period 0.7)
-            (step 0.07)
-            (count 0))
-        (lambda (gui update-pages-now! t x y)
-          (thread-yield!)
-	  (check-magic-keys gui update-pages-now! t x y)
-	  (cond
-           ((eq? t EVENT_IDLE)
-            (thread-sleep! 0.05)
-            #t)
-	   ((= t EVENT_REDRAW)
-            (let loop ()
-              (when (mutex-lock! *front-pages-update-mux*)
-                (cond
-                 ((mutex-specific *front-pages-update-mux*)
-                  (let loop2 ()
-                    (mutex-specific-set! *front-pages-update-mux* #f)
-                    (update-pages-now!)
-                    (thread-yield!)
-                    (if (mutex-specific *front-pages-update-mux*)
-                        (loop2)
-                        (begin
-                          (glgui-event gui t x y)
-                          (set! count 0)
-                          (mutex-unlock! *front-pages-update-mux*)))))
-                 (else
-                  (glgui-event gui t x y)
-                  (cond
-                   ((gui-expecting-progress) (mutex-unlock! *front-pages-update-mux*))
-                   ((mutex-unlock! *front-pages-update-mux* *front-pages-update-cv* (min frame-period (* count step)))
-                    (set! count 0)
-                    (loop))
-                   (else (set! count (fx+ count 1)))))))))
-           ((eq? t 126) (LNjScheme-result))
-	   (else
-            (set! count 0)
-	    (unless
-	        (= t EVENT_MOTION)
-	      (glgui-event gui t x y))))))))))
+      (lambda (gui update-pages-now! t x y)
+        (please-do-me-the-favor-and-make-progress! 0)
+	(check-magic-keys gui update-pages-now! t x y)
+	(cond
+         ((eq? t EVENT_IDLE)
+          (please-do-me-the-favor-and-make-progress! 3))
+         ((eq? t 126) (LNjScheme-result))
+	 (else (glgui-event gui t x y))))))))
 
 (define (handle-replloop-exception e)
   (cond
@@ -221,6 +192,7 @@ NULL;
                    (suspend glgui-suspend)
                    (resume glgui-resume)
                    (terminate (lambda () #t)))
+  (foreground-service! #t)
   (let ((gui #f)
         (update! (lambda _ #f))
         (once *glgui-main*))
@@ -268,7 +240,7 @@ NULL;
 
 (register-command! "beaver" beaver-process-commands)
 
-(include "~~tgtlib/onetierzero/src/observable-notational-conventions.scm")
+(include "~~tgt/lib/onetierzero/src/observable-notational-conventions.scm")
 
 (include "chat.scm")
 
