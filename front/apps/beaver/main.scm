@@ -12,8 +12,6 @@
 (define normal-exit exit)
 ;;(set! exit _exit) ;; FIXME: with lambdanative we see exit 0 always!
 
-(set! exit (c-lambda (int) void "ln_exit"))
-
 (setup-child-interrupt-handling!)
 
 (kick/sync! (lambda () (cerberus-verbose #f)))
