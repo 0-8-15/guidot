@@ -73,7 +73,30 @@ end-of-c-declare
        ;; make-beaver-caller
        (lambda (expr) (with-unix-client sockaddr 'P expr))))))
 
+(define beaver-stdout-redirection #t)
+
+(define beaver-use-daemonize
+  (let ((v (cond-expand
+            ((or win32) #f)
+            (else #t))))
+    (case-lambda
+     (() v)
+     ((x) (set! v x)))))
+
 (define (beaver-process-commands args)
   (define (convert obj)
     (if (string? obj) obj (object->string obj)))
-  (ot0cli-process-commands (map convert args)))
+  (let ((args (map convert args)))
+    (match
+     args
+     (("-D" DIR . more)
+      (let ((redir '("-cs" "daemonian-stdout-file" "NULL" "daemonian-stderr-file" "NULL"  ":")))
+        #;(ot0cli-process-commands (debug 'giblaut `("-D" ,DIR ,@redir ,@more)))
+        (if (beaver-use-daemonize)
+            (daemonize `("cerberus" "beaver" ,@redir "-B" ,DIR ,@more))
+            (cerberus (system-cmdargv 0)
+                      `(,@redir "-B" ,DIR ,@more)
+                      startup-delay: 3 max-fast-restarts: 2
+                      stdout-redirection: beaver-stdout-redirection
+                      exit: exit))))
+     (else (ot0cli-process-commands args)))))

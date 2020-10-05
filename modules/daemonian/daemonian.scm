@@ -148,7 +148,7 @@ end-of-c-declare
     (and (port? port)
          (begin
            (close-port port)
-           (eqv? (debug 'ProcessStatus (process-status port)) 0)))))
+           (eqv? (process-status port) 0)))))
 
 (define (semi-fork& cmd args)
   (let ((port (semi-fork cmd args)))
@@ -183,31 +183,41 @@ end-of-c-declare
 
 (cond-expand
  (win32
-  (define (daemonize thunk #!optional (exit-procedure _exit))
+  (define (daemonize thunk #!optional (child-exit exit))
     (cond
      ((procedure? thunk) (error "Not implemented: `daemonize thunk` on windows"))
-     ((pair? thunk)
+     ((pair? thunk) (semi-fork&  (car thunk) (cdr thunk)))
+     #;((pair? thunk)
       (let ((port (semi-fork (car thunk) (cdr thunk))))
         (when (port? port)
           (close-port port)
           (thread-sleep! 2)  ;; otherwise forked process may die during startup
+          (println port: (current-error-port)
+                   (car thunk) " watching '" (cadr thunk) "' as process " (process-pid port))
           (exit 0))
         (error "failed on" thunk))
       (exit 0))
      (else (error "daemonize: illegal argument" thunk)))))
  (else
-  (define (daemonize thunk #!optional (exit-procedure _exit))
+  (define (daemonize thunk #!optional (post-fork-exit (c-lambda (int) void "lambdanative_exit")))
     ;; (if exit-procedure (set! exit exit-procedure))
     (cond
      ((procedure? thunk)
       ((c-lambda () void "daemonian_daemonize"))
       (thunk))
+     ;; ((pair? thunk) (exit (if (semi-run (car thunk) (cdr thunk)) 0 1))) ;; debug only
+     ((pair? thunk)
+      ((c-lambda () void "daemonian_daemonize"))
+      (exit (if (semi-run (car thunk) (cdr thunk)) 0 1)))
      ((pair? thunk)
       (let ((port (semi-fork (car thunk) (cdr thunk))))
         (when (port? port)
           (close-port port)
           (thread-sleep! 2) ;; otherwise forked process will die during startup
-          (exit 0))
+          (if (or #t (cerberus-verbose))
+              (println port: (current-error-port)
+                       (car thunk) " watching '" (cadr thunk) "' as process " (process-pid port)))
+          (post-fork-exit 0))
         (error "failed on" thunk))
       ;; does not work (open-process '(path: "stty" arguments: ("sane") stdout-redirection: #f stdin-redirection: #f))
       (exit 0))
@@ -234,12 +244,13 @@ end-of-c-declare
 (define (cerberus
          cmd args #!key
          (input #f) (startup-delay 1) (post-exit-delay 1) (max-fast-restarts 5) (restart-time-limit 10)
-         (stdout-redirection #t) (stderr-redirection #f))
+         (stdout-redirection #t) (stderr-redirection #f)
+         (exit _exit))
   (define (once!)
     (let ((port (open-process
                  `(path: ,cmd arguments: ,args
                          stdout-redirection: ,stdout-redirection stderr-redirection: ,stderr-redirection))))
-      (and (port? port)
+      (and port
            (begin
              (thread-sleep! startup-delay) ;; give it time to start up
              (let ((terminated (process-status port 0 #f)))
@@ -255,7 +266,7 @@ end-of-c-declare
                      ;; Linux) avoid hanging gambit in a endless loop eating
                      ;; all memory!
                      (if (cerberus-verbose)
-                         (eqv? (debug cmd (process-status (debug 'waiting-for port))) 0)
+                         (eqv? (process-status (debug 'waiting-for port)) 0)
                          (eqv? (process-status port) 0)))))))))
   (define (run)
     (cerberus-watch
@@ -264,9 +275,9 @@ end-of-c-declare
      post-exit-delay: post-exit-delay
      max-fast-restarts: max-fast-restarts restart-time-limit: restart-time-limit))
   ;; (set-process-name! (string-append "cerberus " (car args)))
-  (debug 'cerberus ((c-lambda () int "getpid")))
+  ;; (debug 'cerberus ((c-lambda () int "getpid")))
   (setup-child-interrupt-handling!)
-  (_exit (if (with-exception-catcher (lambda (exn) #f) run) 0 1)))
+  (exit (if (with-exception-catcher (lambda (exn) #f) run) 0 1)))
 
 (define setup-child-interrupt-handling! (c-lambda () scheme-object "___setup_child_interrupt_handling"))
 
@@ -288,15 +299,20 @@ EOF
 
 (define cerberus-verbose (make-pin initial: #t name: "Trace Cerberus"))
 
+
+(define (daemonian-parse-null-port-alias old new)
+  (if (member new '("/dev/null" "NULL" "NUL" "")) #f new))
+
 (define daemonian-stdout-file
   (make-pin
-   initial: #f
+   initial: #t
    pred: (lambda (fn) (or (boolean? fn) (string? fn)))
+   filter: daemonian-parse-null-port-alias
    name: 'daemonian-stdout-file))
 
 (define daemonian-stderr-file
   (make-pin
-   initial: #f
+   initial: #t
    pred: (lambda (fn) (or (boolean? fn) (string? fn)))
    name: 'daemonian-stderr-file))
 
@@ -304,6 +320,7 @@ EOF
   (make-pin
    initial: (current-output-port)
    pred: output-port?
+   filter: daemonian-parse-null-port-alias
    name: 'daemonian-stdout-port))
 
 (define daemonian-stderr-port
@@ -314,12 +331,32 @@ EOF
 
 (define (daemonian-redirect-standard-file-descriptors) #f)
 
+(define null-output-port
+  (delay
+    (let ((port #f))
+      (define (reset!)
+        (set! port (open-output-string))
+        (set! null-output-port port))
+      (thread-start!
+       (make-thread
+        (lambda ()
+          (do () (#f)
+            (let ((x (read-char port)))
+              (if (eof-object? x)
+                  (reset!)
+                  (get-output-string port)))))
+        'null-drain))
+      (reset!)
+      port)))
+
 (namespace ("daemonian#" standard-file-change! standard-port-change!))
 
 (define (standard-file-change! old1 new1 old2 new2)
   (define (file-change! out-pin param key old new)
     (if (not (equal? old new))
-        (let ((port (open-output-file `(path: ,new append: #t buffering: line))))
+        (let ((port (if (boolean? new)
+                        (force null-output-port)
+                        (open-output-file `(path: ,new append: #t buffering: line)))))
           (and
            (port? port)
            (begin
