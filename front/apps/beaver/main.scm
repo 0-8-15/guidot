@@ -12,11 +12,20 @@
 (define normal-exit exit)
 ;;(set! exit _exit) ;; FIXME: with lambdanative we see exit 0 always!
 
+(define command-line
+  (let loop ((n (system-cmdargc)) (r '()))
+    (if (< n 1)
+        (cond-expand
+         (win32 (lambda () r))
+         (else (lambda () r)))
+	(let ((i (- n 1)))
+	  (loop i (cons (system-cmdargv i) r))))))
+
 (setup-child-interrupt-handling!)
 
 (kick/sync! (lambda () (cerberus-verbose #f)))
 
-(define beaver-stdout-redirection #t)
+(beaver-use-daemonize #t)
 
 (register-command!
  "cerberus"
@@ -27,6 +36,12 @@
 (cond
  ((and (>= (system-cmdargc) 3) (equal? (system-cmdargv 1) (daemonian-semifork-key)))
   (daemonian-execute-registered-command (system-cmdargv 2) 4))
+ ;; Does not work for -l !
+ #;((and (>= (system-cmdargc) 3) (equal? (system-cmdargv 1) "-D"))
+  (daemonize
+   (debug 'WAS `("cerberus" "beaver"
+;     "-cs"  "daemonian-stdout-file" "NULL" "daemonian-stderr-file" "NULL"  ":"
+     "-B" ,@(cddr (command-line))))))
  (else #!void))
 
 (cond-expand
@@ -140,17 +155,13 @@
     pin))
 (kick/sync! (lambda () (front-beaver-directory (front-beaver-directory-default))))
 
-(define command-line
-  (let loop ((n (system-cmdargc)) (r '()))
-    (if (< n 1) (lambda () r)
-	(let ((i (- n 1)))
-	  (loop i (cons (system-cmdargv i) r))))))
-
 (cond
  ((and (>= (system-cmdargc) 2)
        (file-exists? (system-cmdargv 1)))
   (load (system-cmdargv 1)))
  ((>= (system-cmdargc) 2)
+  (beaver-process-commands (cdr (command-line))))
+ #;((>= (system-cmdargc) 2)
   (ot0cli-process-commands (cdr (command-line)) (if (null? (cdr (command-line))) replloop (lambda () #t))))
  (else (replloop)))
 
