@@ -55,10 +55,10 @@ static int redirect_to_file(int n, char *fn)
 }
 
 #if !WIN32
-static void daemonian_daemonize()
+static unsigned int daemonian_daemonize()
 {
  unsigned int i=0;
- if(fork() != 0) exit(0);
+ if(fork() != 0) return(0);
  // lambdanative_cutoff_unwind();
  // https://chaoticlab.io/c/c++/unix/2018/10/01/daemonize.html
  for(i=1;i<NSIG;++i) signal(i,SIG_DFL);
@@ -71,6 +71,7 @@ static void daemonian_daemonize()
  signal(SIGINT,SIG_IGN);
  // for(i=3;i<FD_SETSIZE;++i) close(i);
  if(setsid() == -1) fprintf(stderr, "ERROR: setsid: %s\n", strerror(errno));
+ return(1);
 }
 #endif
 
@@ -203,12 +204,14 @@ end-of-c-declare
     ;; (if exit-procedure (set! exit exit-procedure))
     (cond
      ((procedure? thunk)
-      ((c-lambda () void "daemonian_daemonize"))
-      (thunk))
+      (if ((c-lambda () bool "daemonian_daemonize"))
+          (thunk)
+          (post-fork-exit 0)))
      ;; ((pair? thunk) (exit (if (semi-run (car thunk) (cdr thunk)) 0 1))) ;; debug only
      ((pair? thunk)
-      ((c-lambda () void "daemonian_daemonize"))
-      (exit (if (semi-run (car thunk) (cdr thunk)) 0 1)))
+      (if ((c-lambda () bool "daemonian_daemonize"))
+          (exit (if (semi-run (car thunk) (cdr thunk)) 0 1))
+          (post-fork-exit 0)))
      ((pair? thunk)
       (let ((port (semi-fork (car thunk) (cdr thunk))))
         (when (port? port)
@@ -314,13 +317,13 @@ EOF
   (make-pin
    initial: #t
    pred: (lambda (fn) (or (boolean? fn) (string? fn)))
+   filter: daemonian-parse-null-port-alias
    name: 'daemonian-stderr-file))
 
 (define daemonian-stdout-port
   (make-pin
    initial: (current-output-port)
    pred: output-port?
-   filter: daemonian-parse-null-port-alias
    name: 'daemonian-stdout-port))
 
 (define daemonian-stderr-port
