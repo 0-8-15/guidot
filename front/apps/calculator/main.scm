@@ -12,7 +12,7 @@
     v))
 
 (cond-expand
- (debug
+ ((or #;android debug)
   ($debug-trace-triggers #t)
   ($async-exceptions 'catch)
   ) (else #f))
@@ -23,6 +23,7 @@
     #;((c-lambda () scheme-object "___setup_heartbeat_interrupt_handling"))
     (##set-heartbeat-interval! (exact->inexact 1/100)))
   (setup-heartbeat!)
+  ($kick-style 'sync) (kick/sync! (lambda () (kick-style 'sync)))
   )
  (else))
 
@@ -64,38 +65,6 @@ NULL;
 (define (pin-attach-log! pin msg)
   (wire! pin post: (lambda () (log-debug msg 1 (debug msg (pin))))))
 
-(define make-beaver-api
-  (let ()
-    (define (send-request! conn expr)
-      (write expr conn)
-      (force-output conn))
-    (define (dispatch-result conn)
-      (let ((result (read conn)))
-        (close-port conn)
-        (beaver-debug 'Beaver-Result result)
-        (match
-         result
-         ((ref 'E . err) (error err))
-         ((ref 'D . vals) (apply values vals))
-         ((? eof-object?) #!void)
-         (X (error "beaver call: bad protocol reply" X)))))
-    (define (with-unix-client sockaddr kind expr)
-      (beaver-debug (list 'beaver kind) expr)
-      (let ((conn (open-unix-client sockaddr #t)))
-        (if conn
-            (begin
-              (send-request! conn `(0 ,kind . ,expr))
-              (dispatch-result conn))
-            (error "beaver call failed to connect"))))
-    (lambda (directory)
-      (define sockaddr (make-pathname directory "control"))
-      (values
-       (lambda () (let ((port (open-unix-client* sockaddr (lambda () #f))))
-                    (and port (begin (close-port port) #t))))
-       (lambda (expr) (with-unix-client sockaddr 'Q expr))
-       ;; make-beaver-caller
-       (lambda (expr) (with-unix-client sockaddr 'P expr))))))
-
 (define (front-beaver-directory-default)
   (make-pathname
    (cond-expand
@@ -122,6 +91,20 @@ NULL;
 
 (kick/sync! (lambda () (front-beaver-directory (front-beaver-directory-default))))
 
+(define (forward-logging-to-daemonian!)
+  (let ((to (and log:on log:file)))
+    (daemonian-stdout-file to)
+    (daemonian-stderr-file to)))
+
+(thread-start!
+ (make-thread
+  (lambda ()
+    (do () (#f)
+      (thread-sleep! (* 24 36 60)) ;; 1d
+      (log-reset!)
+      (kick! forward-logging-to-daemonian!)))
+  'reset-log))
+
 ;; GUI helpers
 
 (define (update-pages!)
@@ -131,17 +114,36 @@ NULL;
 (cond-expand
  (android
   (define-macro (please-do-me-the-favor-and-make-progress! n)
+    `(begin
+       (##thread-heartbeat!)
+       (thread-sleep! 0.01)))
+  (define-macro (DENIED:please-do-me-the-favor-and-make-progress! n)
     (if (= n 0)
         `(begin
-           (thread-yield!)
-           (thread-yield!))
-        `(do ((i 0 (fx+ i 1)))
-             ((fx= i ,n))
            (##thread-heartbeat!)
-           (thread-yield!)
-           (thread-yield!)))))
+           (thread-sleep! 0.01))
+        `(do ((i 0 (fx+ i 1)))
+             ((fx= i ,n) (thread-sleep! ,(* n 0.01)))
+           (##thread-heartbeat!)
+           (thread-yield!))))
+  (define %%Xredraw #f)
+  (define (Xtrigger-redraw!)
+    (glgui-wakeup!)
+    (set! %%Xredraw #t))
+  (define (Xconditional-redraw)
+    (if %%Xredraw
+        (begin
+          (set! %%Xredraw #f)
+          #;(glgui-suspend)
+          (set! glCore:needsinit #t)
+          #t)
+        #f))
+  )
  (else
-  (define-macro (please-do-me-the-favor-and-make-progress! n) '#!void)))
+  (define-macro (please-do-me-the-favor-and-make-progress! n) '#!void)
+  (define Xtrigger-redraw! glgui-wakeup!)
+  (define (Xconditional-redraw) #f)
+  ))
 
 (define glgui-dispatch-event
   (let ((check-magic-keys
@@ -166,11 +168,24 @@ NULL;
       (lambda (gui update-pages-now! t x y)
         (please-do-me-the-favor-and-make-progress! 0)
 	(check-magic-keys gui update-pages-now! t x y)
+        (Xconditional-redraw)
 	(cond
          ((eq? t EVENT_IDLE)
-          (please-do-me-the-favor-and-make-progress! 3))
+          (please-do-me-the-favor-and-make-progress! 2)
+          #; (log-status "IDLE")
+          )
          ((eq? t 126) (LNjScheme-result))
-	 (else (glgui-event gui t x y))))))))
+         ((eq? t EVENT_REDRAW)
+          ;; (log-status "REDRAW")
+          (glgui-event gui t x y))
+	 (else
+          (glgui-event gui t x y)
+          #;(please-do-me-the-favor-and-make-progress! 1)
+          #;(Xconditional-redraw)
+          #;(if glCore:needsinit (please-do-me-the-favor-and-make-progress! 1))
+          ;;(if (Xconditional-redraw) (glgui-event gui EVENT_REDRAW 0 0))
+          #;(begin (glgui-suspend) (glgui-resume))
+          )))))))
 
 (define (handle-replloop-exception e)
   (cond
@@ -251,27 +266,113 @@ NULL;
   (set! chat-dir (make-pathname (system-appdirectory) chat-dir)))
  (else #f))
 
+(define (debug-adhoc-network-port) 3333)
+
+(define (debug-adhoc-network-id)
+  (let* ((a (debug-adhoc-network-port))
+         (o a))
+    (ot0-adhoc-network-id a o)))
+
+(define (remreplloop)
+  (define out (current-output-port))
+  (display "\n;>> " out)
+  (force-output out)
+  (let ((expr (read (current-input-port))))
+    (unless (eof-object? expr)
+      (write (eval expr) out)
+      (newline out)
+      (force-output out)
+      (remreplloop))))
+
+(define (replloop2) ;; interactive read-evaluate-print-loop
+  (with-exception-catcher handle-replloop-exception remreplloop))
+
+(define (beaver-cmd2) ;; interactive read-evaluate-print-loop
+  (define eval/ro eval)
+  (define (eval/rw expr) (eval expr))
+  (define location beaver-cmd2) ;; source code tag without use
+  (define (dispatch-condition e port)
+    (cond
+     ((unbound-global-exception? e)
+      (println port: port "Unbound variable " (unbound-global-exception-variable e)))
+     (else (display-exception e port))))
+  (define (beaver-handle-cmd-exception e) (debug location e)
+    (write `(ref E . ,(call-with-output-string (lambda (s) (dispatch-condition e s)))))
+    #t)
+  (define (handle-cmd)
+    (match
+     (read)
+     ((ref 'Q . expr) (begin (write `(,ref D ,(eval/ro expr))) #t))
+     ((ref 'P . expr) (begin (write `(,ref D ,(eval/rw expr))) #t) )
+     ((? eof-object?) #f)
+     (X (error "unhandled request" location X))))
+  (with-exception-catcher beaver-handle-cmd-exception handle-cmd))
+
+(define (beaver-cmd3) (and (beaver-cmd2) (beaver-cmd3)))
+
+(define make-beaver-api2
+  (let ((handle-error error))
+    (define (print-error err)
+      (println port: (current-error-port) "Remote Error: " err)
+      (values))
+    (define (send-request! conn expr)
+      (write expr conn)
+      (force-output conn))
+    (define (dispatch-result conn)
+      (let ((result (read conn)))
+        ;; (beaver-debug 'Beaver-Result result)
+        (match
+         result
+         ((ref 'E . err) (handle-error err))
+         ((ref 'D . vals) (apply values vals))
+         ((? eof-object?) #!void)
+         (X (error "beaver call: bad protocol reply" X)))))
+    (define (with-conn conn kind expr)
+      #;(beaver-debug (list 'beaver kind) expr)
+      (send-request! conn `(0 ,kind . ,expr))
+      (dispatch-result conn))
+    (set! handle-error print-error)
+    (lambda (conn)
+      (values
+       (lambda (expr) (with-conn conn 'Q expr))
+       ;; make-beaver-caller
+       (lambda (expr) (with-conn conn 'P expr))))))
+
+(define sounds
+  (delay
+    (begin
+      (audiofile-init)
+      (vector
+       (audiofile-load "win")))))
+
+(define (audible-beep!)
+  (if (< (audiofile-getvolume) 0.3)
+      (log-warning "Beep with low volume."))
+  (audiofile-forceplay (vector-ref (force sounds) 0)))
+
 (define (calculator dir)
-  (log-status "Starting from " dir)
+  (define control-port
+    (cond-expand
+     (win32 1313)
+     (else (make-pathname dir "control"))))
+  (define (args)
+    `(
+      "-B" ,dir
+      ip: on
+      -S control ,control-port :
+      -service ot0 start "\"*:0\""
+      ;; Don't do this here!
+      ;;
+      ;; join: ,(debug-adhoc-network-id) -S vpn tcp register ,(debug-adhoc-network-port) beaver-cmd3 :
+      ;; -S tcp register (debug-adhoc-network-port) replloop2 :
+      -wait
+      ))
+  (log-status "Starting from " dir (object->string (args)))
   (glgui-example)
   (init-chat! dir)
-  (cond-expand
-   (win32
-    (beaver-run
-     dir
-     ip: on
-     "-S" "control" 1313 ":"
-     "-service" "ot0" "start" "\"*:0\""
-     "-wait"
-     ))
-   (else
-    (beaver-run
-     dir
-     ip: on
-     -S control ,(make-pathname dir "control") :
-     -service ot0 start "\"*:0\""
-     -wait
-     ))))
+  (let ((job (lambda () (beaver-process-commands (args)))))
+    (kick/sync! forward-logging-to-daemonian!)
+    (thread-start! (make-thread job 'beaver))))
 
 (let ()
   (define (load-file-with-arguments file args)
@@ -283,6 +384,10 @@ NULL;
       (daemonian-execute-registered-command loadkey more))
      ((CMD "-l" FILE . more)
       (load-file-with-arguments FILE more))
+     ((CMD "-version" . more)
+      (begin
+        (println (system-appversion))
+        (exit 0)))
      ((CMD (? file-exists? FILE) . more) (calculator FILE))
      ((CMD . more)
       (println port: (current-error-port) "Warning: " CMD " did not parse: " (object->string more))

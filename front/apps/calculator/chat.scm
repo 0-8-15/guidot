@@ -74,7 +74,8 @@
              args
              ((value) (glgui-widget-set! gui wgt 'label (label-string value)))
              ((arg1 arg2 . more) (apply change! gui wgt arg1 arg2 more))
-             (X (debug 'Komisch X)))))))
+             (X (debug 'Komisch X)))
+            (Xtrigger-redraw!)))))
     label+value))
 
 (define (Xglgui-select gui x y w h #!key (line-height 20) (color White))
@@ -137,9 +138,10 @@
             (match
              args
              (('close) (del))
-             (('hidden: v) (glgui-widget-set! gui wgt 'hidden (and v #t)))
+             (('hidden: v) (glgui-widget-set! gui wgt 'hidden (and v #t)) (Xtrigger-redraw!))
              (('set: new) (set-content new))
-             (_ (begin (del) (error "Xglgui-select unhandled arguments" args))))))))))
+             (_ (begin (del) (error "Xglgui-select unhandled arguments" args))))
+            (Xtrigger-redraw!)))))))
 
 ;;; These are exported as input/output:
 
@@ -298,15 +300,18 @@
     (let ((x (- id 2000000000000)))
       (and (odd? (bit-count x)) x)))))
 
-(define (chat-number->neatstring num)
+(define (chat-number->neatstring num #!optional (gap "-"))
   (let ((str (number->string (id2phone num))))
-    (apply
-     string-append
-     (let loop ((i 0))
-       (if (< i (string-length str))
-           (let ((e (min (+ i 4) (string-length str))))
-             `(,(substring str i e) " " . ,(loop e)))
-           '())))))
+    (string-append
+     (substring str 0 3)
+     gap
+     (substring str 3 6)
+     gap
+     (substring str 6 7)
+     gap
+     (substring str 7 10)
+     gap
+     (substring str 10 13))))
 
 ;; Persistent data
 
@@ -377,6 +382,7 @@
          (e (table-ref chat-partners ref #f))
          (new (list reference from msg kind)))
     (unless (and e (member new (cadr e)))
+      (when (equal? ref from) (audible-beep!))
       (table-set!
        chat-partners ref
        (if e
@@ -446,9 +452,11 @@
           (Mem (calculator-mem1)))
       (glgui-widget-set!
        gui calculator-subdisplay 'label
-       (string-append "In=" (value->neatstring (calculator-input)) "Mem=" (number->neatstring Mem) " Ans=" (value->neatstring Ans)  " "))))
+       (string-append "In=" (value->neatstring (calculator-input)) "Mem=" (number->neatstring Mem) " Ans=" (value->neatstring Ans)  " "))
+      (Xtrigger-redraw!)))
 
   (define (calculator-update-main-display)
+    (Xtrigger-redraw!)
     (let ((Ans (calculator-main-display)))
       (glgui-widget-set! gui calculator-display 'label (if (number? Ans) (number->neatstring Ans) (if (boolean? Ans) "" (object->string Ans))))
       (glgui-widget-set! gui calculator-display 'bgcolor (if Ans #f Red))))
@@ -651,11 +659,12 @@
              (input (glgui-label bag illx (- illy line-height) iw line-height "" fnt White))
              (nick-dialog #f)
              (ponebook-dialog #f))
-        (define (follow-input) (glgui-widget-set! gui cwgt 'list (chat-messages)))
-        (define (follow-to) (glgui-widget-set! gui todisplay 'label (chat-partner->neatstring (chat-address))))
+        (define (follow-input) (glgui-widget-set! gui cwgt 'list (chat-messages)) (Xtrigger-redraw!))
+        (define (follow-to) (glgui-widget-set! gui todisplay 'label (chat-partner->neatstring (chat-address))) (Xtrigger-redraw!))
         (define (ask-for-nick to)
           (let ((fornum (glgui-label bag illx illy iw line-height (number->string (id2phone to)) fnt White))
                 (nicknam (glgui-label bag illx (- illy line-height) iw line-height "" fnt White)))
+            (Xtrigger-redraw!)
             (glgui-widget-set! bag nicknam 'focus #t)
             (glgui-widget-set! bag keypad 'keypad text-keypad)
             (set! nick-dialog (list fornum nicknam))))
@@ -693,7 +702,9 @@
            ((= event EVENT_KEYRELEASE)
             (cond
              ((= x EVENT_KEYESCAPE) (set! skip #t) (close-chat!))
-             ((= x EVENT_KEYENTER) (set! skip #t)
+             ((= x EVENT_KEYENTER)
+              (set! skip #t)
+              (Xtrigger-redraw!)
               (let ((msg (glgui-widget-get bag input 'label)))
                 (glgui-widget-set! bag input 'label "")
                 (glgui-widget-set! gui input 'bgcolor Black)
@@ -742,6 +753,7 @@
         (set! chat-on-event on-event)
         (glgui-widget-set! gui input 'focus #t)
         (glgui-widget-set! gui input 'enableinput #t)
+;;        (glgui-widget-set! gui input 'draw-handle Xglgui:label-draw2)
         (wire! chat-messages post: follow-input)
         (wire! chat-address post: update-keypad)
         (wire! chat-address post: follow-to)
@@ -785,7 +797,8 @@
               (glgui-widget-set! gui current 'hidden #t))
             (when (not (eq? current new))
               (set! current new)
-              (glgui-widget-set! gui current 'hidden #f)))))))
+              (glgui-widget-set! gui current 'hidden #f))
+            (Xtrigger-redraw!))))))
 
   (define (cb-tool-selection-change gui wgt type x y)
     (kick (selected-display (list-ref known-tools (glgui-widget-get gui wgt 'current)))))
