@@ -156,6 +156,8 @@
 (kick/sync! (lambda () (front-beaver-directory (front-beaver-directory-default))))
 
 (cond
+ ((and (= (system-cmdargc) 2) (equal? (system-cmdargv 1) "-version"))
+  (println (system-appversion)))
  ((and (>= (system-cmdargc) 2)
        (file-exists? (system-cmdargv 1)))
   (load (system-cmdargv 1)))
