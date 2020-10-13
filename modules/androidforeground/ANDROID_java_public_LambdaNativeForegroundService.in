@@ -1,7 +1,7 @@
 /* -*-java-*- */
 
-@IF_ANDROIDAPI_GT_25@
 package @SYS_PACKAGE_DOT@;
+@IF_ANDROIDAPI_GT_25@
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 /* end of IF_ANDROIDAPI_GT_25 */
