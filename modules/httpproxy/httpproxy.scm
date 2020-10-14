@@ -1,5 +1,28 @@
 
-(define http-proxy
+(define http-proxy-on-illegal-proxy-request
+  (let ((handler (lambda (line)
+                   (display #<<EOF
+HTTP/1.0 200 OK
+Content-type: text/html; charset=utf-8
+
+<html>
+ <head>
+  <title>ERROR: This is a proxy.</title>
+ </head>
+ <body>
+  <h1>Error</h1>
+  <p>This is a HTTP/HTTPS proxy.</p>
+ </body>
+</html>
+
+EOF
+)
+                 )))
+    (case-lambda
+     (() handler)
+     ((proc) (if (procedure? proc) (set! handler proc))))))
+
+(define make-httpproxy
   (let ((max-line-length 1024)
         (http-proxy-connect-line
          (rx "^CONNECT ([^:/]+)(?:(?:[:])([0-9]+))? (HTTP/[0-9]\\.[0-9])\r?$"))
@@ -36,12 +59,17 @@
             (display nl1 conn)
             (force-output conn)
             (ports-connect! conn conn (current-input-port) (current-output-port) 3)))))
-    (lambda ()
-      (let* ((ln1 (u8-read-line2 (current-input-port) 10 max-line-length))
-             (m (rx~ http-proxy-connect-line ln1)))
-        (if m
-            (connect (rxm-ref m 1) (string->number (rxm-ref m 2)) (rxm-ref m 3))
-            (let ((m (rx~ http-proxy-request-line ln1)))
-              (if m
-                  (forward (rxm-ref m 3) (rxm-ref m 4)
-                           (rxm-ref m 1) (rxm-ref m 2) (rxm-ref m 5) (rxm-ref m 6)))))))))
+    (lambda (#!optional (illegal-proxy-request http-proxy-on-illegal-proxy-request))
+      (lambda ()
+        (let* ((ln1 (u8-read-line2 (current-input-port) 10 max-line-length))
+               (m (rx~ http-proxy-connect-line ln1)))
+          (if m
+              (connect (rxm-ref m 1) (string->number (rxm-ref m 2)) (rxm-ref m 3))
+              (let ((m (rx~ http-proxy-request-line ln1)))
+                (if m
+                    (forward (rxm-ref m 3) (rxm-ref m 4)
+                             (rxm-ref m 1) (rxm-ref m 2) (rxm-ref m 5) (rxm-ref m 6))
+                    (illegal-proxy-request ln1)))))))))
+
+(define http-proxy (make-httpproxy (lambda (line) ((http-proxy-on-illegal-proxy-request) line))))
+
