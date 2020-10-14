@@ -200,7 +200,7 @@ end-of-c-declare
       (exit 0))
      (else (error "daemonize: illegal argument" thunk)))))
  (else
-  (define (daemonize thunk #!optional (post-fork-exit (c-lambda (int) void "lambdanative_exit")))
+  (define (daemonize thunk #!optional (post-fork-exit (c-lambda (int) void "_exit")))
     ;; (if exit-procedure (set! exit exit-procedure))
     (cond
      ((procedure? thunk)
@@ -208,9 +208,11 @@ end-of-c-declare
           (thunk)
           (post-fork-exit 0)))
      ;; ((pair? thunk) (exit (if (semi-run (car thunk) (cdr thunk)) 0 1))) ;; debug only
-     ((pair? thunk)
+     ((pair? thunk) (debug 'hier thunk)
       (if ((c-lambda () bool "daemonian_daemonize"))
-          (exit (if (semi-run (car thunk) (cdr thunk)) 0 1))
+          (begin
+            (setup-child-interrupt-handling!)
+            (exit (if (semi-run (car thunk) (cdr thunk)) 0 1)))
           (post-fork-exit 0)))
      ((pair? thunk)
       (let ((port (semi-fork (car thunk) (cdr thunk))))
@@ -253,7 +255,7 @@ end-of-c-declare
     (let ((port (open-process
                  `(path: ,cmd arguments: ,args
                          stdout-redirection: ,stdout-redirection stderr-redirection: ,stderr-redirection))))
-      (and port
+      (and (port? port)
            (begin
              (thread-sleep! startup-delay) ;; give it time to start up
              (let ((terminated (process-status port 0 #f)))
