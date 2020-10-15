@@ -1,6 +1,6 @@
 
 (define test-hook '())
-(define (add-test! thunk) ;; unsused
+(define (add-test! thunk) ;; unused
   (set! test-hook (cons thunk test-hook)))
 
 (define test-results '#(0 0 0))
