@@ -2,6 +2,8 @@
 
 (include "../glgui/DejaVuSans-14,24,32.scm")
 
+(utf8string->unicode:on-encoding-error 'replace)
+
 (define (debug l v)
   (let ((p  (current-error-port)))
     (display l p)
@@ -174,12 +176,12 @@ NULL;
           (please-do-me-the-favor-and-make-progress! 2)
           #; (log-status "IDLE")
           )
-         ((eq? t 126) (LNjScheme-result))
+         ((eq? t 126) (kick! (lambda () (LNjScheme-result))))
          ((eq? t EVENT_REDRAW)
           ;; (log-status "REDRAW")
           (glgui-event gui t x y))
 	 (else
-          (glgui-event gui t x y)
+          (kick! (lambda () (glgui-event gui t x y)))
           #;(please-do-me-the-favor-and-make-progress! 1)
           #;(Xconditional-redraw)
           #;(if glCore:needsinit (please-do-me-the-favor-and-make-progress! 1))

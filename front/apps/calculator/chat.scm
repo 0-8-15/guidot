@@ -59,16 +59,21 @@
       (if value (glgui-widget-set! gui wgt 'label (label-string value))))
     (define (label+value
              gui x y w h #!key
-             (label "")
+             (label "") (label-width 1/2)
              (value "") (input #f)
              (size 'small) (color White) (bgcolor #f))
-      (let* ((w2 (/ w 2))
+      (define (delegate-input gui wgt type x y)
+        (glgui-widget-set! gui wgt 'focus #f)
+        (input gui wgt type x y))
+      (let* ((w2 (* w label-width))
              (r (+ x w2)))
-        (glgui-label gui x y w2 h text: (label-string label) size: size color: color bgcolor: bgcolor)
-        (let ((wgt (glgui-label gui r y w2 h text: (label-string value) size: size color: color bgcolor: bgcolor)))
+        (let ((lbl (glgui-label gui x y w2 h text: (label-string label) size: size color: color bgcolor: bgcolor))
+              (wgt (glgui-label gui r y w2 h text: (label-string value) size: size color: color bgcolor: bgcolor)))
           (when (procedure? input)
             (glgui-widget-set! gui wgt 'enableinput #t)
-            (glgui-widget-set! gui wgt 'callback input))
+            (glgui-widget-set! gui wgt 'onfocuscb delegate-input)
+            (glgui-widget-set! gui lbl 'enableinput #t)
+            (glgui-widget-set! gui lbl 'onfocuscb delegate-input))
           (lambda args
             (match
              args
@@ -78,13 +83,105 @@
             (Xtrigger-redraw!)))))
     label+value))
 
+(define keypad:hexnum
+  `(#;(
+     (#\0 #\1 #\2 #\3)
+     (#\4 #\5 #\6 #\7)
+     (#\8 #\9 #\a #\b)
+     (#\c #\d #\e #\f)
+     ( (,delchar ,glgui_keypad_delete.img) #\[ #\: #\] (,retchar ,glgui_keypad_return.img))
+     )
+    (
+     (#\1 #\2 #\3 #\[)
+     (#\4 #\5 #\6 #\])
+     (#\7 #\8 #\9 #\:)
+     (#\a #\b #\c #\.)
+     (#\d #\e #\f #\space)
+     ( (,delchar ,glgui_keypad_delete.img) #\0 (,retchar ,glgui_keypad_return.img))
+     )
+    ))
+
+(define Xglgui-value-edit-dialog
+  (let ((orig.glgui-label glgui-label)
+        (select-font Xglgui-font)
+        (glgui-label Xglgui-label)
+        (label-string (lambda (value) (if (string? value) value (object->string value)))))
+    (define (change! gui wgt #!key (value #f))
+      (if value (glgui-widget-set! gui wgt 'label (label-string value))))
+    (define (value-edit-dialog
+             gui x0 y0 w0 h0 #!key
+             (label "") (label-height 20)
+             (value "") (value-string #f)
+             (input (lambda (val) #f)) (keypad keypad:numeric)
+             (size 'small) (color White) (bgcolor Black))
+      (let* ((x (glgui-get gui 'xofs))
+             (y (glgui-get gui 'yofs))
+             (w (glgui-get gui 'w) #;(glgui-width-get))
+             (h (glgui-get gui 'h) #;(glgui-height-get))
+             (dlg (glgui-container gui x y w h))
+             (bg (glgui-box dlg 0 0 w h bgcolor))
+             (lbl (glgui-label
+                   dlg 0 (- h (* 3/2 label-height)) w label-height
+                   text: (label-string label) size: size color: color bgcolor: bgcolor))
+             (wgt (glgui-label
+                   dlg x (- h (* 32/10 label-height)) w label-height
+                   text: ((or value-string label-string) value) size: size color: color bgcolor: bgcolor))
+             (kbd (glgui-keypad dlg 0 0 w (/ h 2) (select-font size: 'medium) keypad)))
+        (define (edit-cb cb-gui cb-wgt type x y)
+          (let ((val (glgui-get wgt 'label)))
+            (glgui-widget-delete gui dlg)
+            (input val)))
+        (glgui-widget-set! dlg lbl 'align GUI_ALIGNCENTER)
+        (glgui-widget-set! dlg wgt 'align GUI_ALIGNCENTER)
+        (when (procedure? input)
+          (glgui-widget-set! dlg wgt 'enableinput #t)
+          (glgui-widget-set! dlg wgt 'callback edit-cb)
+          (glgui-widget-set! dlg wgt 'focus #t))
+        (lambda args
+          (match
+           args
+           ((value) (glgui-widget-set! dlg wgt 'label (label-string value)))
+           ((arg1 arg2 . more) (apply change! dlg wgt arg1 arg2 more))
+           (X (debug 'Komisch X)))
+          (Xtrigger-redraw!))))
+    value-edit-dialog))
+
+(define (Xglgui-pin-editable bag x y w h tag pin kbd #!key (value-string #f))
+  (define (conv v)
+    (case v
+      ((#f) "no")
+      ((#t) "yes")
+      (else
+       (cond
+        ((and (number? v) (exact? v)) (number->string v))
+        (else v)))))
+  (define (set-pin! val)
+    (pin val))
+  (define (pin-edit gui wgt type x1 y1)
+    (Xglgui-value-edit-dialog
+     bag x y w h
+     label: tag
+     value: (pin) value-string: value-string input: set-pin! keypad: kbd))
+  (let ((setter (Xglgui-valuelabel
+                 bag x y w h
+                 label: tag label-width: 3/4
+                 value: (conv (pin))
+                 ;; TBD: on input create modal dialog with appropriate
+                 ;; (for now numeric) keyboard
+                 ;;
+                 ;; input: #f
+                 ;;
+                 input: pin-edit
+                 )))
+    (wire! pin post: (lambda () (setter (conv (pin)))))))
+
 (define (Xglgui-select gui x y w h #!key (line-height 20) (color White))
   (let ((font (select-font height: line-height)))
-    (lambda (lst cb #!key (permanent #f))
+    (lambda (lst continue #!key (permanent #f) #;(longpress #f))
       (let* ((n (length lst))
              (border-width 2)
              (line-height line-height)
-             (border-left line-height)
+             (border-left (/ border-width 2))
              (border-right border-left)
              (element-height (ceiling (+ (* 1.1 line-height) (* 2 border-width))))
              (usable-n 0))
@@ -129,10 +226,14 @@
                 (set-content))
                (else
                 (unless permanent (del))
-                (cb (fx+ key offset))))))
+                (continue (fx+ key offset) (/ x w))))))
           (glgui-widget-set! gui wgt 'callback callback)
+          #;(when longpress
+            (glgui-widget-set! gui wgt 'longpress-callback longpress))
           (glgui-widget-set! gui wgt 'bordercolor Black)
           (glgui-widget-set! gui wgt 'scrollw 0)
+          (let ((cb (lambda (g wgt t x y) (unless permanent (del)))))
+            (glgui-widget-set! gui wgt 'callbackbeyond cb))
           (set-content lst)
           (lambda args
             (match
@@ -164,6 +265,67 @@
 (define-pin calculator-main-display
   initial: #f
   name: "Calculator value in display")
+
+;; Other pins
+
+(define (local-server-port-filter old new)
+  (match new
+         (#f 0)
+         ((? fixnum?) (if (and (fx>= new 0) (fx<= new #xffff)) new 0))
+         ((? string?) (local-server-port-filter old (string->number new)))))
+
+(define (local-server-port-change service)
+  (lambda (old new)
+    (if (positive? old) (tcp-service-unregister! old))
+    (if (positive? new) (tcp-service-register! new service))))
+
+(define-pin beaver-proxy-port-number
+  initial: 0
+  filter: local-server-port-filter
+  name: "Port number fot HTTP/S proxy to listen on.  If 0: no proxy.")
+
+(define-pin beaver-socks-port-number
+  initial: 0
+  filter: local-server-port-filter
+  name: "Port number fot HTTP/S proxy to listen on.  If 0: no socks.")
+
+(kick
+  (wire! beaver-proxy-port-number sequence: (local-server-port-change http-proxy))
+  (wire! beaver-socks-port-number sequence: (local-server-port-change socks-server)))
+
+(define string-empty?
+  (let ((m (rx "^[[:space:]]*$")))
+    (lambda (obj) (and (string? obj) (rx~ m obj) #t))))
+
+(define string-chat-address->unit-id
+  (let ((ignore (rx "[ .-]")))
+    (lambda (str)
+      (and (string? str)
+           (let ((despace (rx-replace/all ignore str)))
+             (phone2id (string->number despace)))))))
+
+(define (gui-forward-address-filter old new)
+  (cond
+   ((string-empty? new) #f)
+   ((string-chat-address->unit-id new) new)
+   (else new)))
+
+(define-pin beaver-socks-forward-addr
+  initial: (or (socks-forward-addr) "")
+  filter: gui-forward-address-filter
+  name: "SOCKS forward address")
+
+(wire! beaver-socks-forward-addr
+       extern: beaver-socks-forward-addr
+       critical:
+       (lambda (in)
+         (let ((n (cond
+                   ((string-chat-address->unit-id in) =>
+                    (lambda (ndid)
+                      (ip6addr->string (make-6plane-addr (car (ot0cli-ot0-networks)) ndid))))
+                   (else in))))
+           (socks-forward-addr n))))
+
 
 (define glgui-chat-messages-are-valid?
   ;; pre-check messages before they break the glgui widget
@@ -298,18 +460,18 @@
       (and (even? (bit-count x)) x)))
    (else
     (let ((x (- id 2000000000000)))
-      (and (odd? (bit-count x)) x)))))
+      (and (positive? x) (odd? (bit-count x)) x)))))
 
-(define (chat-number->neatstring num #!optional (gap "-"))
+(define (chat-number->neatstring num #!optional (gap "·"))
   (let ((str (number->string (id2phone num))))
     (string-append
      (substring str 0 3)
      gap
-     (substring str 3 6)
+     (substring str 3 5)
      gap
-     (substring str 6 7)
+     (substring str 5 8)
      gap
-     (substring str 7 10)
+     (substring str 8 10)
      gap
      (substring str 10 13))))
 
@@ -569,11 +731,12 @@
     (let ((bag (glgui-container gui 0 0 w h))
           (str "(C) JFW")
           (fnt (select-font size: 'small))
-          (line-height 16))
+          (line-height 16)
+          (line-height-selectable 28))
       (define (callback gui wgt type x y)
         (glgui-widget-delete gui wgt)
         #f)
-      (define (pin-display n tag pin)
+      (define (pin-display-chat-number n tag pin)
         (define (conv v)
           (case v
             ((#f) "no")
@@ -589,14 +752,47 @@
                        ;; input: #f
                        )))
           (wire! pin post: (lambda () (setter (conv (pin)))))))
+      (define (pin-display n tag pin)
+        (define (conv v)
+          (case v
+            ((#f) "no")
+            ((#t) "yes")
+            (else
+             (cond
+              ((and (number? v) (exact? v)) (number->string v))
+              (else v)))))
+        (let ((setter (Xglgui-valuelabel
+                       bag 10 (- h 10 (* n line-height)) (- w 10) line-height
+                       label: tag
+                       value: (conv (pin))
+                       ;; input: #f
+                       )))
+          (wire! pin post: (lambda () (setter (conv (pin)))))))
+      (define (pin-edit base n tag pin kbd value-string)
+        (Xglgui-pin-editable
+         bag  10 (- h base (* n line-height-selectable)) (- w 10) line-height-selectable
+         tag pin kbd value-string: value-string))
       (pin-display 1 "kick-style" kick-style)
       (pin-display 2 "vpn" ot0cli-server)
-      (pin-display 3 "Address" chat-own-address)
+      (pin-display-chat-number 3 "Address" chat-own-address)
+      (let ((base (* 4 line-height)))
+        (pin-edit base 1 "proxy port" beaver-proxy-port-number keypad:numeric #f)
+        (pin-edit base 2 "socks port" beaver-socks-port-number keypad:numeric #f)
+        (pin-edit base 3 "forward" beaver-socks-forward-addr keypad:hexnum
+                  (lambda (x) (if (not x) "" (object->string x))))
+        )
+      (glgui-button-string
+       bag (/ w 10) 100 (* w 8/10) line-height-selectable "Browse Homepage (need proxy)" (select-font size: 'small)
+       (lambda (gui wgt type x y)
+         (if (positive? (beaver-proxy-port-number))
+             (launch-url (string-append "http://127.0.0.1:" (number->string (beaver-proxy-port-number)))))
+         (kick (chat-pending-messages '()))))
       (let* ((w2 (/ w 2))
-             (w2w (- w2 10))
+             (border 10)
+             (w2w (- w2 border))
              (y (* 4 line-height))
              (fnt (select-font size: 'small)))
-        (Xglgui-label bag 10 y w2w line-height text: "Pending" size: 'small)
+        (Xglgui-label bag border y w2w line-height text: "Pending" size: 'small)
         (let ((wgt (glgui-button-string
                     bag w2 y w2w line-height "" fnt
                     (lambda (gui wgt type x y)
@@ -605,14 +801,14 @@
             (glgui-widget-set! bag wgt 'image (list (number->string (length (chat-pending-messages))))))
           (setter)
           (wire! chat-pending-messages post: setter)))
-      (let* ((border line-height)
+      (let* ((border (/ line-height 2))
              (line-height-selectable 28)
              (ctrl
               ((Xglgui-select
                 bag border border (- w (* 2 border)) (- h (* 2 border))
                 line-height: line-height-selectable color: White)
                '()
-               (lambda (sel)
+               (lambda (sel x)
                  (if (>= sel 0)
                      (let ((sel2 (list-ref (chat-inbox-senders) sel)))
                        (kick
@@ -662,12 +858,13 @@
         (define (follow-input) (glgui-widget-set! gui cwgt 'list (chat-messages)) (Xtrigger-redraw!))
         (define (follow-to) (glgui-widget-set! gui todisplay 'label (chat-partner->neatstring (chat-address))) (Xtrigger-redraw!))
         (define (ask-for-nick to)
-          (let ((fornum (glgui-label bag illx illy iw line-height (number->string (id2phone to)) fnt White))
-                (nicknam (glgui-label bag illx (- illy line-height) iw line-height "" fnt White)))
-            (Xtrigger-redraw!)
-            (glgui-widget-set! bag nicknam 'focus #t)
-            (glgui-widget-set! bag keypad 'keypad text-keypad)
-            (set! nick-dialog (list fornum nicknam))))
+          (set! nick-dialog
+                (Xglgui-value-edit-dialog
+                 bag 0 0 w h
+                 label: (chat-number->neatstring to)
+                 value: ""
+                 input: (lambda (val) (set! nick-dialog2 #f) (chat-partner-set! to val))
+                 keypad: keypad:numeric)))
         (define (select-from-phonebook)
           (let ((all
                  (sort
@@ -680,20 +877,30 @@
                       p))
                    (table->list chat-partners))
                   (lambda (a b) (string<? (car a) (car b)))))
-                (border (* 1.5 line-height)))
+                (border (* 0.1 line-height)))
             (set! ponebook-dialog
                   ((Xglgui-select
                     bag border border (- w (* 2 border)) (- h (* 2 border))
                     line-height: line-height-selectable color: White)
                    (map car all)
-                   (lambda (sel)
+                   (lambda (sel x)
                      (if (>= sel 0)
                          (let ((e (cdr (list-ref all sel))))
                            (if (cadr e)
-                               (kick (chat-address (car e)))
-                               (ask-for-nick (car e))))))))))
+                               (if (> x 2/3)
+                                   (begin
+                                     (set! nick-dialog
+                                           (Xglgui-value-edit-dialog
+                                            bag 0 0 w h
+                                            label: (chat-number->neatstring (car e))
+                                            value: (cadr e)
+                                            input: (lambda (val) (set! nick-dialog #f) (chat-partner-set! (car e) val))
+                                            keypad: keypad:numeric)))
+                                   (kick (chat-address (car e))))
+                               (ask-for-nick (car e))))
+                         (when ponebook-dialog (ponebook-dialog 'close) (set! ponebook-dialog #f))))))))
         (define (close-chat!)
-          (if ponebook-dialog (ponebook-dialog 'close))
+          (when ponebook-dialog (ponebook-dialog 'close) (set! ponebook-dialog #f))
           (kick (chat-address #f)
                 (selected-display (list-ref known-tools 0))))
         (define (on-event gui op event x y)
@@ -721,29 +928,16 @@
                     (if (ot0cli-server)
                         (chat-post-message! to timestamp payload)
                         (glgui-widget-set! bag input 'label "Error: not connected!"))))
-                 (nick-dialog
-                  (let* ((fornum (car nick-dialog))
-                         (nicknam (cadr nick-dialog))
-                         (num (phone2id (string->number (glgui-widget-get bag fornum 'label))))
-                         (nick (glgui-widget-get bag nicknam 'label)))
-                    (glgui-widget-delete bag fornum)
-                    (glgui-widget-delete bag nicknam)
-                    (set! nick-dialog #f)
-                    (if (> (string-length nick) 0)
-                        (kick
-                         (chat-partner-set! num nick)
-                         (chat-address num))
-                        (kick (chat-address num)))))
+                 (nick-dialog (glgui-dispatch-event gui op event x y))
                  ((not (chat-address))
-                  (let* ((despace (rx-replace/all (rx "[ -]") msg))
-                         (to (phone2id (string->number despace))))
+                  (let ((to (string-chat-address->unit-id msg)))
                     (cond
                      (to
                       (if (let ((x (chat-partner-known to)))
                             (and x (car x)))
                           (kick (chat-address to))
                           (ask-for-nick to)))
-                     ((equal? despace "") (select-from-phonebook))
+                     ((string-empty? msg) (select-from-phonebook))
                      (else
                       (glgui-widget-set! gui input 'bgcolor Red)
                       (glgui-widget-set! bag input 'label msg))))))
