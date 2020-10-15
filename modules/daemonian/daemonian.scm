@@ -300,10 +300,7 @@ fprintf(stderr, "NYI readlink on windows");
 EOF
 ))
 
-(include "~~tgt/lib/onetierzero/src/observable-notational-conventions.scm")
-
 (define cerberus-verbose (make-pin initial: #t name: "Trace Cerberus"))
-
 
 (define (daemonian-parse-null-port-alias old new)
   (if (member new '("/dev/null" "NULL" "NUL" "")) #f new))
