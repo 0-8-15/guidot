@@ -1,3 +1,4 @@
+(include "~~tgt/lib/onetierzero/src/observable-notational-conventions.scm")
 
 (define http-proxy-on-illegal-proxy-request
   (let ((handler (lambda (line)
@@ -24,11 +25,14 @@ EOF
 
 (define make-httpproxy
   (let ((max-line-length 1024)
-        (http-proxy-connect-line
-         (rx "^CONNECT ([^:/]+)(?:(?:[:])([0-9]+))? (HTTP/[0-9]\\.[0-9])\r?$"))
-        (http-proxy-request-line
-         (rx "^([^ ]+) (http://)?([^:/]+)(?:(?:[:])([^/]+))?([^ ]+) (HTTP/[0-9]\\.[0-9])\r?$"))
+        (http-proxy-connect-line #f)
+        (http-proxy-request-line #f)
         (https-regex (rx "^https")))
+    (define (init!)
+      (set! http-proxy-connect-line
+            (rx "^CONNECT ([^:/]+)(?:(?:[:])([0-9]+))? (HTTP/[0-9]\\.[0-9])\r?$"))
+      (set! http-proxy-request-line
+            (rx "^([^ ]+) (http://)?([^:/]+)(?:(?:[:])([^/]+))?([^ ]+) (HTTP/[0-9]\\.[0-9])\r?$")))
     (define (ingore-headers! port)
       (let ((line (u8-read-line2 port 10 max-line-length)))
         (or (equal? line "") (equal? line "\r") (ingore-headers! port))))
@@ -59,17 +63,20 @@ EOF
             (display nl1 conn)
             (force-output conn)
             (ports-connect! conn conn (current-input-port) (current-output-port) 3)))))
-    (lambda (#!optional (illegal-proxy-request http-proxy-on-illegal-proxy-request))
+    (lambda (#!optional (illegal-proxy-request #f))
       (lambda ()
+        (unless http-proxy-connect-line (init!))
         (let* ((ln1 (u8-read-line2 (current-input-port) 10 max-line-length))
-               (m (rx~ http-proxy-connect-line ln1)))
+               (m (with-exception-catcher
+                   handle-replloop-exception
+                   (lambda () (rx~ http-proxy-connect-line ln1)))))
           (if m
               (connect (rxm-ref m 1) (string->number (rxm-ref m 2)) (rxm-ref m 3))
               (let ((m (rx~ http-proxy-request-line ln1)))
                 (if m
                     (forward (rxm-ref m 3) (rxm-ref m 4)
                              (rxm-ref m 1) (rxm-ref m 2) (rxm-ref m 5) (rxm-ref m 6))
-                    (illegal-proxy-request ln1)))))))))
+                    ((or illegal-proxy-request (http-proxy-on-illegal-proxy-request))
+                     ln1)))))))))
 
 (define http-proxy (make-httpproxy (lambda (line) ((http-proxy-on-illegal-proxy-request) line))))
-
