@@ -782,7 +782,7 @@
                   (lambda (x) (if (not x) "" (object->string x))))
         )
       (glgui-button-string
-       bag (/ w 10) 100 (* w 8/10) line-height-selectable "Browse Homepage (need proxy)" (select-font size: 'small)
+       bag (/ w 10) 100 (* w 8/10) line-height-selectable "Browse Homepage (needs proxy)" (select-font size: 'small)
        (lambda (gui wgt type x y)
          (if (positive? (beaver-proxy-port-number))
              (launch-url (string-append "http://127.0.0.1:" (number->string (beaver-proxy-port-number)))))

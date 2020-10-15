@@ -260,6 +260,7 @@ NULL;
 (include "~~tgt/lib/onetierzero/src/observable-notational-conventions.scm")
 
 (include "chat.scm")
+(include "capture-domain.scm")
 
 (define chat-dir "beaver")
 
