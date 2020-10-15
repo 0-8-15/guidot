@@ -2,6 +2,9 @@
 ;;(set! exit _exit) ;; FIXME: with lambdanative we see exit 0 always!
 
 (include "DejaVuSans-14,24,32.scm")
+(include "visit-symbol-table.scm")
+
+(utf8string->unicode:on-encoding-error 'replace)
 
 (define (debug l v)
   (let ((p  (current-error-port)))
@@ -129,10 +132,13 @@
         (thread-yield!)
 	(check-magic-keys gui update-pages-now! t x y)
 	(cond
+         ((eq? t EVENT_REDRAW)
+          ;; (log-status "REDRAW")
+          (glgui-event gui t x y))
          ((eq? t EVENT_IDLE)
           #t)
-         ((eq? t 126) (LNjScheme-result))
-	 (else (glgui-event gui t x y))))))))
+         ((eq? t 126) (kick! (lambda () (LNjScheme-result))))
+	 (else (kick! (lambda () (glgui-event gui t x y))))))))))
 
 (define (handle-replloop-exception e)
   (cond
@@ -169,8 +175,8 @@
           (receive (g u) (init w h)
             (set! gui g)
             (set! update! (or u (lambda () #f)))))))
-     ;; events
-     (lambda (t x y) (events gui update! t x y))
+     ;; events -- to kick or not to kick?
+     (lambda (t x y) (kick! (lambda () (events gui update! t x y))))
      ;; termination
      terminate
      ;; suspend

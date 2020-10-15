@@ -172,14 +172,14 @@ NULL;
 	(check-magic-keys gui update-pages-now! t x y)
         (Xconditional-redraw)
 	(cond
+         ((eq? t EVENT_REDRAW)
+          ;; (log-status "REDRAW")
+          (glgui-event gui t x y))
          ((eq? t EVENT_IDLE)
           (please-do-me-the-favor-and-make-progress! 2)
           #; (log-status "IDLE")
           )
          ((eq? t 126) (kick! (lambda () (LNjScheme-result))))
-         ((eq? t EVENT_REDRAW)
-          ;; (log-status "REDRAW")
-          (glgui-event gui t x y))
 	 (else
           (kick! (lambda () (glgui-event gui t x y)))
           #;(please-do-me-the-favor-and-make-progress! 1)
