@@ -105,7 +105,7 @@ ___return(result);"))))
 (define %u8vector/n16h-set! (%u8vn-setter 16 "PP_HTONS"))
 
 (define (u8vector/n16h-set! vec n v)
-  (nw-vector-range-assert u8vector-set/n16! vec n 16)
+  (nw-vector-range-assert u8vector/n16h-set! vec n 16)
   (%u8vector/n16h-set! vec n v))
 
 (define %u8vector/n32h-ref (%u8v-ref 32 "PP_NTOHL"))
