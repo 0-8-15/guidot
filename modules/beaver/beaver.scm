@@ -1,4 +1,14 @@
 (cond-expand
+ ((or android-api19)
+  (c-declare
+   #<<EOF
+#define lockf(fd, k, fl) 0
+EOF
+)
+  )
+ (else))
+
+(cond-expand
  (android-nonotnow
 
   (define beaver-start!
