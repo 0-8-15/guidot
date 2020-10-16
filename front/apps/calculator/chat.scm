@@ -493,13 +493,16 @@
   (make-pathname (ot0-context) "chat.data"))
 
 (define (current-persistant-data)
-  (vector chat-partners (chat-pending-messages) (chat-inbox-senders)))
+  (vector
+   chat-partners (chat-pending-messages) (chat-inbox-senders) #f #f
+   (beaver-proxy-port-number) (beaver-socks-port-number) (beaver-socks-forward-addr)
+   ))
 
 (define-pin persistent-data
   initial: (current-persistant-data)
   pred: vector?
   ;; NO! filter: (lambda (o n) (if (equal? o n) o n))
-  name: "persistant data")
+  name: "persistent data")
 
 (define (write-persistent-data)
   (let ((content (object->u8vector (persistent-data))))
@@ -511,12 +514,24 @@
   (let ((current (let ((old (read-file-as-u8vector (persistant-file-name))))
                    (if old (u8vector->object old) (current-persistant-data)))))
     (kick/sync
-     (set! chat-partners (vector-ref current 0))
-     (chat-pending-messages (vector-ref current 1))
-     (when (> (vector-length current) 2)
-       (chat-inbox-senders (vector-ref current 2)))
+     (do ((i 0 (fx+ i 1)))
+         ((fx= i (vector-length current)))
+       (case i
+         ((0) (set! chat-partners (vector-ref current 0)))
+         ((1) (chat-pending-messages (vector-ref current 1)))
+         ((2) (chat-inbox-senders (vector-ref current 2)))
+         ((3 4) #f)
+         ((5) (beaver-proxy-port-number (vector-ref current 5)))
+         ((6) (beaver-socks-port-number (vector-ref current 6)))
+         ((7) (beaver-socks-forward-addr (vector-ref current 7)))))
      (wire! persistent-data post: write-persistent-data)
-     (wire! (list #;chat-partners chat-pending-messages)
+     (wire! (list
+             #;chat-partners
+             chat-pending-messages
+             beaver-proxy-port-number
+             beaver-socks-port-number
+             beaver-socks-forward-addr
+             )
             post: (lambda () (persistent-data (current-persistant-data)))))))
 
 (wire! ot0-context post: set-data-persistent!)
