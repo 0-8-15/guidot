@@ -257,7 +257,51 @@ NULL;
 
 (register-command! "beaver" beaver-process-commands)
 
-(include "~~tgt/lib/onetierzero/src/observable-notational-conventions.scm")
+;;; BEGIN INSTEAD OF (include "~~tgt/lib/onetierzero/src/observable-notational-conventions.scm")
+(define-macro (define-values names . body)
+  (let ((vals (gensym 'vals)))
+    `(begin
+       ,@(map (lambda (name) `(define ,name #f)) names)
+       (call-with-values (lambda () . ,body)
+         (lambda ,vals
+           . ,(map (lambda (name)
+                     `(set! ,name (let ((,name (car ,vals))) (set! ,vals (cdr ,vals)) ,name)))
+                   names))))))
+
+(define-macro (define-macro/rt expr nexpr)
+  `(begin
+     (define-macro ,expr ,nexpr)
+     (eval '(define-macro ,expr ,nexpr))))
+
+(define-macro (kick expr . more)
+  `(kick! (lambda () ,expr . ,more)))
+
+(define-macro (kick/sync expr . more)
+  `(kick/sync! (lambda () ,expr . ,more)))
+
+(define-macro (define-pin name . more)
+  `(define ,name (make-pin . ,more)))
+
+(define-macro (define-sense* name val . more)
+  (let ((in (string->symbol (string-append "." (symbol->string name))))
+        (in2 (string->symbol (string-append (symbol->string name) ":="))))
+    `(begin
+       (define ,in (SENSOR ,val . ,more))
+       (define ,in2 ,in)
+       (define ,name (,in)))))
+
+(define-macro (define-SENSOR name form)
+  (if (not (eq? (car form) 'SENSOR))
+      (error "define-SENSOR: missuse")
+      (let* ((more (cdr form))
+             (in (string->symbol (string-append "." (symbol->string name))))
+             (in2 (string->symbol (string-append (symbol->string name) ":="))))
+        `(begin
+           (define ,in (SENSOR . ,more))
+           (define ,in2 ,in)
+           (define ,name (,in))))))
+
+;;; END INSTEAD OF (include "~~tgt/lib/onetierzero/src/observable-notational-conventions.scm")
 
 (include "chat.scm")
 (include "capture-domain.scm")
@@ -353,6 +397,8 @@ NULL;
       (log-warning "Beep with low volume."))
   (audiofile-forceplay (vector-ref (force sounds) 0)))
 
+(define (calculator-adhoc-network-id) 18374687579166474240)
+
 (define (calculator dir)
   (define control-port
     (cond-expand
@@ -363,7 +409,7 @@ NULL;
       "-B" ,dir
       ip: on
       -S control ,control-port :
-      -service ot0 start "\"*:0\""
+      -service ot0 start "\"*:0\"" join: ,(calculator-adhoc-network-id)
       ;; Don't do this here!
       ;;
       ;; join: ,(debug-adhoc-network-id) -S vpn tcp register ,(debug-adhoc-network-port) beaver-cmd3 :
