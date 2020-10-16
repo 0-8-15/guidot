@@ -19,10 +19,9 @@ Content-type: text/html; charset=utf-8
 EOF
 )))
 
-(let ()
+(define (capture-domain! domain-name)
 
   ;; Connect to this domain and get the page below back from any port.
-  (define domain-name "beaver.dam")
   (define domain-rx
     #;(convert-domain-name-to-regex domain-name)
     (rx "(?:[^.]+\\.)?beaver\\.dam"))
@@ -87,7 +86,7 @@ end-of-page-body
 
   (on-socks-connect (replacement-connect-procedure (on-socks-connect)))
 
-  (on-ot0cli-connect (replacement-connect-procedure ot0cli-connect))
+  (on-ot0cli-connect (replacement-connect-procedure (on-ot0cli-connect)))
 
   #f
   ;;

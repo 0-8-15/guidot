@@ -39,6 +39,8 @@ end-of-c-declare
 
   (include "~~tgt/lib/onetierzero/src/ot0cli.scm")
 
+  (httpproxy-connect-set! ot0cli-connect)
+
   (define beaver-start! ot0cli-process-commands)
 
   )) ;; cond-expand

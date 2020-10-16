@@ -23,11 +23,14 @@ EOF
      (() handler)
      ((proc) (if (procedure? proc) (set! handler proc))))))
 
+(define httpproxy-connect-set!)
+
 (define make-httpproxy
   (let ((max-line-length 1024)
         (http-proxy-connect-line #f)
         (http-proxy-request-line #f)
-        (https-regex (rx "^https")))
+        (https-regex (rx "^https"))
+        (connect-handler (lambda (tag host port) (display "NOT Initialized: httproxy connect"))))
     (define (init!)
       (set! http-proxy-connect-line
             (rx "^CONNECT ([^:/]+)(?:(?:[:])([0-9]+))? (HTTP/[0-9]\\.[0-9])\r?$"))
@@ -41,7 +44,7 @@ EOF
       (ingore-headers! (current-input-port))
       (let ((conn (with-exception-catcher
                    (lambda (exn) #f)
-                   (lambda () (ot0cli-connect "HTTP" host port)))))
+                   (lambda () (connect-handler "HTTP" host port)))))
         (if (port? conn)
             (begin
               (display proto)
@@ -58,11 +61,12 @@ EOF
                  host " " port " "  scheme " : " nl1)
         (let ((conn (with-exception-catcher
                      handle-replloop-exception
-                     (lambda () (ot0cli-connect "HTTP" host port)))))
+                     (lambda () (connect-handler "HTTP" host port)))))
           (when (port? conn)
             (display nl1 conn)
             (force-output conn)
             (ports-connect! conn conn (current-input-port) (current-output-port) 3)))))
+    (set! httpproxy-connect-set! (lambda (v) (set! connect-handler v)))
     (lambda (#!optional (illegal-proxy-request #f))
       (lambda ()
         (unless http-proxy-connect-line (init!))

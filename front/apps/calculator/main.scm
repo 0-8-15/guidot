@@ -372,6 +372,7 @@ NULL;
       ))
   (log-status "Starting from " dir (object->string (args)))
   (glgui-example)
+  (capture-domain! "beaver.dam")
   (init-chat! dir)
   (let ((job (lambda () (beaver-process-commands (args)))))
     (kick/sync! forward-logging-to-daemonian!)
