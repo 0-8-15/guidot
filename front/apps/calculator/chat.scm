@@ -319,11 +319,17 @@
        extern: beaver-socks-forward-addr
        critical:
        (lambda (in)
-         (let ((n (cond
-                   ((string-chat-address->unit-id in) =>
-                    (lambda (ndid)
-                      (ip6addr->string (make-6plane-addr (car (ot0cli-ot0-networks)) ndid))))
-                   (else in))))
+         (let* ((m (and (string? in) (rx~ (rx "^([0-9. -]+):([0-9]+)$") in)))
+                (n (cond
+                    ((not m) in)
+                    ((string-chat-address->unit-id (rxm-ref m 1)) =>
+                     (lambda (ndid)
+                       (string-append
+                        "["
+                        (ip6addr->string (make-6plane-addr (car (ot0cli-ot0-networks)) ndid))
+                        "]:"
+                        (rxm-ref m 2))))
+                    (else in))))
            (socks-forward-addr n))))
 
 
