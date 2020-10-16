@@ -208,7 +208,7 @@ end-of-c-declare
           (thunk)
           (post-fork-exit 0)))
      ;; ((pair? thunk) (exit (if (semi-run (car thunk) (cdr thunk)) 0 1))) ;; debug only
-     ((pair? thunk) (debug 'hier thunk)
+     ((pair? thunk)
       (if ((c-lambda () bool "daemonian_daemonize"))
           (begin
             (setup-child-interrupt-handling!)
