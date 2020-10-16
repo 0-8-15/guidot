@@ -315,22 +315,24 @@
   filter: gui-forward-address-filter
   name: "SOCKS forward address")
 
-(wire! beaver-socks-forward-addr
+(wire! (list beaver-socks-forward-addr ot0cli-ot0-networks)
        extern: beaver-socks-forward-addr
        critical:
        (lambda (in)
          (let* ((m (and (string? in) (rx~ (rx "^([0-9. -]+):([0-9]+)$") in)))
+                (nw (ot0cli-ot0-networks))
                 (n (cond
                     ((not m) in)
                     ((string-chat-address->unit-id (rxm-ref m 1)) =>
                      (lambda (ndid)
-                       (string-append
-                        "["
-                        (ip6addr->string (make-6plane-addr (car (ot0cli-ot0-networks)) ndid))
-                        "]:"
-                        (rxm-ref m 2))))
+                       (and (pair? nw)
+                            (string-append
+                             "["
+                             (ip6addr->string (make-6plane-addr (car nw) ndid))
+                             "]:"
+                             (rxm-ref m 2)))))
                     (else in))))
-           (socks-forward-addr n))))
+           (socks-forward-addr (and (pair? nw) n)))))
 
 
 (define glgui-chat-messages-are-valid?
@@ -800,7 +802,7 @@
         (pin-edit base 1 "proxy port" beaver-proxy-port-number keypad:numeric #f)
         (pin-edit base 2 "socks port" beaver-socks-port-number keypad:numeric #f)
         (pin-edit base 3 "forward" beaver-socks-forward-addr keypad:hexnum
-                  (lambda (x) (if (not x) "" (object->string x))))
+                  (lambda (x) (if (not x) "" x)))
         )
       (glgui-button-string
        bag (/ w 10) 100 (* w 8/10) line-height-selectable "Browse Homepage (needs proxy)" (select-font size: 'small)
