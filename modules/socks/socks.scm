@@ -74,7 +74,8 @@
 ;;;** SOCKS Protocol
 
 (define (socks4a-request cmd dstport dstip #!optional (id ""))
-  (let* ((iplen (if (string? dstip) (string-length dstip) (u8vector-length dstip)))
+  (let* ((dstip (if (string? dstip) dstip (ipaddr->string dstip)))
+         (iplen (string-length dstip))
          (idlen (string-length id))
          (packet (%allocate-u8vector (+ 8 idlen 1 iplen 1))))
     (u8vector-set! packet 0 4)
@@ -86,10 +87,11 @@
     (%u8vector/n32h-set! packet 4 #xff)
     (u8vector-copy-from-string! packet 8 id)
     (u8vector-set! packet (+ 8 idlen) 0)
-    ((if (string? dstip)
+    #;((if (string? dstip)
         u8vector-copy-from-string!
         u8vector-copy-from-u8vector!)
-     packet (+ 9 idlen) dstip)
+    packet (+ 9 idlen) dstip)
+    (u8vector-copy-from-string! packet (+ 9 idlen) dstip)
     (u8vector-set! packet (+ 9 idlen iplen) 0)
     packet))
 
@@ -208,6 +210,8 @@
      (else
       ;; SOCKS reply "rejected or failed"
       (socks5-reply! out #f addr port))))
+  (define local-address-parameter
+    (if (u16vector? dstip) '(local-address: #u16(0 0 0 0 0 0 0 0)) '()))
   ((case version
      ((4 4a) socks4-dispatch-connection/common)
      ((5) socks5-dispatch-connection/common)
@@ -220,9 +224,9 @@
        ((on-socks-connect) name dstip dstport)
        ((? port? x) x)
        ((or 'lwip 'vpn) (open-lwip-tcp-client-connection (lwip-string->ip6-address dstip) dstport))
-       ((or 'host #t) (open-tcp-client `(address: ,dstip port-number: ,dstport)))
+       ((or 'host #t) (open-tcp-client `(address: ,dstip port-number: ,dstport ,@local-address-parameter)))
        (('vpn addr port) (open-lwip-tcp-client-connection addr port))
-       (('host addr port) (open-tcp-client addr port))
+       (('host addr port) (open-tcp-client `(address: ,addr port-number: ,port)))
        (#f #f))))))
 
 (define socks-service-register!)
@@ -296,7 +300,7 @@
                      ;; (> dstip 0) ;; Buggy firefox versions set it to zero!
                      )
                 (read-line/null-terminated in)
-                dstip)))
+                (subu8vector req 4 8))))
       ;; FIXME pass user-id along and fix read-line/null-terminated
       (case cmd
         ((1) (socks-dispatch-connection '4a name in out dstip dstport))
