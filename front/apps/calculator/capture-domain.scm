@@ -78,13 +78,9 @@ end-of-page-body
   (define (replacement-connect-procedure original)
     (define (replacement key addr port)
       (cond
-       ((not (string? addr)) (original key addr port))
        ((intercept? addr)
         ;; displays the portal only
         (proceducer->pipe display-page))
-       ((looks-like-ot0-ad-hoc? addr)
-        (let ((ipaddr (lwip-string->ip6-address addr)))
-          (and ipaddr (open-lwip-tcp-client-connection ipaddr port))))
        (else (original key addr port))))
     replacement)
 
