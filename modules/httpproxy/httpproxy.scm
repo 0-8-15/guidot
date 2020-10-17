@@ -33,9 +33,11 @@ EOF
         (connect-handler (lambda (tag host port) (display "NOT Initialized: httproxy connect"))))
     (define (init!)
       (set! http-proxy-connect-line
-            (rx "^CONNECT ([^:/]+)(?:(?:[:])([0-9]+))? (HTTP/[0-9]\\.[0-9])\r?$"))
+            (rx "^CONNECT (\\[(?:[^]]+])|(?:[^:/]+))(?:(?:[:])([0-9]+))? (HTTP/[0-9]\\.[0-9])\r?$"))
       (set! http-proxy-request-line
-            (rx "^([^ ]+) (http://)?([^:/]+)(?:(?:[:])([^/]+))?([^ ]+) (HTTP/[0-9]\\.[0-9])\r?$")))
+            (rx "^([^ ]+) (http://)?(\\[(?:[^]]+])|(?:[^:/]+))(?:(?:[:])([^/]+))?([^ ]+) (HTTP/[0-9]\\.[0-9])\r?$")))
+    (define (clean-ip6addr host)
+      (if (eqv? (string-ref host 0) #\[) (substring host 1 (fx- (string-length host) 1)) host))
     (define (ingore-headers! port)
       (let ((line (u8-read-line2 port 10 max-line-length)))
         (or (equal? line "") (equal? line "\r") (ingore-headers! port))))
@@ -44,7 +46,7 @@ EOF
       (ingore-headers! (current-input-port))
       (let ((conn (with-exception-catcher
                    (lambda (exn) #f)
-                   (lambda () (connect-handler "HTTP" host port)))))
+                   (lambda () (connect-handler "HTTP" (clean-ip6addr host) port)))))
         (if (port? conn)
             (begin
               (display proto)
@@ -61,7 +63,7 @@ EOF
                  host " " port " "  scheme " : " nl1)
         (let ((conn (with-exception-catcher
                      handle-replloop-exception
-                     (lambda () (connect-handler "HTTP" host port)))))
+                     (lambda () (connect-handler "HTTP" (clean-ip6addr host) port)))))
           (when (port? conn)
             (display nl1 conn)
             (force-output conn)
