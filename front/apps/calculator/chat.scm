@@ -877,6 +877,7 @@
              (todisplay (glgui-label bag illx illy iw line-height "" fnt White))
              (input (glgui-label bag illx (- illy line-height) iw line-height "" fnt White))
              (nick-dialog #f)
+             (nick-dialog-keypad keypad:simplified)
              (ponebook-dialog #f))
         (define (follow-input) (glgui-widget-set! gui cwgt 'list (chat-messages)) (Xtrigger-redraw!))
         (define (follow-to) (glgui-widget-set! gui todisplay 'label (chat-partner->neatstring (chat-address))) (Xtrigger-redraw!))
@@ -886,8 +887,11 @@
                  bag 0 0 w h
                  label: (chat-number->neatstring to)
                  value: ""
-                 input: (lambda (val) (set! nick-dialog2 #f) (chat-partner-set! to val))
-                 keypad: keypad:numeric)))
+                 input: (lambda (val)
+                          (set! nick-dialog2 #f)
+                          (unless (string-empty? val) (chat-partner-set! to val))
+                          (chat-address to))
+                 keypad: nick-dialog-keypad)))
         (define (select-from-phonebook)
           (let ((all
                  (sort
@@ -917,8 +921,10 @@
                                             bag 0 0 w h
                                             label: (chat-number->neatstring (car e))
                                             value: (cadr e)
-                                            input: (lambda (val) (set! nick-dialog #f) (chat-partner-set! (car e) val))
-                                            keypad: keypad:numeric)))
+                                            input: (lambda (val)
+                                                     (set! nick-dialog #f)
+                                                     (unless (string-empty? val) (chat-partner-set! (car e) val)))
+                                            keypad: nick-dialog-keypad)))
                                    (kick (chat-address (car e))))
                                (ask-for-nick (car e))))
                          (when ponebook-dialog (ponebook-dialog 'close) (set! ponebook-dialog #f))))))))
@@ -958,7 +964,7 @@
                      (to
                       (if (let ((x (chat-partner-known to)))
                             (and x (car x)))
-                          (kick (chat-address to))
+                          (chat-address to)
                           (ask-for-nick to)))
                      ((string-empty? msg) (select-from-phonebook))
                      (else

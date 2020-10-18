@@ -305,13 +305,19 @@ NULL;
 
 (include "chat.scm")
 (include "capture-domain.scm")
+(include "fossils.scm")
 
 (define chat-dir "beaver")
 
-(cond-expand
- (android
-  (set! chat-dir (make-pathname (system-appdirectory) chat-dir)))
- (else #f))
+(define (system-appdirectory-subdirectory dir)
+  (cond-expand
+   (android
+    (make-pathname (system-appdirectory) dir))
+   (else dir)))
+
+(set! chat-dir (system-appdirectory-subdirectory chat-dir))
+
+(kick (fossils-directory "fossils"))
 
 (define (debug-adhoc-network-port) 3333)
 
