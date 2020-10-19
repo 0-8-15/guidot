@@ -111,13 +111,31 @@ end-of-c-declare
 (define (register-command! cmd procedure)
   (set! *registered-commands* `((,cmd . ,procedure) . ,*registered-commands*)))
 
-(define (semi-fork cmd args)
+(cond-expand
+ (android
+  (define daemonian-directory-files (delay (android-directory-files))))
+ (else))
+
+(define (semi-fork cmd args #!optional (stderr #f))
+  (define (android-directory-files)
+    ((c-lambda () char-string "
+#ifdef ANDROID
+extern char *android_getFilesDir();
+#endif
+___result=
+#ifdef ANDROID
+android_getFilesDir();
+#else
+NULL;
+#endif
+")))
   ;; (debug 'semi-fork `(,cmd . ,args))
   (log-debug "semi-fork " 1 cmd " on " args)
   (cond-expand
    (android
     (let ((datadir
-           (jscheme-eval
+           (path-directory (force daemonian-directory-files))
+           #;(jscheme-eval
             `(let* ((app ,(android-app-class))
                     (this ((method "me" app)))
                     )
@@ -132,11 +150,21 @@ end-of-c-declare
                      )
                  (getDataDir (getApplicationContext this)))))))
       (if datadir
-          (let ((exe (make-pathname (list (object->string datadir) "lib") (string-append "lib" cmd ".so"))))
-            (log-debug "open-process " 1 exe " file exists? " (file-exists? exe))
-            (with-exception-catcher
-             (lambda (exn) (log-debug "open-process failed " 1 (debug 'fail (exception-->printable exn))) #f)
-             (lambda () (open-process `(path: ,exe arguments: ,args  stdout-redirection: #f stdin-redirection: #f))))))))
+          (let ((exe (string-append datadir "lib/lib" cmd ".so") #;(make-pathname (list (object->string datadir) "lib") (string-append "lib" cmd) ".so"))
+                (envt (list
+                       (string-append "HOME=" (force daemonian-directory-files)))))
+            (let* ((exists? (file-exists? exe))
+                   (executable? (and exists? (not (eqv? (bitwise-and (file-mode exe) #b001000000) 0)))))
+              (if (and exists? executable?)
+                  (with-exception-catcher
+                   (lambda (exn) (log-debug "open-process failed " 1 (debug 'fail (exception-->printable exn))) #f)
+                   (lambda ()
+                     (open-process
+                      `(path: ,exe arguments: ,args
+                              environment: ,envt
+                              stdout-redirection: #t stdin-redirection: #t
+                              stderr-redirection: ,stderr))))
+                  (log-error "executable: " exe " exists: " exists? " executable: " executable?)))))))
    (linux
     (open-process `(path: ,(system-cmdargv 0) arguments: (,(daemonian-semifork-key) ,cmd . ,args) stdout-redirection: #t stdin-redirection: #t)))
    (else
