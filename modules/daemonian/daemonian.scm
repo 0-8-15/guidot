@@ -111,14 +111,8 @@ end-of-c-declare
 (define (register-command! cmd procedure)
   (set! *registered-commands* `((,cmd . ,procedure) . ,*registered-commands*)))
 
-(cond-expand
- (android
-  (define daemonian-directory-files (delay (android-directory-files))))
- (else))
-
-(define (semi-fork cmd args #!optional (stderr #f))
-  (define (android-directory-files)
-    ((c-lambda () char-string "
+(define (android-directory-files)
+  ((c-lambda () char-string "
 #ifdef ANDROID
 extern char *android_getFilesDir();
 #endif
@@ -129,6 +123,13 @@ android_getFilesDir();
 NULL;
 #endif
 ")))
+
+(cond-expand
+ (android
+  (define daemonian-directory-files (delay (android-directory-files))))
+ (else))
+
+(define (semi-fork cmd args #!optional (stderr #f))
   ;; (debug 'semi-fork `(,cmd . ,args))
   (log-debug "semi-fork " 1 cmd " on " args)
   (cond-expand
