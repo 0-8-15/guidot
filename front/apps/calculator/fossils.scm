@@ -33,7 +33,10 @@
        (when (and fallback (not (file-exists? fallback)))
          ;; clone default
          (let ((template (make-pathname (system-directory) "templates/template" "fossil")))
-           (open-process (debug 'DO `(path: "fossil" arguments: ("clone" ,template ,fallback "--once" "-A" ,fallback-name))))))))))
+           (unless (semi-run "fossil" `("clone" ,template ,fallback "--once" "-A" ,fallback-name))
+             (log-error "fossil failed for " (object->string `("clone" ,template ,fallback "--once" "-A" ,fallback-name)))
+             (log-error "fossil is: " (read-line (semi-fork "fossil" '("version")) #f))
+             (log-error "Again: " (read-line (semi-fork "fossil" `("clone" ,template ,fallback "--once" "-A" ,fallback-name) #t) #f)))))))))
 
 (wire!
  (list fossils-directory chat-own-address ot0cli-ot0-networks)
@@ -53,8 +56,8 @@
           (lambda (line)
             (when (and (fossils-directory) (chat-own-address))
               (let* ((cmdln `(,@cmdln "-repolist" "-nocompress" "-ipaddr" "127.0.0.1" "-localauth"))
-                     (conn (open-process `(path: ,fossil arguments: ,cmdln))))
+                     (conn (semi-fork fossil cmdln)))
                 (display line conn)
                 (display "\r\n" conn)
                 (ports-connect! conn conn (current-input-port) (current-output-port) 3)))))
-         (beaver-process-commands `(-service vpn tcp register 80 command: ,fossil . ,cmdln)))))))
+         (lwip-tcp-service-register! 80 (ot0cli-make-process-service fossil cmdln)))))))

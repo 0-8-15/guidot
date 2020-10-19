@@ -1,5 +1,10 @@
 (log-status "Startup")
 
+(register-command!
+ "fossil"
+ (lambda (args)
+   (process-status (open-process `(path: "fossil" arguments: ,args stdin-redirection: #f stdout-redirection: #f)))))
+
 (include "../glgui/DejaVuSans-14,24,32.scm")
 
 (utf8string->unicode:on-encoding-error 'replace)
@@ -317,7 +322,7 @@ NULL;
 
 (set! chat-dir (system-appdirectory-subdirectory chat-dir))
 
-(kick (fossils-directory "fossils"))
+(kick (fossils-directory (fossils-directory-location "fossils")))
 
 (define (debug-adhoc-network-port) 3333)
 
