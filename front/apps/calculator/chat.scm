@@ -888,7 +888,7 @@
                  label: (chat-number->neatstring to)
                  value: ""
                  input: (lambda (val)
-                          (set! nick-dialog2 #f)
+                          (set! nick-dialog #f)
                           (unless (string-empty? val) (chat-partner-set! to val))
                           (chat-address to))
                  keypad: nick-dialog-keypad)))
@@ -923,7 +923,8 @@
                                             value: (cadr e)
                                             input: (lambda (val)
                                                      (set! nick-dialog #f)
-                                                     (unless (string-empty? val) (chat-partner-set! (car e) val)))
+                                                     (unless (string-empty? val) (chat-partner-set! (car e) val))
+                                                     (chat-address (car e)))
                                             keypad: nick-dialog-keypad)))
                                    (kick (chat-address (car e))))
                                (ask-for-nick (car e))))
