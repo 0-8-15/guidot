@@ -6,7 +6,8 @@
       (call-with-output-file (make-pathname dir "origin")
         (let ((content use-origin))
           (lambda (port)
-            (write-subu8vector content 0 (u8vector-length content) port)))))))
+            (write-subu8vector content 0 (u8vector-length content) port)))))
+    (log-status "done. Initialized chat in "  dir)))
 
 (define-macro (beaver-run dir . args)
   ;; FIXME: that's written badly, but...for know.
@@ -923,8 +924,11 @@
                                             value: (cadr e)
                                             input: (lambda (val)
                                                      (set! nick-dialog #f)
-                                                     (unless (string-empty? val) (chat-partner-set! (car e) val))
-                                                     (chat-address (car e)))
+                                                     (if (string-empty? val)
+                                                         (chat-partner-set! (car e)) ;; remove
+                                                         (begin
+                                                           (chat-address (car e))
+                                                           (chat-partner-set! (car e) val))))
                                             keypad: nick-dialog-keypad)))
                                    (kick (chat-address (car e))))
                                (ask-for-nick (car e))))
