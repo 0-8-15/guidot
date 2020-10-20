@@ -32,11 +32,12 @@
             (fallback (and fallback-name (fossils-project-filename fallback-name))))
        (when (and fallback (not (file-exists? fallback)))
          ;; clone default
+         (log-status "cloning default fossil")
          (let ((template (make-pathname (system-directory) "templates/template" "fossil")))
-           (unless (semi-run "fossil" `("clone" ,template ,fallback "--once" "-A" ,fallback-name))
-             (log-error "fossil failed for " (object->string `("clone" ,template ,fallback "--once" "-A" ,fallback-name)))
-             (log-error "fossil is: " (read-line (semi-fork "fossil" '("version")) #f))
-             (log-error "Again: " (read-line (semi-fork "fossil" `("clone" ,template ,fallback "--once" "-A" ,fallback-name) #t) #f)))))))))
+           (log-status "cloning default fossil" (object->string (list run/boolean "fossil" "clone" template fallback "--once" "-A" fallback-name)))
+           (unless (run-logging/boolean "fossil" "clone" template fallback "--once" "-A" fallback-name)
+             (log-error "fossil is: " (run->string "fossil" "version"))
+             (log-error "Again: " (run->error-string "fossil" "clone" template fallback "--once" "-A" fallback-name)))))))))
 
 (wire!
  (list fossils-directory chat-own-address ot0cli-ot0-networks)

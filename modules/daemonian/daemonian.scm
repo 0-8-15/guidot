@@ -126,7 +126,26 @@ NULL;
 
 (cond-expand
  (android
-  (define daemonian-directory-files (delay (android-directory-files))))
+  (define daemonian-directory-files (delay (android-directory-files)))
+  (define (android-ls-lR dir)
+    (let ((port (open-input-process `(path: "ls" arguments: ("-lR" ,dir) stderr-redirection: #t))))
+      (if (input-port? port) (read-line port #f) (string-append "failed to run ls -lR " dir))))
+  (define (android-file fn)
+    (let ((port (open-input-process `(path: "file" arguments: (,fn) stderr-redirection: #t))))
+      (if (input-port? port) (read-line port #f) (string-append "failed to run file " fn))))
+  (define (android-run-in/boolean directory cmd  . args)
+    (log-error "running in " directory " " cmd " " (object->string args))
+    (let* ((port (open-input-process `(path: ,cmd arguments: ,args stderr-redirection: #f directory: ,directory)))
+           (ret (and (port? port) (zero? (process-status port)))))
+      (unless ret (log-error "FAILED in " directory " : " cmd " " (object->string args)))
+      ret))
+  (define (android-run->string cmd  . args)
+    (let ((port (open-input-process `(path: ,cmd arguments: ,args stderr-redirection: #t))))
+      (if (input-port? port) (read-line port #f) (apply string-append "failed to run " cmd args))))
+  (define (android-run-in->string directory cmd  . args)
+    (let ((port (open-input-process `(path: ,cmd arguments: ,args stderr-redirection: #t directory: ,directory))))
+      (if (input-port? port) (read-line port #f) (apply string-append "failed to run " cmd args))))
+  )
  (else))
 
 (define (semi-fork cmd args #!optional (stderr #f))
@@ -149,31 +168,73 @@ NULL;
                             (getParent (method "getParent" "java.io.File")))
                         (lambda (ctx) (getParent (getFilesDir ctx)))))
                      )
-                 (getDataDir (getApplicationContext this)))))))
+           (getDataDir (getApplicationContext this)))))))
+      (define (file-exists-and-executable? fn)
+        (and (file-exists? fn)
+             (not (eqv? (bitwise-and (file-mode fn) #b001000000) 0))))
+      (define (apk-executable-path cmd)
+        (string-append "lib/armeabi-v7a/lib" cmd ".so"))
+      (define (cache-path) (string-append datadir "cache"))
+      (define (cached-executable-path cmd)
+        (string-append datadir "cache/lib/armeabi-v7a/lib" cmd ".so"))
+      (define (cached-executable cmd)
+        (let ((cachedpath (cached-executable-path cmd)))
+          (and (file-exists-and-executable? cachedpath) cachedpath)))
       (if datadir
-          (let ((exe (string-append datadir "lib/lib" cmd ".so") #;(make-pathname (list (object->string datadir) "lib") (string-append "lib" cmd) ".so"))
+          (let loop ((exe (string-append datadir "lib/lib" cmd ".so") #;(make-pathname (list (object->string datadir) "lib") (string-append "lib" cmd) ".so"))
                 (envt (list
                        (string-append "HOME=" (force daemonian-directory-files)))))
             (let* ((exists? (file-exists? exe))
                    (executable? (and exists? (not (eqv? (bitwise-and (file-mode exe) #b001000000) 0)))))
-              (if (and exists? executable?)
+              (cond
+               ((and exists? executable?)
+                (with-exception-catcher
+                 (lambda (exn) (log-debug "open-process failed " 1 (debug 'fail (exception-->printable exn))) #f)
+                 (lambda ()
+                   (open-process
+                    `(path: ,exe arguments: ,args
+                            environment: ,envt
+                            stdout-redirection: #t stdin-redirection: #t
+                            stderr-redirection: ,stderr)))))
+               ((cached-executable cmd) => (lambda (cached) (loop cached envt)))
+               (else
+                (log-error "executable: " exe " exists: " exists? " executable: " executable?)
+                (let ((exe (cached-executable-path cmd)))
+                  (log-error "cached executable: " exe " exists: " (file-exists? exe) " executable: " (file-exists-and-executable? exe)))
+                ;;(log-error "data dir: " datadir "\n" (android-ls-lR datadir))
+                (let ((p (android-PackageRessourcePath))
+                      (cachedir (cache-path)))
+                  (log-error "resource dir: " p "\n" (android-ls-lR p) (android-file p))
                   (with-exception-catcher
-                   (lambda (exn) (log-debug "open-process failed " 1 (debug 'fail (exception-->printable exn))) #f)
-                   (lambda ()
-                     (open-process
-                      `(path: ,exe arguments: ,args
-                              environment: ,envt
-                              stdout-redirection: #t stdin-redirection: #t
-                              stderr-redirection: ,stderr))))
-                  (begin
-                    (log-error "executable: " exe " exists: " exists? " executable: " executable?)
-                    #f)))))))
+                   (lambda (exn) (log-error "unzip ran into: " exn))
+                   (lambda () (log-error "content: " (android-run->string "unzip" "-lq" p))))
+                  (if (and
+                       (or (android-run-in/boolean
+                            cachedir "unzip" "-d" cachedir p (apk-executable-path cmd))
+                           (begin
+                             (log-error
+                              "Error: "
+                              (android-run-in->string
+                               cachedir "unzip" "-d" cachedir p (apk-executable-path cmd)))
+                             #f))
+                       (or (file-exists-and-executable? (cached-executable-path cmd))
+                           (android-run-in/boolean cachedir "chmod" "+x" (cached-executable-path cmd))
+                           (begin
+                             (log-error
+                              "Error: " (android-run-in->string cachedir "chmod" "+x" (cached-executable-path cmd)))
+                             (log-error " Dir " (android-ls-lR (string-append datadir "cache")))
+                             #f))
+                       (cached-executable cmd))
+                      (loop (cached-executable cmd) envt)
+                      (begin
+                        (log-error "FAILED to extract cmd " cmd " from archive " p)
+                        #f))))))))))
    (linux
     (open-process `(path: ,(system-cmdargv 0) arguments: (,(daemonian-semifork-key) ,cmd . ,args) stdout-redirection: #t stdin-redirection: #t)))
    (else
     (with-exception-catcher
      (lambda (exn) (log-debug "open-process failed " 1 (debug 'fail (exception-->printable exn))) #f)
-     (lambda () (open-process `(path: #;"/proc/self/exe" ,(system-cmdargv 0) arguments: (,(daemonian-semifork-key) ,cmd . ,args) stdout-redirection: #t stdin-redirection: #t)))))))
+     (lambda () (open-process `(path: #;"/proc/self/exe" ,(system-cmdargv 0) arguments: (,(daemonian-semifork-key) ,cmd . ,args) stdout-redirection: #t stdin-redirection: #t show-console: #f)))))))
 
 (define (semi-run cmd args)
   (let ((port (semi-fork cmd args)))
@@ -188,6 +249,52 @@ NULL;
          (begin
            (close-port port)
            port))))
+
+;; from scsh-utils
+(define (maybe->string s)
+  (cond ((string? s) s)
+        ((or (symbol? s) (number? s) (char? s)) (object->string s))
+        (else
+         (log-error "Expected a string, symbol, character or number" s)
+         (object->string s))))
+
+(define (port->string p)
+  #;(and
+   (input-port? p)
+   (dynamic-wind
+       (lambda () #t)
+       (lambda ()
+         (call-with-output-string
+          (lambda (o)
+            (let loop ()
+              (let ((ln (read-line p)))
+                (unless (eof-object? ln)
+                        (display ln o)
+                        (newline o)
+                        (loop)))))))
+       (lambda () (close-input-port p))))
+  (and (input-port? p) (read-line p #f)))
+
+(define (run->string cmd . args)
+  (port->string (semi-fork cmd (map maybe->string args))))
+
+(define (run->error-string cmd . args)
+  (port->string (semi-fork cmd (map maybe->string args) #t)))
+
+(define (run->status cmd . args)
+  (process-status (semi-fork cmd (map maybe->string args))))
+
+(define (run/boolean cmd . args)
+  (let ((port (semi-fork cmd (map maybe->string args))))
+    (and (port? port) (zero? (process-status port)))))
+
+(define (run-logging/boolean cmd . args)
+  (log-status "running " cmd " " (object->string args))
+  (let ((result (apply run/boolean cmd args)))
+    (log-status cmd (if result " success" " FAILED"))
+    result))
+
+;; end scsh-utils
 
 (define (system-command-line* offset) ;; FIXME: depends on lambdanative!
   (let loop ((n (system-cmdargc)) (r '()))
