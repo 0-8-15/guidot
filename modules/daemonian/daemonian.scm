@@ -165,7 +165,9 @@ NULL;
                               environment: ,envt
                               stdout-redirection: #t stdin-redirection: #t
                               stderr-redirection: ,stderr))))
-                  (log-error "executable: " exe " exists: " exists? " executable: " executable?)))))))
+                  (begin
+                    (log-error "executable: " exe " exists: " exists? " executable: " executable?)
+                    #f)))))))
    (linux
     (open-process `(path: ,(system-cmdargv 0) arguments: (,(daemonian-semifork-key) ,cmd . ,args) stdout-redirection: #t stdin-redirection: #t)))
    (else
