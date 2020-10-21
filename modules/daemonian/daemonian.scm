@@ -202,9 +202,9 @@ NULL;
                 (let ((exe (cached-executable-path cmd)))
                   (log-error "cached executable: " exe " exists: " (file-exists? exe) " executable: " (file-exists-and-executable? exe)))
                 ;;(log-error "data dir: " datadir "\n" (android-ls-lR datadir))
-                (let ((p (android-PackageRessourcePath))
+                (let ((p (android-PackageCodePath))
                       (cachedir (cache-path)))
-                  (log-error "resource dir: " p "\n" (android-ls-lR p) (android-file p))
+                  (log-error "package code path: " p "\n" (android-ls-lR p) (android-file p))
                   (with-exception-catcher
                    (lambda (exn) (log-error "unzip ran into: " exn))
                    (lambda () (log-error "content: " (android-run->string "unzip" "-lq" p))))

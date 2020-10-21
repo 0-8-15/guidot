@@ -3,7 +3,10 @@
 (register-command!
  "fossil"
  (lambda (args)
-   (process-status (open-process `(path: "fossil" arguments: ,args stdin-redirection: #f stdout-redirection: #f)))))
+   (process-status
+    (open-process
+     `(path: "fossil" arguments: ,args
+             stdin-redirection: #f stdout-redirection: #f show-console: #f)))))
 
 (include "../glgui/DejaVuSans-14,24,32.scm")
 
