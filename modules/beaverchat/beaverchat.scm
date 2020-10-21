@@ -1,5 +1,34 @@
 
-(define (init-chat! dir)
+(log-status "initializing chat")
+
+(include "../../front/apps/glgui/DejaVuSans-14,24,32.scm")
+
+(utf8string->unicode:on-encoding-error 'replace)
+
+
+;;; BEGIN INSTEAD OF (include "~~tgt/lib/onetierzero/src/observable-notational-conventions.scm")
+(define-macro (define-values names . body)
+  (let ((vals (gensym 'vals)))
+    `(begin
+       ,@(map (lambda (name) `(define ,name #f)) names)
+       (call-with-values (lambda () . ,body)
+         (lambda ,vals
+           . ,(map (lambda (name)
+                     `(set! ,name (let ((,name (car ,vals))) (set! ,vals (cdr ,vals)) ,name)))
+                   names))))))
+
+(define-macro (kick expr . more)
+  `(kick! (lambda () ,expr . ,more)))
+
+(define-macro (kick/sync expr . more)
+  `(kick/sync! (lambda () ,expr . ,more)))
+
+(define-macro (define-pin name . more)
+  `(define ,name (make-pin . ,more)))
+
+;;; END INSTEAD OF (include "~~tgt/lib/onetierzero/src/observable-notational-conventions.scm")
+
+(define (init-beaverchat! dir #!key (use-origin #f))
   (unless (file-exists? dir)
     (ot0-init-context! dir)
     (when use-origin
@@ -8,17 +37,6 @@
           (lambda (port)
             (write-subu8vector content 0 (u8vector-length content) port)))))
     (log-status "done. Initialized chat in "  dir)))
-
-(define-macro (beaver-run dir . args)
-  ;; FIXME: that's written badly, but...for know.
-  (let ((uqa (lambda (x) (if (and (pair? x) (eq? (car x) 'unquote)) (cadr x) `',x))))
-    `(begin
-       (init-chat! ,dir)
-       (thread-start!
-        (make-thread
-         (lambda ()
-           (beaver-process-commands (list "-B" ,dir . ,(map uqa args))))
-         'beaver)))))
 
 ;;;
 
@@ -268,6 +286,11 @@
   name: "Calculator value in display")
 
 ;; Other pins
+
+(define-pin audible-beep
+  initial: (lambda () #f)
+  pred: procedure?
+  name: "hot to beep")
 
 (define (local-server-port-filter old new)
   (match new
@@ -568,7 +591,7 @@
          (e (table-ref chat-partners ref #f))
          (new (list reference from msg kind)))
     (unless (and e (member new (cadr e)))
-      (when (equal? ref from) (audible-beep!))
+      (when (equal? ref from) ((audible-beep)))
       (table-set!
        chat-partners ref
        (if e
@@ -598,7 +621,7 @@
 
 (wire! chat-address post: chat-set-current-partner!)
 
-(define (glgui-example) ;; Note: this is currently a once-at-most call!
+(define (glgui-beaverchat) ;; Note: this is currently a once-at-most call!
 
   ;; This simple calculator app uses the gambit in-fix interpreter
   ;; It handles fractions, complex numbers, and large fixnums!
@@ -1084,4 +1107,5 @@
    )
   )
 
+(log-status "initializing chat completed")
 ;; eof

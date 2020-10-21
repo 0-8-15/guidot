@@ -8,10 +8,6 @@
      `(path: "fossil" arguments: ,args
              stdin-redirection: #f stdout-redirection: #f show-console: #f)))))
 
-(include "../glgui/DejaVuSans-14,24,32.scm")
-
-(utf8string->unicode:on-encoding-error 'replace)
-
 (define (debug l v)
   (let ((p  (current-error-port)))
     (display l p)
@@ -311,11 +307,17 @@ NULL;
 
 ;;; END INSTEAD OF (include "~~tgt/lib/onetierzero/src/observable-notational-conventions.scm")
 
-(include "chat.scm")
+(log-status "capdom")
+
 (include "capture-domain.scm")
+
+(log-status "fossil")
+
 (include "fossils.scm")
 
 (define chat-dir "beaver")
+
+(log-status "try system-appdirectory")
 
 (define (system-appdirectory-subdirectory dir)
   (cond-expand
@@ -326,6 +328,7 @@ NULL;
 (set! chat-dir (system-appdirectory-subdirectory chat-dir))
 
 (kick (fossils-directory (fossils-directory-location "fossils")))
+(log-status "chat-dir")
 
 (define (debug-adhoc-network-port) 3333)
 
@@ -431,8 +434,9 @@ NULL;
       -wait
       ))
   (log-status "Starting from " dir (object->string (args)))
-  (init-chat! dir) ;; MUST be first
-  (glgui-example)
+  (init-beaverchat! dir use-origin: use-origin) ;; MUST be first
+  (glgui-beaverchat)
+  (kick (audible-beep audible-beep!))
   (capture-domain! "beaver.dam")
   (log-status "beaver.dam done")
   (let ((job (lambda () (beaver-process-commands (args)))))
