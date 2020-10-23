@@ -621,7 +621,7 @@
 
 (wire! chat-address post: chat-set-current-partner!)
 
-(define (glgui-beaverchat) ;; Note: this is currently a once-at-most call!
+(define (glgui-beaverchat launch-url) ;; Note: this is currently a once-at-most call!
 
   ;; This simple calculator app uses the gambit in-fix interpreter
   ;; It handles fractions, complex numbers, and large fixnums!
@@ -832,7 +832,9 @@
        bag (/ w 10) 100 (* w 8/10) line-height-selectable "Browse Homepage (needs proxy)" (select-font size: 'small)
        (lambda (gui wgt type x y)
          (if (positive? (beaver-proxy-port-number))
-             (launch-url (string-append "http://127.0.0.1:" (number->string (beaver-proxy-port-number)))))
+             (launch-url
+              (string-append "http://127.0.0.1:" (number->string (beaver-proxy-port-number)))
+              via: (if (< x (/ w 2)) 'webview 'extern)))
          (kick (chat-pending-messages '()))))
       (let* ((w2 (/ w 2))
              (border 10)
