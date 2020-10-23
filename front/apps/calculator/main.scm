@@ -414,6 +414,12 @@ NULL;
       (log-warning "Beep with low volume."))
   (audiofile-forceplay (vector-ref (force sounds) 0)))
 
+(cond-expand
+ (use-webview (include "webview.scm"))
+ (else
+  (define (webview-launch! url . more)
+    (launch-url url))))
+
 (define (calculator-adhoc-network-id) 18374687579166474240)
 
 (define (calculator dir)
@@ -435,9 +441,15 @@ NULL;
       ))
   (log-status "Starting from " dir (object->string (args)))
   (init-beaverchat! dir use-origin: use-origin) ;; MUST be first
-  (glgui-beaverchat)
+  (glgui-beaverchat webview-launch!)
   (kick (audible-beep audible-beep!))
-  (capture-domain! "beaver.dam")
+  (httpproxy-atphone-set!
+   (lambda (str)
+     (if (and (> (string-length str) 1) (or (eqv? (string-ref str 0) #\/) (eqv? (string-ref str 0) #\@)))
+         (string-chat-address->unit-id (substring str 1 (string-length str)))
+         (string-chat-address->unit-id str))))
+  (httpproxy-connect-set! ot0cli-connect)
+  (capture-domain! "beaver.dam" handler: fossils-directory-handler)
   (log-status "beaver.dam done")
   (let ((job (lambda () (beaver-process-commands (args)))))
     (cond-expand

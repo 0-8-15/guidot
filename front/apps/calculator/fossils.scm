@@ -39,6 +39,12 @@
              (log-error "fossil is: " (run->string "fossil" "version"))
              (log-error "Again: " (run->error-string "fossil" "clone" template fallback "--once" "-A" fallback-name)))))))))
 
+(define fossils-directory-handler
+  (let ((v #f))
+    (case-lambda
+     (() (and v (v)))
+     ((n) (set! v n)))))
+
 (wire!
  (list fossils-directory chat-own-address ot0cli-ot0-networks)
  sequence:
@@ -53,12 +59,14 @@
                 (#t `("-notfound" ,(fossils-fallback-name)))
                 (else '())))
               (cmdln `("http" ,dir ,@fallback)))
+         (fossils-directory-handler (lambda () (semi-fork fossil cmdln)))
          (http-proxy-on-illegal-proxy-request
           (lambda (line)
-            (when (and (fossils-directory) (chat-own-address))
+            (cond
+             ((and (fossils-directory) (chat-own-address))
               (let* ((cmdln `(,@cmdln "-repolist" "-nocompress" "-ipaddr" "127.0.0.1" "-localauth"))
                      (conn (semi-fork fossil cmdln)))
                 (display line conn)
                 (display "\r\n" conn)
-                (ports-connect! conn conn (current-input-port) (current-output-port) 3)))))
+                (ports-connect! conn conn (current-input-port) (current-output-port) 3))))))
          (lwip-tcp-service-register! 80 (ot0cli-make-process-service fossil cmdln)))))))

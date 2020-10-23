@@ -19,7 +19,7 @@ Content-type: text/html; charset=utf-8
 EOF
 )))
 
-(define (capture-domain! domain-name)
+(define (capture-domain! domain-name #!key (handler #f))
 
   ;; Connect to this domain and get the page below back from any port.
   (define domain-rx
@@ -78,10 +78,15 @@ end-of-page-body
   (define (replacement-connect-procedure original)
     (define (replacement key addr port)
       (cond
+       ((number? addr)
+        (if (equal? addr (ot0-address))
+            (if handler (handler) (proceducer->pipe display-page))
+            (let ((p6 (make-6plane-addr (calculator-adhoc-network-id) addr)))
+              (and p6 (open-lwip-tcp-client-connection p6 port)))))
        ((not (string? addr)) (original key addr port))
        ((intercept? addr)
         ;; displays the portal only
-        (proceducer->pipe display-page))
+        (if handler (handler) (proceducer->pipe display-page)))
        ((looks-like-ot0-ad-hoc? addr)
         (let ((ipaddr (lwip-string->ip6-address addr)))
           (and ipaddr (open-lwip-tcp-client-connection ipaddr port))))
