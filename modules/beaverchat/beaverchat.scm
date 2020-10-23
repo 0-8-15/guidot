@@ -459,6 +459,7 @@
   name: "Address for chat messages.")
 
 (define (remove-chat-address-from-inbox-senders)
+  ;; FIXME: has no effect!
   (pin-filter! chat-inbox-senders (lambda (x) (not (equal? (chat-address) x)))))
 
 (wire! chat-address post: remove-chat-address-from-inbox-senders)
@@ -940,22 +941,28 @@
                      (if (>= sel 0)
                          (let ((e (cdr (list-ref all sel))))
                            (if (cadr e)
-                               (if (> x 2/3)
-                                   (begin
-                                     (set! nick-dialog
-                                           (Xglgui-value-edit-dialog
-                                            bag 0 0 w h
-                                            label: (chat-number->neatstring (car e))
-                                            value: (cadr e)
-                                            input: (lambda (val)
-                                                     (set! nick-dialog #f)
-                                                     (if (string-empty? val)
-                                                         (chat-partner-set! (car e)) ;; remove
-                                                         (begin
-                                                           (chat-address (car e))
-                                                           (chat-partner-set! (car e) val))))
-                                            keypad: nick-dialog-keypad)))
-                                   (kick (chat-address (car e))))
+                               (cond
+                                ((< x 1/3)
+                                 (when ponebook-dialog (ponebook-dialog 'close) (set! ponebook-dialog #f))
+                                 (launch-url
+                                  (string-append "http://127.0.0.1:" (number->string (beaver-proxy-port-number))
+                                                 "/" (chat-number->neatstring (car e)) "/")
+                                  via: (if (< x (/ w 2)) 'webview 'extern)))
+                                ((> x 2/3)
+                                 (set! nick-dialog
+                                       (Xglgui-value-edit-dialog
+                                        bag 0 0 w h
+                                        label: (chat-number->neatstring (car e))
+                                        value: (cadr e)
+                                        input: (lambda (val)
+                                                 (set! nick-dialog #f)
+                                                 (if (string-empty? val)
+                                                     (chat-partner-set! (car e)) ;; remove
+                                                     (begin
+                                                       (chat-address (car e))
+                                                       (chat-partner-set! (car e) val))))
+                                        keypad: nick-dialog-keypad)))
+                                (else (kick (chat-address (car e)))))
                                (ask-for-nick (car e))))
                          (when ponebook-dialog (ponebook-dialog 'close) (set! ponebook-dialog #f))))))))
         (define (close-chat!)

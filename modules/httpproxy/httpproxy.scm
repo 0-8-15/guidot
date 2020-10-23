@@ -24,12 +24,14 @@ EOF
      ((proc) (if (procedure? proc) (set! handler proc))))))
 
 (define httpproxy-connect-set!)
+(define httpproxy-atphone-set!)
 
 (define make-httpproxy
   (let ((max-line-length 1024)
         (http-proxy-connect-line #f)
         (http-proxy-request-line #f)
         (https-regex (rx "^https"))
+        (atphone-decoder #f)
         (connect-handler (lambda (tag host port) (display "NOT Initialized: httproxy connect"))))
     (define (init!)
       (set! http-proxy-connect-line
@@ -63,12 +65,26 @@ EOF
                  host " " port " "  scheme " : " nl1)
         (let ((conn (with-exception-catcher
                      handle-replloop-exception
-                     (lambda () (connect-handler "HTTP" (clean-ip6addr host) port)))))
+                     (lambda ()
+                       (let ((atphone
+                              (and atphone-decoder
+                                   (or (atphone-decoder host)
+                                       (let ((rewrite (atphone-decoder path)))
+                                         (when rewrite
+                                           (let* ((p2 (substring path 1 (string-length path)))
+                                                  (n (or (string-contains p2 "/") 0))
+                                                  (np (substring p2 n (string-length p2))))
+                                             (set! nl1 (string-append cmd " " np " " proto "\r\n"))))
+                                         rewrite)))))
+                         (cond
+                          (atphone (connect-handler "HTTP @phone" atphone port))
+                          (else (connect-handler "HTTP" (clean-ip6addr host) port))))))))
           (when (port? conn)
             (display nl1 conn)
             (force-output conn)
             (ports-connect! conn conn (current-input-port) (current-output-port) 3)))))
     (set! httpproxy-connect-set! (lambda (v) (set! connect-handler v)))
+    (set! httpproxy-atphone-set! (lambda (v) (set! atphone-decoder v)))
     (lambda (#!optional (illegal-proxy-request #f))
       (lambda ()
         (unless http-proxy-connect-line (init!))
@@ -80,8 +96,9 @@ EOF
               (connect (rxm-ref m 1) (string->number (rxm-ref m 2)) (rxm-ref m 3))
               (let ((m (rx~ http-proxy-request-line ln1)))
                 (if m
-                    (forward (rxm-ref m 3) (rxm-ref m 4)
-                             (rxm-ref m 1) (rxm-ref m 2) (rxm-ref m 5) (rxm-ref m 6))
+                    (let ((scheme (or (rxm-ref m 2) "http://")))
+                      (forward (rxm-ref m 3) (rxm-ref m 4)
+                               (rxm-ref m 1) scheme (rxm-ref m 5) (rxm-ref m 6)))
                     ((or illegal-proxy-request (http-proxy-on-illegal-proxy-request))
                      ln1)))))))))
 
