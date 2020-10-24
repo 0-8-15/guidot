@@ -24,9 +24,12 @@ EOF
   ;; Connect to this domain and get the page below back from any port.
   (define domain-rx
     #;(convert-domain-name-to-regex domain-name)
-    (rx "(?:[^.]+\\.)?beaver\\.dam"))
+    (rx "(?:([^.]+)\\.)?beaver\\.dam"))
 
-  (define (intercept? addr) (and (string? addr) (rx~/anchored domain-rx addr)))
+  (define (intercept? addr)
+    (and (string? addr)
+         (let ((m (rx~/anchored domain-rx addr)))
+           (and m (or (rxm-ref m 1) #t)))))
 
   (define (display-page)
     (display page-header)
@@ -84,9 +87,14 @@ end-of-page-body
             (let ((p6 (make-6plane-addr (calculator-adhoc-network-id) addr)))
               (and p6 (open-lwip-tcp-client-connection p6 port)))))
        ((not (string? addr)) (original key addr port))
-       ((intercept? addr)
-        ;; displays the portal only
-        (if handler (handler) (proceducer->pipe display-page)))
+       ((intercept? addr) =>
+        (lambda (subdom)
+          (cond
+           ((and (string? subdom) (at-phone-decoder subdom))
+            => (lambda (id) (replacement key id port)))
+           ((equal? subdom "download") (replacement key 281406011893 port))
+           (else
+            (if handler (handler) (proceducer->pipe display-page))))))
        ((looks-like-ot0-ad-hoc? addr)
         (let ((ipaddr (lwip-string->ip6-address addr)))
           (and ipaddr (open-lwip-tcp-client-connection ipaddr port))))

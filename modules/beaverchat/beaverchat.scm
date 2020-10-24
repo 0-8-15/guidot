@@ -560,6 +560,7 @@
      (wire! persistent-data post: write-persistent-data)
      (wire! (list
              #;chat-partners
+             chat-inbox-senders
              chat-pending-messages
              beaver-proxy-port-number
              beaver-socks-port-number
@@ -944,10 +945,11 @@
                                (cond
                                 ((< x 1/3)
                                  (when ponebook-dialog (ponebook-dialog 'close) (set! ponebook-dialog #f))
-                                 (launch-url
-                                  (string-append "http://127.0.0.1:" (number->string (beaver-proxy-port-number))
-                                                 "/" (chat-number->neatstring (car e)) "/")
-                                  via: (if (< x (/ w 2)) 'webview 'extern)))
+                                 (let ((pn (chat-number->neatstring (car e) "-")))
+                                   (launch-url
+                                    (string-append "http://127.0.0.1:" (number->string (beaver-proxy-port-number))
+                                                   "/" pn "/" pn "/index")
+                                    via: (if (< x (/ w 2)) 'webview 'extern))))
                                 ((> x 2/3)
                                  (set! nick-dialog
                                        (Xglgui-value-edit-dialog

@@ -422,6 +422,13 @@ NULL;
 
 (define (calculator-adhoc-network-id) 18374687579166474240)
 
+(define (at-phone-decoder str)
+  (let* ((e0 (string-contains (substring str 1 (string-length str)) "/"))
+         (e (if e0 (+ e0 1)  (string-length str))))
+    (if (and (> (string-length str) 1) (or (eqv? (string-ref str 0) #\/) (eqv? (string-ref str 0) #\@)))
+        (string-chat-address->unit-id (substring str 1 e))
+        (string-chat-address->unit-id (if (fx= e (string-length str)) str (substring str 0 e))))))
+
 (define (calculator dir)
   (define control-port
     (cond-expand
@@ -443,11 +450,7 @@ NULL;
   (init-beaverchat! dir use-origin: use-origin) ;; MUST be first
   (glgui-beaverchat webview-launch!)
   (kick (audible-beep audible-beep!))
-  (httpproxy-atphone-set!
-   (lambda (str)
-     (if (and (> (string-length str) 1) (or (eqv? (string-ref str 0) #\/) (eqv? (string-ref str 0) #\@)))
-         (string-chat-address->unit-id (substring str 1 (string-length str)))
-         (string-chat-address->unit-id str))))
+  (httpproxy-atphone-set! at-phone-decoder)
   (httpproxy-connect-set! ot0cli-connect)
   (capture-domain! "beaver.dam" handler: fossils-directory-handler)
   (log-status "beaver.dam done")

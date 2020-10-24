@@ -1,5 +1,27 @@
 (include "~~tgt/lib/onetierzero/src/observable-notational-conventions.scm")
 
+(define (uri-parse ent)
+  (define (string-index s char/char-set/pred i)
+    (let loop ((i i))
+      (and (< i (string-length s))
+           (if (eqv? (string-ref s i) char/char-set/pred)
+               i
+               (loop (fx+ i 1))))))
+  (let loop ((i 0)
+	     (r '()))
+    (let ((n (string-index ent #\% i)))
+      (if n
+	  (loop (+ n 3)
+		(cons (string
+		       (integer->char
+			(string->number (substring ent (+ n 1) (+ n 3))	16)))
+		      (cons (substring ent i n) r)))
+	  (if (null? r)
+	      ent
+              (apply
+               string-append
+               (reverse! (cons (substring ent i (string-length ent)) r))))))))
+
 (define http-proxy-on-illegal-proxy-request
   (let ((handler (lambda (line)
                    (display #<<EOF

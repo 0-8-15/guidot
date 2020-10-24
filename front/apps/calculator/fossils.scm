@@ -48,10 +48,13 @@
 (wire!
  (list fossils-directory chat-own-address ot0cli-ot0-networks)
  sequence:
- (let ((once #t))
+ (let ((once #t)
+       (brk #f))
    (lambda _
      (when (and (fossils-directory) (chat-own-address) (fossils-networks-present? (ot0cli-ot0-networks)))
        (set! once #f)
+       (set! brk
+             (rx "^([^ ]+) (?:/([^/]+))([^ ]+) (HTTP/[0-9]\\.[0-9])\r?$"))
        (let* ((fossil "fossil")
               (dir (fossils-directory))
               (fallback
@@ -62,11 +65,20 @@
          (fossils-directory-handler (lambda () (semi-fork fossil cmdln)))
          (http-proxy-on-illegal-proxy-request
           (lambda (line)
-            (cond
-             ((and (fossils-directory) (chat-own-address))
-              (let* ((cmdln `(,@cmdln "-repolist" "-nocompress" "-ipaddr" "127.0.0.1" "-localauth"))
-                     (conn (semi-fork fossil cmdln)))
-                (display line conn)
-                (display "\r\n" conn)
-                (ports-connect! conn conn (current-input-port) (current-output-port) 3))))))
+            (let ((m (rx~ brk line)))
+              (cond
+               ((at-phone-decoder (uri-parse (rxm-ref m 2))) =>
+                (lambda (id)
+                  (let ((conn (ot0cli-connect "local" id 80)))
+                    (when (port? conn)
+                      (display
+                       (string-append (rxm-ref m 1) " " (rxm-ref m 3) " " (rxm-ref m 4) "\r\n")
+                       conn)
+                      (ports-connect! conn conn (current-input-port) (current-output-port) 3)))))
+               ((and (fossils-directory) (chat-own-address))
+                (let* ((cmdln `(,@cmdln "-repolist" "-nocompress" "-ipaddr" "127.0.0.1" "-localauth"))
+                       (conn (semi-fork fossil cmdln)))
+                  (display line conn)
+                  (display "\r\n" conn)
+                  (ports-connect! conn conn (current-input-port) (current-output-port) 3)))))))
          (lwip-tcp-service-register! 80 (ot0cli-make-process-service fossil cmdln)))))))
