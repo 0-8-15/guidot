@@ -91,7 +91,7 @@ EOF
                        (let ((atphone
                               (and atphone-decoder
                                    (or (atphone-decoder host)
-                                       (let ((rewrite (atphone-decoder path)))
+                                       #;(let ((rewrite (atphone-decoder path)))
                                          (when rewrite
                                            (let* ((p2 (substring path 1 (string-length path)))
                                                   (n (or (string-contains p2 "/") 0))
