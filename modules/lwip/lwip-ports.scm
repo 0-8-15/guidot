@@ -32,12 +32,12 @@
   (define table-remove! table-set!)
   (define (closeit pcb status dir)
     (cond
-     ((bitwise-and status 3)
+     ((zero? (bitwise-and status 3)) (lwip-tcp-close pcb))
+     (else
       (lwip-tcp_shutdown
        pcb
-       (and (bitwise-and status 1) (eq? dir 'input))
-       (and (bitwise-and status 2) (eq? dir 'output))))
-     (else (lwip-tcp-close pcb))))
+       (and (not (zero? (bitwise-and status 1))) (eq? dir 'input))
+       (and (not (zero? (bitwise-and status 2))) (eq? dir 'output))))))
   (let ((pcb (tcp-connection-pcb conn))
         (status (tcp-connection-status conn)))
     (case dir
@@ -80,8 +80,9 @@
           (conn (make-tcp-connection #f s 4 client #f)))
      (%%tcp-context-set! client conn) ;; FIRST register for on-tcp-connect to find it
      (unless (eqv? (lwip-tcp-connect client addr port) ERR_OK)
-             (%%lwip-close-tcp-connection conn)
-             #;(error (debug 'open-lwip-tcp-client-connection "open-lwip-tcp-client-connection failed") addr port))
+       (%%lwip-close-tcp-connection/dir conn 'input+output)
+       (close-port s)
+       #;(error (debug 'open-lwip-tcp-client-connection "open-lwip-tcp-client-connection failed") addr port))
      c)))
 
 (define (port-copy-to-lwip/synchronized in conn mtu)
@@ -91,8 +92,7 @@
       (let ((n (read-subu8vector buffer 0 mtu in 1)))
         (cond
          ((eqv? n 0) ;; done
-          (let ((pcb (tcp-connection-pcb conn))) ;; might be gone already!
-            (if pcb (lwip-tcp_shutdown pcb #t #t))))
+          (%%close-tcp-connection 'port-copy-to-lwip/synchronized conn 'input+output))
          (else
           (let retry ((pcb (tcp-connection-pcb conn)))
             (cond
@@ -124,7 +124,7 @@
         (cond
          ((eqv? n 0)
           #;(%%lwip-close-tcp-connection/dir conn 'output)
-          (%%lwip-close-tcp-connection/dir conn 'input+output)
+          (%%close-tcp-connection 'port-copy-to-lwip/always-copy conn 'input+output)
           (do ((r (await) (await))) ((not r)))
           #;(%%lwip-close-tcp-connection/dir conn 'input))
          (else
@@ -242,8 +242,8 @@
 
   (define (on-tcp-receive ctx connection pbuf err)
     (cond
-     ((not pbuf) ;; closed FIXME: output too?
-      (if ctx (lwip/after-safe-return (%%close-tcp-connection on-tcp-receive ctx 'input)) ERR_OK))
+     ((not pbuf) ;; closed
+      (if ctx (lwip/after-safe-return (%%close-tcp-connection on-tcp-receive ctx 'input+output)) ERR_OK))
      ((and (eqv? err ERR_OK) ctx)
       (%%while-in-callback-tcp-received! connection (pbuf-length pbuf))
       (lwip/after-safe-return
