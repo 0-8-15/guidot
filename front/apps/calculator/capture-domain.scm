@@ -86,6 +86,8 @@ end-of-page-body
             (if handler (handler) (proceducer->pipe display-page))
             (let ((p6 (make-6plane-addr (calculator-adhoc-network-id) addr)))
               (and p6 (open-lwip-tcp-client-connection p6 port)))))
+       ((equal? addr '#u8(127 0 0 1))
+        (open-tcp-client `(address: ,addr port-number: ,port)))
        ((not (string? addr)) (original key addr port))
        ((intercept? addr) =>
         (lambda (subdom)

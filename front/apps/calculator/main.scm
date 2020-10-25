@@ -311,10 +311,6 @@ NULL;
 
 (include "capture-domain.scm")
 
-(log-status "fossil")
-
-(include "fossils.scm")
-
 (define chat-dir "beaver")
 
 (log-status "try system-appdirectory")
