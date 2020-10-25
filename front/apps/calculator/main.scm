@@ -1,13 +1,5 @@
 (log-status "Startup")
 
-(register-command!
- "fossil"
- (lambda (args)
-   (process-status
-    (open-process
-     `(path: "fossil" arguments: ,args
-             stdin-redirection: #f stdout-redirection: #f show-console: #f)))))
-
 (define (debug l v)
   (let ((p  (current-error-port)))
     (display l p)
@@ -306,10 +298,6 @@ NULL;
            (define ,name (,in))))))
 
 ;;; END INSTEAD OF (include "~~tgt/lib/onetierzero/src/observable-notational-conventions.scm")
-
-(log-status "capdom")
-
-(include "capture-domain.scm")
 
 (define chat-dir "beaver")
 

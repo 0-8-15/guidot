@@ -1,11 +1,22 @@
+(include "capture-domain.scm")
+
+(register-command!
+ "fossil"
+ (lambda (args)
+   (process-status
+    (open-process
+     `(path: "fossil" arguments: ,args
+             stdin-redirection: #f stdout-redirection: #f show-console: #f)))))
+
 (define (fossils-fallback-name unit-id)
   (beaver-unit-id->string unit-id "-"))
 
-(define-pin fossils-directory
-  initial: #f
-  pred: (lambda (v) (or (not v) (string? v)))
-  filter: (lambda (old new) (if old old new)) ;; once only
-  name: "projects directory")
+(define fossils-directory
+  (make-pin
+   initial: #f
+   pred: (lambda (v) (or (not v) (string? v)))
+   filter: (lambda (old new) (if old old new)) ;; once only
+   name: "projects directory"))
 
 (define (fossils-directory-location dir)
   (cond-expand
@@ -21,7 +32,7 @@
  (list fossils-directory beaver-local-unit-id)
  sequence:
  (lambda (oldd newd oa na)
-   (when new
+   (when newd
      (unless (file-exists? newd)
        (create-directory newd))
      (let* ((unit-id (beaver-local-unit-id))
@@ -104,21 +115,21 @@
       )))
 
 (define fossils-http-serve
-  (let ((brk (rx "^([^ ]+) (?:/([^/]+))([^ ]+) (HTTP/[0-9]\\.[0-9])\r?$"))
+  (let ((brk (delay (rx "^([^ ]+) (?:/([^/]+))([^ ]+) (HTTP/[0-9]\\.[0-9])\r?$")))
         (fossil "fossil")
         (max-line-length 1024))
     (define (fossils-http-serve
-             local repository line
+             local repository line0
              #!key
              (scheme "http://"))
-      (let* ((line (or line
+      (let* ((line (or line0
                        (u8-read-line2 (current-input-port) 10 max-line-length)))
-             (m (rx~ brk line))
+             (m (rx~ (force brk) line))
              (unit-id (beaver-local-unit-id))
              (m2 (and m (uri-parse (rxm-ref m 2)))))
         (cond
          ((not repository) #f)
-         ((and m2 (equal? (at-phone-decoder m2) unit-id))
+         ((and line0 m2 (equal? (at-phone-decoder m2) unit-id))
           (receive (host headers) (fossils-copy-http-headers-catching-host (current-input-port))
             (let* ((baseurl (string-append scheme  host "/" (rxm-ref m 2)))
                    (notfound (fossils-fallback-name unit-id))

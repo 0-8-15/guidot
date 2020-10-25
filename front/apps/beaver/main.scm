@@ -155,6 +155,18 @@
     pin))
 (kick/sync! (lambda () (front-beaver-directory (front-beaver-directory-default))))
 
+;; ONLY with module "fossils"
+(httpproxy-connect-set! ot0cli-connect)
+(define (at-phone-decoder str)
+  (let* ((e0 (string-contains (substring str 1 (string-length str)) "/"))
+         (e (if e0 (+ e0 1)  (string-length str))))
+    (if (and (> (string-length str) 1) (or (eqv? (string-ref str 0) #\/) (eqv? (string-ref str 0) #\@)))
+        (unit-id-string->unit-id (substring str 1 e))
+        (unit-id-string->unit-id (if (fx= e (string-length str)) str (substring str 0 e))))))
+(httpproxy-atphone-set! at-phone-decoder)
+(capture-domain! "beaver.dam" handler: fossils-directory-handler)
+;;
+
 (cond
  ((and (= (system-cmdargc) 2) (equal? (system-cmdargv 1) "-version"))
   (println (system-appversion)))
