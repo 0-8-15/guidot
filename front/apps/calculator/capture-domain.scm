@@ -24,7 +24,7 @@ EOF
   ;; Connect to this domain and get the page below back from any port.
   (define domain-rx
     #;(convert-domain-name-to-regex domain-name)
-    (rx "(?:([^.]+)\\.)?beaver\\.dam"))
+    (rx (string-append "(?:([^.]+)\\.)?" (rx-replace/all (rx "\\.") domain-name "\\."))))
 
   (define (intercept? addr)
     (and (string? addr)

@@ -321,13 +321,6 @@
   (let ((m (rx "^[[:space:]]*$")))
     (lambda (obj) (and (string? obj) (rx~ m obj) #t))))
 
-(define string-chat-address->unit-id
-  (let ((ignore (rx "[ .-]")))
-    (lambda (str)
-      (and (string? str)
-           (let ((despace (rx-replace/all ignore str)))
-             (phone2id (string->number despace)))))))
-
 (define (gui-forward-address-filter old new)
   (cond
    ((string-empty? new) #f)
@@ -471,42 +464,17 @@
   filter: (lambda (o n) (if (member n known-tools) n o))
   name: "The tool to display")
 
-(define-pin chat-own-address #f)
-(wire! ot0cli-server post: (box (lambda () (thread-sleep! 5) (kick (chat-own-address (ot0-address))))))
+(define chat-own-address beaver-local-unit-id)
 
 ;;(pin-attach-log! calculator-result 'calculator-result)
 ;;(pin-attach-log! calculator-mem1 'calculator-mem1)
 
-(define (id2phone id)
-  (and (number? id)
-       (exact? id)
-       (positive? id)
-       (< id 1099511627776)
-       (let ((n (if (even? (bit-count id)) 4000000000000 2000000000000)))
-         (+ n id))))
-
-(define (phone2id id)
-  (cond
-   ((not (and (number? id) (exact? id) (positive? id))) #f)
-   ((> id 4000000000000)
-    (let ((x (- id 4000000000000)))
-      (and (even? (bit-count x)) x)))
-   (else
-    (let ((x (- id 2000000000000)))
-      (and (positive? x) (odd? (bit-count x)) x)))))
-
+(define id2phone beaver-unit-id->beaver-number)
+(define phone2id beaver-number->beaver-unit-id)
 (define (chat-number->neatstring num #!optional (gap "·"))
-  (let ((str (number->string (id2phone num))))
-    (string-append
-     (substring str 0 3)
-     gap
-     (substring str 3 5)
-     gap
-     (substring str 5 8)
-     gap
-     (substring str 8 10)
-     gap
-     (substring str 10 13))))
+  (or (beaver-unit-id->string num gap)
+      (string-append "ERROR: illegal beaver number " (number->string num))))
+(define string-chat-address->unit-id unit-id-string->unit-id)
 
 ;; Persistent data
 

@@ -426,8 +426,8 @@ NULL;
   (let* ((e0 (string-contains (substring str 1 (string-length str)) "/"))
          (e (if e0 (+ e0 1)  (string-length str))))
     (if (and (> (string-length str) 1) (or (eqv? (string-ref str 0) #\/) (eqv? (string-ref str 0) #\@)))
-        (string-chat-address->unit-id (substring str 1 e))
-        (string-chat-address->unit-id (if (fx= e (string-length str)) str (substring str 0 e))))))
+        (unit-id-string->unit-id (substring str 1 e))
+        (unit-id-string->unit-id (if (fx= e (string-length str)) str (substring str 0 e))))))
 
 (define (calculator dir)
   (define control-port

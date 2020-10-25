@@ -45,6 +45,52 @@ end-of-c-declare
 
   )) ;; cond-expand
 
+(define beaver-local-unit-id (make-pin #f))
+(wire! ot0cli-server post: (lambda () (beaver-local-unit-id (ot0-address))))
+
+(define (beaver-unit-id->beaver-number id)
+  (and (number? id)
+       (exact? id)
+       (positive? id)
+       (< id 1099511627776)
+       (let ((n (if (even? (bit-count id)) 4000000000000 2000000000000)))
+         (+ n id))))
+
+(define (beaver-number->beaver-unit-id id)
+  (cond
+   ((not (and (number? id) (exact? id) (positive? id))) #f)
+   ((> id 4000000000000)
+    (let ((x (- id 4000000000000)))
+      (and (even? (bit-count x)) x)))
+   (else
+    (let ((x (- id 2000000000000)))
+      (and (positive? x) (odd? (bit-count x)) x)))))
+
+(define (beaver-number->string num #!optional (gap "·"))
+  (let ((str (number->string num)))
+    (and
+     (fx= (string-length str) 13)
+     (string-append
+      (substring str 0 3)
+      gap
+      (substring str 3 5)
+      gap
+      (substring str 5 8)
+      gap
+      (substring str 8 10)
+      gap
+      (substring str 10 13)))))
+
+(define (beaver-unit-id->string num #!optional (gap "·"))
+  (beaver-number->string (beaver-unit-id->beaver-number num) gap))
+
+(define unit-id-string->unit-id
+  (let ((ignore (rx "[ .-]")))
+    (lambda (str)
+      (and (string? str)
+           (let ((despace (rx-replace/all ignore str)))
+             (beaver-number->beaver-unit-id (string->number despace)))))))
+
 ;; (define-cond-expand-feature enable-beaver-debug)
 
 (cond-expand
