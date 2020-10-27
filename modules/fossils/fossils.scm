@@ -172,6 +172,13 @@
                    proc)))))))
     fossils-http-serve))
 
+(define (fossils-directory-service)
+  (let ((dir (fossils-directory)))
+    (when dir
+      (let ((conn (fossils-http-serve #f dir #f)))
+        (when (port? conn)
+          (ports-connect! conn conn (current-input-port) (current-output-port) 3))))))
+
 (wire!
  (list fossils-directory beaver-local-unit-id)
  sequence:
@@ -200,10 +207,4 @@
                   (when (port? conn)
                     (display line conn) (newline conn)
                     (force-output conn)
-                    (ports-connect! conn conn (current-input-port) (current-output-port) 3))))))))
-         (lwip-tcp-service-register!
-          80
-          (lambda ()
-            (let ((conn (fossils-http-serve #f (fossils-directory) #f)))
-              (when (port? conn)
-                (ports-connect! conn conn (current-input-port) (current-output-port) 3))))))))))
+                    (ports-connect! conn conn (current-input-port) (current-output-port) 3)))))))))))))
