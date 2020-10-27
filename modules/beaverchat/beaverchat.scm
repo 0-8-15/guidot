@@ -220,7 +220,7 @@
                   (set! lst new)
                   (set! n (length lst))
                   (set! offset 0)
-                  (set! usable-n (min (floor (/ h element-height)) n))))
+                  (set! usable-n (min (inexact->exact (floor (/ h element-height))) n))))
             (let* ((up (> offset 0))
                    (down (> (- n offset) (- usable-n (if up 1 0))))
                    (visible (- usable-n (if up 1 0) (if down 1 0)))
@@ -822,6 +822,7 @@
           (wire! chat-pending-messages post: setter)))
       (let* ((border (/ line-height 2))
              (line-height-selectable 28)
+             (content (chat-inbox-senders))
              (ctrl
               ((Xglgui-select
                 bag border border (- w (* 2 border)) (- h (* 2 border))
@@ -829,13 +830,14 @@
                '()
                (lambda (sel x)
                  (if (>= sel 0)
-                     (let ((sel2 (list-ref (chat-inbox-senders) sel)))
+                     (let ((sel2 (list-ref content sel)))
                        (kick
                         (chat-address sel2)
                         (selected-display "chat")))))
                permanent: #t)))
         (define (new-content)
-          (let ((new (map chat-partner->neatstring (chat-inbox-senders))))
+          (set! content (chat-inbox-senders))
+          (let ((new (map chat-partner->neatstring content)))
             (ctrl set: new)
             (ctrl hidden: (null? new))))
         (new-content)
