@@ -398,12 +398,6 @@ NULL;
       (log-warning "Beep with low volume."))
   (audiofile-forceplay (vector-ref (force sounds) 0)))
 
-(cond-expand
- (use-webview (include "webview.scm"))
- (else
-  (define (webview-launch! url . more)
-    (launch-url url))))
-
 (define (calculator-adhoc-network-id) 18374687579166474240)
 
 (define (at-phone-decoder str)

@@ -1,4 +1,4 @@
 eventloop ln_core ln_glcore ln_glgui
 likely akwmatch unsocket
 daemonian lwip socks beaver httpproxy
-ospath fossils beaverchat androidforeground audio
+ospath fossils beaverchat androidforeground audio webview
