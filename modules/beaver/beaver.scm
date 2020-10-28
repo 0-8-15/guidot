@@ -45,7 +45,7 @@ end-of-c-declare
 
   )) ;; cond-expand
 
-(on-ot0-path-lookup (lambda (node uptr thr nodeid family sa) #f))
+(on-ot0-path-lookup #f)
 
 (define beaver-local-unit-id (make-pin #f))
 (wire! ot0cli-server post: (lambda () (beaver-local-unit-id (ot0-address))))
