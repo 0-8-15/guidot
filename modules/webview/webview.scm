@@ -108,13 +108,18 @@
 
 (define android-webview
   (let ((in-android-webview
-         (match-lambda
-          ((#t) '(webview #t #t))
-          ((url) `(webview 'load ,url))
-          (otherwise
-           (begin
-             (log-error "android-webview:  call not understood" (object->string otherwise))
-             #f))))
+         (lambda (args)
+           (define (otherwise)
+             (log-error "android-webview:  call not recognized" (object->string args))
+             #f)
+           (cond
+            ((null? args) (otherwise))
+            (else
+             (let ((a1 (car args)))
+               (cond
+                ((eq? a1 #t) '(webview #t #t))
+                ((string? a1) `(webview 'load ,a1))
+                (else (otherwise))))))))
         (webview #f))
     (lambda args
       (cond
