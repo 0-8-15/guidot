@@ -431,6 +431,7 @@ NULL;
   (httpproxy-atphone-set! at-phone-decoder)
   (httpproxy-connect-set! ot0cli-connect)
   (capture-domain! "beaver.dam" handler: fossils-directory-handler)
+  (lwip-tcp-service-register! 80 fossils-directory-service)
   (log-status "beaver.dam done")
   (let ((job (lambda () (beaver-process-commands (args)))))
     (cond-expand
