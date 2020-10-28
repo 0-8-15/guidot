@@ -4,6 +4,15 @@
 
 (define socks-connect-timeout (lambda args (apply lwip-connect-timeout args)))
 
+(define debug-trace-request-forwarding (make-parameter #f))
+
+;; (debug-trace-request-forwarding (lambda (label . more) (debug label more)))
+
+(define-macro (debug-trace-request label . more)
+  (let ((handler (gensym)))
+    `(let ((,handler (debug-trace-request-forwarding)))
+       (if ,handler (,handler ,label ,@more)))))
+
 (define (handle-debug-exception e)
   (##default-display-exception e (current-error-port))
   #!void)
@@ -182,6 +191,7 @@
   ;; returns dispatch info.  #f -> denied
   (let ((proc #f))
     (define (dflt key dstip dstport)
+      (debug-trace-request key dstip dstport)
       ;; TODO find a usable predicate for the job
       (cond
        ((and (> (string-length dstip) 2)
@@ -220,6 +230,7 @@
    (with-exception-catcher
     (lambda (ex) (handle-debug-exception ex) #f)
     (lambda ()
+      (debug-trace-request name dstip dstport)
       (match
        ((on-socks-connect) name dstip dstport)
        ((? port? x) x)
