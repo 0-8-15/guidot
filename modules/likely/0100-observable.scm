@@ -185,6 +185,14 @@
                 (if (current-transaction) (stm-consistency-error 'atomic-with-consequence thunk)))))))
      (else
       (stm-log 'async-handler "USELESS handler MAYBE BETTER STM consistency error" x)
+      (cond-expand
+       (gambit
+        (let ((port (current-error-port)))
+          (continuation-capture
+           (lambda (cont)
+             ;; (display-exception-in-context e cont port)
+             (display-continuation-backtrace cont port #f #f 10 10 2)))))
+       (else #f))
       #f)))
   (make-trigger-handler
    ;; Return initial value for fold operation.
