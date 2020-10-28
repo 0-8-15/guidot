@@ -89,6 +89,7 @@ end-of-page-body
        ((equal? addr '#u8(127 0 0 1))
         (open-tcp-client `(address: ,addr port-number: ,port)))
        ((not (string? addr)) (original key addr port))
+       ((at-phone-decoder addr) => (lambda (num) (replacement key num port)))
        ((intercept? addr) =>
         (lambda (subdom)
           (cond
