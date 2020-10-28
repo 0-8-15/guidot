@@ -18,6 +18,13 @@
    filter: (lambda (old new) (if old old new)) ;; once only
    name: "projects directory"))
 
+(define fossils-enable-http-hijacking
+  ;; NOTE: This is experimental.  Switching this on may expose the
+  ;; browser to cross site scripting attacks.
+  (make-pin
+   initial: #f
+   name: "fossils-enable-http-hijacking dangerous feature"))
+
 (define (fossils-directory-location dir)
   (cond-expand
    (android
@@ -189,7 +196,8 @@
      (when (and once (fossils-directory) (beaver-local-unit-id))
        (set! once #f)
        (set! brk (rx "^([^ ]+) (?:/([^/]+))([^ ]+) (HTTP/[0-9]\\.[0-9])\r?$"))
-       (let ((unit-id (beaver-local-unit-id)))
+       (let ((unit-id (beaver-local-unit-id))
+             (previous-handler (http-proxy-on-illegal-proxy-request)))
          (fossils-directory-handler
           (lambda () (fossils-http-serve #f (fossils-directory) #f)))
          (http-proxy-on-illegal-proxy-request
@@ -202,9 +210,10 @@
                 (let ((conn (fossils-http-serve #t (fossils-directory) line)))
                   (when (port? conn)
                     (ports-connect! conn conn (current-input-port) (current-output-port) 3))))
-               (else
+               ((fossils-enable-http-hijacking)
                 (let ((conn (ot0cli-connect "local" id 80)))
                   (when (port? conn)
                     (display line conn) (newline conn)
                     (force-output conn)
-                    (ports-connect! conn conn (current-input-port) (current-output-port) 3)))))))))))))
+                    (ports-connect! conn conn (current-input-port) (current-output-port) 3))))
+               (else (previous-handler line)))))))))))
