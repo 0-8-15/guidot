@@ -369,8 +369,6 @@
   pred: glgui-chat-messages-are-valid?
   name: "Chat messages")
 
-(wire! chat-messages post: update-pages!)
-
 (define-pin chat-messages-limit 30)
 
 (define chat-sender-list-valid?
