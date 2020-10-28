@@ -17,7 +17,7 @@
                 (display "EXN: " port)
                 (display-exception exn port)))))
           (lambda ()
-            (log-debug "jScheme EVAL:" 1 expr)
+            ;; (log-debug "jScheme EVAL:" 1 expr)
             (call-with-values (lambda () (evl expr)) success))))
        body))
     'jscheme-worker))
