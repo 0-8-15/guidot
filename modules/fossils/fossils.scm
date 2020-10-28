@@ -129,7 +129,7 @@
              (m2 (and m (uri-parse (rxm-ref m 2)))))
         (cond
          ((not repository) #f)
-         ((and line0 m2 (equal? (at-phone-decoder m2) unit-id))
+         ((and m2 (equal? (at-phone-decoder m2) unit-id))
           (receive (host headers) (fossils-copy-http-headers-catching-host (current-input-port))
             (let* ((baseurl (string-append scheme  host "/" (rxm-ref m 2)))
                    (notfound (fossils-fallback-name unit-id))
