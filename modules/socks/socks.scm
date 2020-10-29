@@ -60,6 +60,7 @@
 (define (port-pipe+close! in out #!optional (MTU 3000))
   (with-exception-catcher
    (lambda (exn)
+     ;; (display-exception exn (current-error-port))
      (close-port/no-exception in)
      (close-port/no-exception out)
      exn)

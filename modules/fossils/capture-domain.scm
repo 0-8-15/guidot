@@ -1,6 +1,9 @@
+(define %%capture-domain-magic "")
+
 (http-proxy-on-illegal-proxy-request
  (lambda (line)
-   (display #<<EOF
+   (let ((domain %%capture-domain-magic))
+     (display #<<EOF
 HTTP/1.0 200 OK
 Content-type: text/html; charset=utf-8
 
@@ -11,20 +14,30 @@ Content-type: text/html; charset=utf-8
  <body>
   <h1>Error</h1>
   <p>This is a HTTP/HTTPS proxy.</p>
-  <p>Look at <a href="http://beaver.dam">beaver.dam</a> instead!</p>
-  <p></p>
+  <p>This page may one day redirect to <a href=
+EOF
+)
+     (write (string-append "http://" domain))
+     (display "\">")
+     (display domain)
+     (display #<<EOF
+</a> .</p>
+  <p>Note that his link will <strong>NOT</strong> work if your browser does not use the proxy.</p>
  </body>
 </html>
 
 EOF
-)))
+))))
 
 (define (capture-domain! domain-name #!key (handler #f))
 
   ;; Connect to this domain and get the page below back from any port.
   (define domain-rx
     #;(convert-domain-name-to-regex domain-name)
-    (rx (string-append "(?:([^.]+)\\.)?" (rx-replace/all (rx "\\.") domain-name "\\."))))
+    (begin
+      (set! %%capture-domain-magic domain-name)
+      ;; Bad KLUDGE, better use SRE
+      (rx (string-append "(?:([^.]+)\\.)?" (rx-replace/all (rx "\\.") domain-name "\\.")))))
 
   (define (intercept? addr)
     (and (string? addr)
@@ -34,6 +47,13 @@ EOF
   (define (display-page)
     (display page-header)
     (display page-body)
+    (display
+     (string-append
+      " <ul>
+ <li><a href=\"http://beaver-dam." domain-name "/ot0/uv\">Download</a></li>
+ <li><a href=\"http://beaver-dam." domain-name "/jfw/rptview?rn=1\">Issues</a></li>
+ </ul>
+"))
     (display page-footer))
 
   (define page-header
@@ -62,28 +82,26 @@ end-of-page-footer
 ;;; Content Here
 #<<end-of-page-body
 <h1>Biberburg</h1>
- <ul>
- <li><a href="http://[fc00:0:ff41:851a:f9f5::1]/ot0/uv">Download</a></li>
- <li><a href="http://[fc00:0:ff41:851a:f9f5::1]/jfw/rptview?rn=1">Issues</a></li>
- </ul>
+<p><small>Note that links above require proxy support as well.</small></p>
 end-of-page-body
 )
 
   ;; Boilerplate: Setup, hook in and test.
 
-  (define (proceducer->pipe producer)
+  (define (producer->pipe producer)
     (receive (servant client) (open-u8vector-pipe)
       (parameterize ((current-output-port servant))
         (producer)
         (close-port servant))
       client))
 
-  (define (replacement-connect-procedure original)
+  (define (replacement-connect-procedure name original)
     (define (replacement key addr port)
+      (define auth (eq? key 'host))
       (cond
        ((number? addr)
-        (if (equal? addr (ot0-address))
-            (if handler (handler) (proceducer->pipe display-page))
+        (if (equal? addr (beaver-local-unit-id))
+            (if handler ((handler) auth) (producer->pipe display-page))
             (let ((p6 (make-6plane-addr (calculator-adhoc-network-id) addr)))
               (and p6 (open-lwip-tcp-client-connection p6 port)))))
        ((equal? addr '#u8(127 0 0 1))
@@ -95,18 +113,19 @@ end-of-page-body
           (cond
            ((and (string? subdom) (at-phone-decoder subdom))
             => (lambda (id) (replacement key id port)))
-           ((equal? subdom "download") (replacement key 281406011893 port))
+           ((member subdom '("beaver" "download" "beaver-dam"))
+            (replacement key 281406011893 port))
            (else
-            (if handler (handler) (proceducer->pipe display-page))))))
+            (if handler ((handler) auth) (producer->pipe display-page))))))
        ((looks-like-ot0-ad-hoc? addr)
         (let ((ipaddr (lwip-string->ip6-address addr)))
           (and ipaddr (open-lwip-tcp-client-connection ipaddr port))))
        (else (original key addr port))))
     replacement)
 
-  (on-socks-connect (replacement-connect-procedure (on-socks-connect)))
+  (on-socks-connect (replacement-connect-procedure 'socks-connect-capture (on-socks-connect)))
 
-  (on-ot0cli-connect (replacement-connect-procedure (on-ot0cli-connect)))
+  (on-ot0cli-connect (replacement-connect-procedure 'cli-connect-capture (on-ot0cli-connect)))
 
   #f
   ;;

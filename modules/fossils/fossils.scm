@@ -57,7 +57,7 @@
 (define fossils-directory-handler
   (let ((v #f))
     (case-lambda
-     (() (and v (v)))
+     (() v)
      ((n) (set! v n)))))
 
 (define (fossils-copy-http-headers-catching-host in)
@@ -125,17 +125,20 @@
   (let ((brk (delay (rx "^([^ ]+) (?:/([^/]+))([^ ]+) (HTTP/[0-9]\\.[0-9])\r?$")))
         (fossil "fossil")
         (max-line-length 1024))
-    (define (fossils-http-serve
-             local repository line0
-             #!key
-             (scheme "http://"))
+    (define (producer->pipe producer)
+      (receive (servant client) (open-u8vector-pipe)
+        (parameterize ((current-output-port servant))
+          (producer)
+          (close-port servant))
+        client))
+    (define (fossils-http-serve*
+             local repository line0 scheme)
       (let* ((line (or line0
                        (u8-read-line2 (current-input-port) 10 max-line-length)))
              (m (rx~ (force brk) line))
              (unit-id (beaver-local-unit-id))
              (m2 (and m (uri-parse (rxm-ref m 2)))))
         (cond
-         ((not repository) #f)
          ((and m2 (equal? (at-phone-decoder m2) unit-id))
           (receive (host headers) (fossils-copy-http-headers-catching-host (current-input-port))
             (let* ((baseurl (string-append scheme  host "/" (rxm-ref m 2)))
@@ -161,6 +164,18 @@
                 (display headers proc)
                 (force-output proc)
                 proc))))
+         ((equal? line "")
+          (producer->pipe
+           (lambda ()
+             (display
+           #<<EOF
+HTTP/1.0 500 Error
+Content-Type: text/plain
+
+fossils server could not read HTTP request.
+
+EOF
+           ))))
          (else
           (let* ((cmdln (if local
                             (fossils-make-http-command-line-options
@@ -177,6 +192,28 @@
                    (display line proc) (newline proc)
                    (force-output proc)
                    proc)))))))
+    (define (fossils-http-serve
+             local repository line
+             #!key
+             (scheme "http://")
+             (wait #t))
+      (and repository
+           (if (or line wait)
+               (fossils-http-serve* local repository line scheme)
+               (receive (port srv) (open-u8vector-pipe '(buffering: #t) '(buffering: #t))
+                 (thread-start!
+                  (make-thread
+                   (lambda ()
+                     (with-exception-catcher
+                      (lambda (exn) (handle-debug-exception exn) #f)
+                      (lambda ()
+                        (parameterize
+                            ;; There should be a simpler way!
+                            ((current-input-port srv) (current-output-port srv))
+                          (let ((conn (fossils-http-serve* local repository #f scheme)))
+                            (ports-connect! conn conn srv srv 2))))))
+                   repository))
+                 port))))
     fossils-http-serve))
 
 (define (fossils-directory-service)
@@ -199,7 +236,7 @@
        (let ((unit-id (beaver-local-unit-id))
              (previous-handler (http-proxy-on-illegal-proxy-request)))
          (fossils-directory-handler
-          (lambda () (fossils-http-serve #f (fossils-directory) #f)))
+          (lambda (auth) (fossils-http-serve auth (fossils-directory) #f wait: #f)))
          (http-proxy-on-illegal-proxy-request
           (lambda (line)
             (let* ((m (rx~ brk line))
