@@ -440,6 +440,13 @@ EOF
 
 (define cerberus-verbose (make-pin initial: #t name: "Trace Cerberus"))
 
+(define (tag-thunk-as-service thunk . more)
+  (let ((thunk (tag-thunk thunk 'service)))
+    (for-each (lambda (tag) (tag-thunk thunk tak)) more)
+    thunk))
+
+(define (service? obj) (and (procedure? obj) (procedure-tagged? obj 'service)))
+
 (define (daemonian-parse-null-port-alias old new)
   (if (member new '("/dev/null" "NULL" "NUL" "")) #f new))
 

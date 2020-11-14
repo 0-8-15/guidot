@@ -211,17 +211,20 @@ EOF
                             ;; There should be a simpler way!
                             ((current-input-port srv) (current-output-port srv))
                           (let ((conn (fossils-http-serve* local repository #f scheme)))
-                            (ports-connect! conn conn srv srv 2))))))
+                            (ports-connect! conn conn srv srv 0))))))
                    repository))
                  port))))
     fossils-http-serve))
 
-(define (fossils-directory-service)
-  (let ((dir (fossils-directory)))
-    (when dir
-      (let ((conn (fossils-http-serve #f dir #f)))
-        (when (port? conn)
-          (ports-connect! conn conn (current-input-port) (current-output-port) 3))))))
+(define fossils-directory-service
+  (let ()
+    (define (fossils-directory-service)
+      (let ((dir (fossils-directory)))
+        (when dir
+          (let ((conn (fossils-http-serve #f dir #f)))
+            (when (port? conn)
+              (ports-connect! conn conn (current-input-port) (current-output-port) 0))))))
+    (tag-thunk-as-service fossils-directory-service)))
 
 (wire!
  (list fossils-directory beaver-local-unit-id)
@@ -246,11 +249,11 @@ EOF
                ((or (not id) (equal? id unit-id))
                 (let ((conn (fossils-http-serve #t (fossils-directory) line)))
                   (when (port? conn)
-                    (ports-connect! conn conn (current-input-port) (current-output-port) 3))))
+                    (ports-connect! conn conn (current-input-port) (current-output-port) 0))))
                ((fossils-enable-http-hijacking)
                 (let ((conn (ot0cli-connect "local" id 80)))
                   (when (port? conn)
                     (display line conn) (newline conn)
                     (force-output conn)
-                    (ports-connect! conn conn (current-input-port) (current-output-port) 3))))
+                    (ports-connect! conn conn (current-input-port) (current-output-port) 0))))
                (else (previous-handler line)))))))))))
