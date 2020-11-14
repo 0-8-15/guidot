@@ -13,74 +13,6 @@
     `(let ((,handler (debug-trace-request-forwarding)))
        (if ,handler (,handler ,label ,@more)))))
 
-(define (handle-debug-exception e)
-  (##default-display-exception e (current-error-port))
-  #!void)
-
-(define (u8-read-line2 port separator #!optional (mxlen 128))
-  ;; avoid character buffer which disturbs when using bulk io.
-  (let ((in (make-string mxlen)))
-    (do ((off 0 (+ off 1))
-         (n (read-u8 port) (read-u8 port)))
-        ((or (eqv? n separator) (eof-object? n))
-         (substring in 0 off))
-      ;; overflows at mxlength - is just a PoC
-      (string-set! in off (integer->char n)))))
-
-(define (read-line/null-terminated port #!optional (mxlen 128))
-  (u8-read-line2 port 0))
-
-(define (port-copy-through in out #!optional (MTU 3000))
-  ;; Copy `in` to `out` and close the input side of `in` and the
-  ;; output side of `out` when EOF is reached on `in`.
-  ;;
-  ;; TODO: re-write using get-output-u8vector
-  ;; ##wait-input-port
-  (let ((buffer (%allocate-u8vector MTU)))
-    (input-port-timeout-set! in (socks-connect-timeout))
-    (let loop ()
-      (let ((n (read-subu8vector buffer 0 MTU in 1)))
-        (cond
-         ((eqv? n 0)
-          ;; done TBD: which one to close first?  Sequence seems to
-          ;; depend on implementation.
-          (close-input-port in)
-          (close-output-port out))
-         (else
-          (write-subu8vector buffer 0 n out)
-          (force-output out)
-          (input-port-timeout-set! in (socks-data-timeout))
-          (loop)))))))
-
-(define (close-port/no-exception port)
-  (with-exception-catcher
-   (lambda (exn) (handle-debug-exception exn) #f)
-   (lambda () (close-port port))))
-
-(define (port-pipe+close! in out #!optional (MTU 3000))
-  (with-exception-catcher
-   (lambda (exn)
-     ;; (display-exception exn (current-error-port))
-     (close-port/no-exception in)
-     (close-port/no-exception out)
-     exn)
-   (lambda () (port-copy-through in out MTU))))
-
-(define (ports-connect! r0 w0 r1 w1 #!optional (close-flags 0))
-  (let* ((job (lambda ()
-                (port-pipe+close! r0 w1)
-                (when (not (eqv? (bitwise-and close-flags 1) 0))
-                  (close-input-port r1))))
-         (thr (thread-start! (make-thread job 'port-copy))))
-    (port-pipe+close! r1 w0)
-    (when (not (eqv? (bitwise-and close-flags 2) 0))
-      (close-input-port r0))
-    (thread-join! thr)))
-
-(define (send-packet-now! packet conn)
-  (write-subu8vector packet 0 (u8vector-length packet) conn)
-  (force-output conn))
-
 ;;;** SOCKS Protocol
 
 (define (socks4a-request cmd dstport dstip #!optional (id ""))
@@ -157,17 +89,17 @@
   (let ((request (socks4a-request kind port addr)))
     (send-packet-now! request conn-to)
     (let ((reply (%allocate-u8vector 8)))
-      (when
-       (read-subu8vector reply 0 8 conn-in 8)
-       (unless (socks-success? reply) (error "failed"))))))
+      (unless (and (fx= (read-subu8vector reply 0 8 conn-in 8) 8)
+                   (socks-success? reply))
+        (error "failed")))))
 
 (define (socks4-connect-via proxy socks-spec addr port)
   (let ((request (socks4a-request #f port addr)))
     (send-packet-now! request proxy)
     (let ((reply (%allocate-u8vector 8)))
-      (if (read-subu8vector reply 0 8 proxy 8)
-          (if (socks-success? reply) proxy
-              (begin (close-port proxy) proxy))
+      (if (and (fx= (read-subu8vector reply 0 8 proxy 8) 8)
+               (socks-success? reply))
+          proxy
           (begin (close-port proxy) proxy)))))
 
 (define (socks5-connect-via proxy socks-spec addr port)
@@ -332,19 +264,22 @@
             (case dst-type
               ((4 1)
                (let ((addr (%allocate-u8vector dst-size)))
-                 (if (read-subu8vector addr 0 dst-size in dst-size) addr
+                 (if (fx= (read-subu8vector addr 0 dst-size in dst-size) dst-size)
+                     addr
                      (error "SOCKS5 could not read address bytes" dst-size))))
               ((3)
                (let ((buffer (%allocate-u8vector dst-size))
                      (addr (make-string dst-size)))
-                 (if (read-subu8vector buffer 0 dst-size in dst-size)
+                 (if (fx= (read-subu8vector buffer 0 dst-size in dst-size) dst-size)
                      (do ((i 0 (fx+ i 1)))
                          ((fx= i dst-size) addr)
                        (string-set! addr i (integer->char (u8vector-ref buffer i))))
                      (error "SOCKS5 could not read address string" dst-size))))))
            (dstport
             (let ((buffer (make-u8vector 2)))
-              (and (read-subu8vector buffer 0 2 in 2) (u8vector/n16h-ref buffer 0)))))
+              (and
+               (fx= (read-subu8vector buffer 0 2 in 2) 2)
+               (u8vector/n16h-ref buffer 0)))))
       (case (and dstport cmd)
         ((1) (socks-dispatch-connection 5 name in out dstip dstport))
         ((2) (socks-dispatch-bind 5 in out dstip dstport))
@@ -354,7 +289,7 @@
 (define (socks4a-server/in+out name in out)
   (let ((req (make-u8vector 8)))
     (when
-     (read-subu8vector req 0 8 in 8)
+     (fx= (read-subu8vector req 0 8 in 8) 8)
      (case (u8vector-ref req 0)
        ((4) (socks4a-server/req+in+out name req in out))
        (else (socks4-reply! out #f))))))
@@ -380,7 +315,7 @@
 (define (socks5-server/in+out name in out)
   (let ((req (make-u8vector 4))) ;; fix client request prefix
     (when
-     (read-subu8vector req 0 4 in 4)
+     (fx= (read-subu8vector req 0 4 in 4) 4)
      (case (u8vector-ref req 0)
        ((5) (socks5-server/req+in+out name req in out))
        ;; send protocol error
@@ -392,7 +327,7 @@
       ((5)
        (let* ((nauth (read-u8 in))
               (auth-offered (make-u8vector nauth)))
-         (when (read-subu8vector auth-offered 0 nauth in nauth)
+         (when (fx= (read-subu8vector auth-offered 0 nauth in nauth) nauth)
                (let ((auth (socks5-select-auth auth-offered)))
                  (if auth
                      (begin
@@ -403,9 +338,8 @@
       ((4)
        (let ((req (make-u8vector 8)))
          ;; (u8vector-set! req 0 version) ;; actually unsued
-         (when
-          (read-subu8vector req 1 7 in 7)
-          (socks4a-server/req+in+out name req in out)))))))
+         (when (fx=? (read-subu8vector req 1 7 in 7) 7)
+           (socks4a-server/req+in+out name req in out)))))))
 
 (define (socks-server #!optional (name 'host))
   (socks-server/in+out name (current-input-port) (current-output-port)))

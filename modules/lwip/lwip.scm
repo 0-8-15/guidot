@@ -2,16 +2,21 @@
 (define-cond-expand-feature lwip-requires-pthread-locks)
 ;;;|#
 
-(define $lwip-debug (make-parameter #f))
+(define $lwip-debug (make-parameter (cond-expand (debug #t) (else #f))))
 
 (define (lwip-exception-handler exn)
   (when
    ($lwip-debug)
    (display "lwIP Exception: " (current-error-port))
-   (##default-display-exception exn (current-error-port)))
+   (continuation-capture
+    (lambda (cont)
+      (display-exception-in-context exn cont (current-error-port))
+      (display-continuation-backtrace cont (current-error-port)))))
   #f)
 
 ;;;* Global Syntax Imports
+
+(include "~~lib/_gambit#.scm")
 
 (define-macro (c-safe-lambda formals return c-code)
   (let ((tmp (gensym 'c-safe-lambda-result))
@@ -37,6 +42,7 @@
  (extended-bindings) ;; no overwrites of standard bindings
  (not standard-bindings thread-start!) ;; except this
  (block)
+ (not interrupts-enabled)
  )
 
 #;(declare (debug))
@@ -401,6 +407,13 @@ end-pbuf-cdeclare
 (define (make-pbuf-raw+ram/will size)
   (let ((result (make-pbuf-raw+ram size)))
     (make-will result pbuf-release!)
+    result))
+
+(define make-pbuf make-pbuf-raw+pool)
+#;(define (make-pbuf size)
+  ;; strange - just for testing
+  (let ((result (make-pbuf-raw+pool size)))
+    (pbuf-add-reference! result)
     result))
 
 (define pbuf-copy-from-ptr!
