@@ -17,6 +17,11 @@
 
 ;; (debug-trace-request-forwarding (lambda (label . more) (debug label more)))
 
+(define-macro (debug-handle-exceptions exn handler expr . body)
+  `(with-exception-catcher
+    (lambda (,exn) ,handler)
+    (lambda () ,expr ,@body)))
+
 (define-macro (debug-trace-request label . more)
   (let ((handler (gensym)))
     `(let ((,handler (debug-trace-request-forwarding)))
@@ -351,7 +356,9 @@
            (socks4a-server/req+in+out name req in out)))))))
 
 (define (socks-server #!optional (name 'host))
-  (socks-server/in+out name (current-input-port) (current-output-port)))
+  (debug-handle-exceptions
+   exn (handle-debug-exception exn 'socks-server)
+   (socks-server/in+out name (current-input-port) (current-output-port))))
 
 #|
 
