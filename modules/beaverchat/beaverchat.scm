@@ -314,6 +314,25 @@
   name: "Port number fot HTTP/S proxy to listen on.  If 0: no socks.")
 
 (kick
+  (wire!
+   beaver-proxy-port-number post:
+   (lambda ()
+     (let ((v (beaver-proxy-port-number))
+           (names '("http_proxy" "https_proxy")))
+       (cond-expand
+        (android
+         (lnjscheme-eval
+          (if (= v 0)
+              `(begin
+                 (webview-set-proxy! 'http #f #f)
+                 (webview-set-proxy! 'https #f #f))
+              `(begin
+                 (webview-set-proxy! 'http "127.0.0.1" ,(number->string v))
+                 (webview-set-proxy! 'https "127.0.0.1" ,(number->string v))))))
+        (else #f))
+       (if (= v 0) (for-each setenv names)
+           (let ((v (string-append "http://127.0.0.1:" (number->string v))))
+             (for-each (lambda (n) (setenv n v)) names))))))
   (wire! beaver-proxy-port-number sequence: (local-server-port-change http-proxy))
   (wire! beaver-socks-port-number sequence: (local-server-port-change socks-server)))
 
@@ -589,7 +608,7 @@
 
 (wire! chat-address post: chat-set-current-partner!)
 
-(define (glgui-beaverchat launch-url) ;; Note: this is currently a once-at-most call!
+(define (glgui-beaverchat launch-url beaver-domain) ;; Note: this is currently a once-at-most call!
 
   ;; This simple calculator app uses the gambit in-fix interpreter
   ;; It handles fractions, complex numbers, and large fixnums!
@@ -802,8 +821,7 @@
          (if (positive? (beaver-proxy-port-number))
              (launch-url
               (string-append "http://127.0.0.1:" (number->string (beaver-proxy-port-number)))
-              via: (if (< x (/ w 2)) 'webview 'extern)))
-         (kick (chat-pending-messages '()))))
+              via: (if (< x (/ w 2)) 'webview 'extern)))))
       (let* ((w2 (/ w 2))
              (border 10)
              (w2w (- w2 border))
@@ -915,9 +933,8 @@
                                  (when ponebook-dialog (ponebook-dialog 'close) (set! ponebook-dialog #f))
                                  (let ((pn (chat-number->neatstring (car e) "-")))
                                    (launch-url
-                                    (string-append "http://127.0.0.1:" (number->string (beaver-proxy-port-number))
-                                                   "/" pn "/" pn "/index")
-                                    via: (if (< x (/ w 2)) 'webview 'extern))))
+                                    (string-append "http://" pn "." (beaver-domain) "/index")
+                                    via: (if (< x 1/4) 'webview 'extern))))
                                 ((> x 2/3)
                                  (set! nick-dialog
                                        (Xglgui-value-edit-dialog

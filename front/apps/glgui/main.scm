@@ -79,38 +79,33 @@
         (set! front-beaver-call call)))
     (wire! pin sequence: export)
     pin))
-(kick/sync! (lambda () (front-beaver-directory (front-beaver-directory-default))))
+#;(kick/sync! (lambda () (front-beaver-directory (front-beaver-directory-default))))
 
-#| Moved into daemonian - and that's (now) included
-(define (ln-system-command-line* offset) ;; FIXME: depends on lambdanative!
-  (let loop ((n (system-cmdargc)) (r '()))
-    (if (< n offset) r
-	(let ((i (- n 1)))
-	  (loop i (cons (system-cmdargv i) r))))))
+(define (forward-logging-to-daemonian!)
+  (let ((to (and log:on log:file)))
+    (daemonian-stdout-file to)
+    (daemonian-stderr-file to)))
 
-(define (command-line) (ln-system-command-line* 1))
-;;|#
+
+#;(thread-start!
+ (make-thread
+  (lambda ()
+    (do () (#f)
+      (thread-sleep! (* 24 36 60)) ;; 1d
+      (log-reset!)
+      (kick! forward-logging-to-daemonian!)))
+  'reset-log))
 
 ;; GUI helpers
 
 (define (update-pages!)
-  (front-trigger-update-of-pages!)
+  (glgui-wakeup!)
   #f)
 
-(define *front-pages-update-mux* (make-mutex '*front-pages-update-required*))
-(define *front-pages-update-cv* (make-condition-variable '*front-pages-update-required*))
-
-(define (front-trigger-update-of-pages!)
-  ;;(mutex-lock! *front-pages-update-mux*)
-  (mutex-specific-set! *front-pages-update-mux* #t)
-  ;;(mutex-unlock! *front-pages-update-mux*)
-  (condition-variable-signal! *front-pages-update-cv*))
-
-(define gui-expecting-progress (make-parameter #f))
 
 (define glgui-dispatch-event
   (let ((check-magic-keys
-	 (lambda (gui op t x y)
+	 (lambda (gui t x y)
 	   ;; (debug 'event t)
 	   (when (= t EVENT_KEYPRESS)
 		 (if (= x EVENT_KEYESCAPE)
@@ -128,23 +123,23 @@
           ;; (check-magic-keys gui op t x y)
           (glgui-event gui t x y)))))
      (else
-      (lambda (gui update-pages-now! t x y)
+      (lambda (gui t x y)
         (thread-yield!)
-	(check-magic-keys gui update-pages-now! t x y)
+	(check-magic-keys gui t x y)
 	(cond
          ((eq? t EVENT_REDRAW)
           ;; (log-status "REDRAW")
           (glgui-event gui t x y))
          ((eq? t EVENT_IDLE)
           #t)
-         ((eq? t 126) (kick! (lambda () (LNjScheme-result))))
 	 (else (kick! (lambda () (glgui-event gui t x y))))))))))
 
 (define (handle-replloop-exception e)
-  (cond
-   ((unbound-global-exception? e)
-    (println port: (current-error-port) "Unbound variable " (unbound-global-exception-variable e)))
-   (else (display-exception e (current-error-port))))
+  (let ((port (current-error-port)))
+    (continuation-capture
+     (lambda (cont)
+       (display-exception-in-context e cont port)
+       (display-continuation-backtrace cont port))))
   #!void)
 
 (define (replloop) ;; interactive read-evaluate-print-loop
@@ -158,10 +153,11 @@
 (define (glgui-run init #!key
                    (events glgui-dispatch-event)
                    (suspend glgui-suspend)
-                   (resume glgui-resume)
+                   (resume (lambda ()
+                             (glgui-wakeup!)
+                             (glgui-resume)))
                    (terminate (lambda () #t)))
   (let ((gui #f)
-        (update! (lambda _ #f))
         (once *glgui-main*))
     (set! *glgui-main* (lambda _ (exit 42)))
     (once
@@ -171,12 +167,9 @@
         (lambda (exn)
           (handle-replloop-exception exn)
           (exit 32))
-        (lambda ()
-          (receive (g u) (init w h)
-            (set! gui g)
-            (set! update! (or u (lambda () #f)))))))
-     ;; events -- to kick or not to kick?
-     (lambda (t x y) (kick! (lambda () (events gui update! t x y))))
+        (lambda () (set! gui (init w h)))))
+     ;; events
+     (lambda (t x y) (events gui t x y))
      ;; termination
      terminate
      ;; suspend
@@ -209,14 +202,31 @@
 
 (let ()
   (define (load-file-with-arguments file args)
-    (load file))
+    (with-exception-catcher
+     (lambda (exn)
+       (debug "While loading" file)
+       (handle-replloop-exception exn)
+       (cond-expand
+        (android (exit 1))
+        (else #f)))
+     (lambda () (load (debug 'loading file)))))
   (define parse
     (match-lambda
-     ((CMD) (replloop) (exit 0))
+     ((CMD)
+      (cond-expand
+       ((or android)
+        (kick/sync! forward-logging-to-daemonian!)
+        (log-status "begin of log for glgui")
+        (load-file-with-arguments (make-pathname (system-directory) "init.scm") '()))
+       (else (replloop) (exit 0))))
      ((CMD (? (lambda (key) (equal? (daemonian-semifork-key) key))) loadkey . more)
       (daemonian-execute-registered-command loadkey more))
      ((CMD "-l" FILE . more)
       (load-file-with-arguments FILE more))
+     ((CMD "-version" . more)
+      (begin
+        (println (system-appversion))
+        (exit 0)))
      ((CMD (? file-exists? FILE) . more) (parse `(,CMD "-l" ,FILE ,@more)))
      ((CMD . more)
       (println port: (current-error-port) "Warning: " CMD " did not parse: " (object->string more))
