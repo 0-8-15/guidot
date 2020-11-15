@@ -442,7 +442,7 @@ EOF
 
 (define (tag-thunk-as-service thunk . more)
   (let ((thunk (tag-thunk thunk 'service)))
-    (for-each (lambda (tag) (tag-thunk thunk tak)) more)
+    (for-each (lambda (tag) (tag-thunk thunk tag)) more)
     thunk))
 
 (define (service? obj) (and (procedure? obj) (procedure-tagged? obj 'service)))
