@@ -76,7 +76,7 @@ EOF
               (display proto)
               (display " 200 OK\r\n\r\n")
               (force-output)
-              (ports-connect! conn conn (current-input-port) (current-output-port) 3))
+              (ports-connect! conn conn (current-input-port) (current-output-port)))
             (begin
               (display proto)
               (display " 502 Bad Gateway\r\n\r\n")))))
@@ -104,7 +104,7 @@ EOF
           (when (port? conn)
             (display nl1 conn)
             (force-output conn)
-            (ports-connect! conn conn (current-input-port) (current-output-port) 3)))))
+            (ports-connect! conn conn (current-input-port) (current-output-port))))))
     (set! httpproxy-connect-set! (lambda (v) (set! connect-handler v)))
     (set! httpproxy-atphone-set! (lambda (v) (set! atphone-decoder v)))
     (lambda (#!optional (illegal-proxy-request #f))
@@ -125,4 +125,3 @@ EOF
                      ln1)))))))))
 
 (define http-proxy (make-httpproxy (lambda (line) ((http-proxy-on-illegal-proxy-request) line))))
-

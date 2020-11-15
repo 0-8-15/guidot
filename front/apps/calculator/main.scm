@@ -424,13 +424,14 @@ NULL;
       ;; -S tcp register (debug-adhoc-network-port) replloop2 :
       -wait
       ))
+  (define (capdom) "bvr")
   (log-status "Starting from " dir (object->string (args)))
   (init-beaverchat! dir use-origin: use-origin) ;; MUST be first
-  (glgui-beaverchat webview-launch!)
+  (glgui-beaverchat webview-launch! capdom)
   (kick (audible-beep audible-beep!))
   (httpproxy-atphone-set! at-phone-decoder)
   (httpproxy-connect-set! ot0cli-connect)
-  (capture-domain! "beaver.dam" handler: fossils-directory-handler)
+  (capture-domain! (capdom) handler: fossils-directory-handler)
   (lwip-tcp-service-register! 80 fossils-directory-service)
   (log-status "beaver.dam done")
   (let ((job (lambda () (beaver-process-commands (args)))))
@@ -466,3 +467,5 @@ NULL;
   (parse (command-line)))
 
 (if (eq? *glgui-main* main) (exit 0))
+
+;; eof

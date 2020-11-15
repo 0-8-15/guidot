@@ -150,7 +150,7 @@
     (cond
      ((port? conn)
       (socks4-reply! out #t)  ;; SOCKS granted
-      (ports-connect! conn conn in out 3))
+      (ports-connect! conn conn in out))
      (else
       ;; SOCKS reply "rejected or failed"
       (socks4-reply! out #f))))
@@ -158,7 +158,7 @@
     (cond
      ((port? conn)
       (socks5-reply! out #t addr port)  ;; SOCKS granted
-      (ports-connect! conn conn in out 3))
+      (ports-connect! conn conn in out))
      (else
       ;; SOCKS reply "rejected or failed"
       (socks5-reply! out #f addr port))))
@@ -219,7 +219,7 @@
           (case version
             ((5) (error "NYI socks-bind version 5"))
             (else (socks4-reply! out #t)))
-          (ports-connect! conn conn in out 3))
+          (ports-connect! conn conn in out))
         (case version
           ((5) (error "NYI socks-bind version 5"))
           (else (socks4-reply! out #f))))))
@@ -237,7 +237,7 @@
          (in (current-input-port))
          (to (current-output-port)))
   (%socks-bind! version conn-in conn-to #t "addr ignored" port)
-  (ports-connect! conn-in conn-to in to 3))
+  (ports-connect! conn-in conn-to in to))
 
 (define (socks-test-local! #!optional (port 1234))
   (socks-service-register! port)
