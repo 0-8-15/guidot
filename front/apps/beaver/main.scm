@@ -9,6 +9,23 @@
  (else #!void))
 ;;|#
 
+;(##set-max-heap! (expt 2 26))
+#;(let ((hs (expt 2 28)))
+  (##set-max-heap! hs)
+  (##set-min-heap! hs))
+
+#;(on-ot0-maintainance
+ (lambda (prm thunk)
+   (lambda ()
+     (thunk)
+     ;; (thread-yield!) ;; be sure the other threads are more or less done
+     (##gc) ;; enforce garbage collection
+     )))
+
+;; (current-exception-handler handle-replloop-exception)
+
+;; (gc-report-set! #t)
+
 (define normal-exit exit)
 ;;(set! exit _exit) ;; FIXME: with lambdanative we see exit 0 always!
 
