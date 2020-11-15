@@ -2,10 +2,10 @@
 
 ;;** Debug Helpers
 
-(define (handle-debug-exception e)
+(define (handle-debug-exception e #!optional location)
   (let ((port (current-error-port)))
-    (display-exception-in-context e cont port)
-    (display-continuation-backtrace cont port))
+    (debug (or location 'EXN) e)
+    (display-exception e port))
   #!void)
 
 ;;** Lowlevel Port Operations
@@ -150,8 +150,6 @@
 
 ;;** Connecting Ports
 
-(define ports-connect-use-close-hint (make-parameter #f)) ;; TBD: get rid of this!
-
 (define (port-copy-through in out #!optional (MTU 3000))
   ;; Copy `in` to `out` and close the input side of `in` and the
   ;; output side of `out` when EOF is reached on `in`.
@@ -164,8 +162,9 @@
                (corout (and (quasi-port? out) (quasi-port-writer out))))
       (let ((n (read-subu8vector buffer offset mtu in 1)))
         (cond
-         ((eqv? n 0)
+         ((fx<= n 0)
           (close-input-port in)
+          ;; (force-output out) ;; part of close??
           (close-output-port out))
          ((procedure? corout) (corout buffer offset n mtu loop))
          (else
@@ -185,23 +184,17 @@
 (define (port-pipe+close! in out #!optional (MTU 3000))
   (with-exception-catcher
    (lambda (exn)
-     (handle-debug-exception exn)
+     ;; (handle-debug-exception exn)
      (close-port/no-exception in)
      (close-port/no-exception out)
      exn)
    (lambda () (port-copy-through in out MTU))))
 
-(define (ports-connect! r0 w0 r1 w1 #!optional (close-flags 0))
-  (let* ((job (lambda ()
-                (port-pipe+close! r0 w1)
-                (when (and (not (eqv? (bitwise-and close-flags 1) 0))
-                           (ports-connect-use-close-hint))
-                  (close-input-port r1))))
+(define (ports-connect! r0 w0 r1 w1 . ignored)
+  ;; TBD (unless (null? ignored) (debug 'ports-connect!--additional: ignored))
+  (let* ((job (lambda () (port-pipe+close! r0 w1)))
          (thr (thread-start! (make-thread job 'port-copy))))
     (port-pipe+close! r1 w0)
-    (when (and (not (eqv? (bitwise-and close-flags 2) 0))
-               (ports-connect-use-close-hint))
-      (close-input-port r0))
     (thread-join! thr)))
 
 ;;#| eof
