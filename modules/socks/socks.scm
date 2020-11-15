@@ -1,3 +1,12 @@
+(declare
+ ;; currently overwriting port operations:
+ (not standard-bindings
+      close-port close-output-port close-input-port
+      read-u8 read-subu8vector write-subu8vector write-substring
+      force-output
+      port?
+      ))
+
 ;;;** Utilitarian Garbage
 
 (define socks-data-timeout (make-parameter 660))
@@ -338,7 +347,7 @@
       ((4)
        (let ((req (make-u8vector 8)))
          ;; (u8vector-set! req 0 version) ;; actually unsued
-         (when (fx=? (read-subu8vector req 1 7 in 7) 7)
+         (when (fx= (read-subu8vector req 1 8 in 7) 7)
            (socks4a-server/req+in+out name req in out)))))))
 
 (define (socks-server #!optional (name 'host))

@@ -3,7 +3,9 @@
 ;;** Debug Helpers
 
 (define (handle-debug-exception e)
-  (##default-display-exception e (current-error-port))
+  (let ((port (current-error-port)))
+    (display-exception-in-context e cont port)
+    (display-continuation-backtrace cont port))
   #!void)
 
 ;;** Lowlevel Port Operations
@@ -183,7 +185,7 @@
 (define (port-pipe+close! in out #!optional (MTU 3000))
   (with-exception-catcher
    (lambda (exn)
-     (display-exception exn (current-error-port))
+     (handle-debug-exception exn)
      (close-port/no-exception in)
      (close-port/no-exception out)
      exn)
