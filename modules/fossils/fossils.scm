@@ -3,10 +3,19 @@
 (register-command!
  "fossil"
  (lambda (args)
-   (process-status
-    (open-process
-     `(path: "fossil" arguments: ,args
-             stdin-redirection: #f stdout-redirection: #f show-console: #f)))))
+   #|
+   (exit
+    (debug 'fossil-exit (process-status
+     (open-process
+      `(path: "fossil" arguments: ,args
+              stdin-redirection: #f stdout-redirection: #f show-console: #f)))))
+   |#
+   (let ((conn (open-process
+                `(path: "fossil" arguments: ,args
+                        stdin-redirection: #t stdout-redirection: #t show-console: #f))))
+     (when (port? conn)
+       (ports-connect! conn conn (current-input-port) (current-output-port))
+       (exit (/ (process-status conn) 256))))))
 
 (define (fossils-fallback-name unit-id)
   (beaver-unit-id->string unit-id "-"))
@@ -123,8 +132,14 @@
 
 (define fossils-http-serve
   (let ((brk (delay (rx "^([^ ]+) (?:/([^/]+))([^ ]+) (HTTP/[0-9]\\.[0-9])\r?$")))
-        (fossil "fossil")
         (max-line-length 1024))
+    (define (fossil args)
+      (cond-expand
+       (linux
+        (open-process
+           `(path: "fossil" arguments: ,args
+                   stdin-redirection: #t stdout-redirection: #t show-console: #f)))
+       (else (semi-fork "fossil" args))))
     (define (producer->pipe producer)
       (receive (servant client) (open-u8vector-pipe)
         (parameterize ((current-output-port servant))
@@ -154,7 +169,7 @@
                                repository
                                notfound: notfound
                                baseurl: baseurl)))
-                   (proc (semi-fork fossil cmdln)))
+                   (proc (fossil cmdln)))
               (when (port? proc)
                 #;(let ((p (current-error-port)))
                 (display line p) (newline p) (display headers p) (display "---\n" p))
@@ -186,7 +201,7 @@ EOF
                             (fossils-make-http-command-line-options
                              repository
                              notfound: (fossils-fallback-name unit-id))))
-                 (proc (semi-fork fossil cmdln)))
+                 (proc (fossil cmdln)))
             (and (port? proc)
                  (begin
                    (display line proc) (newline proc)
@@ -205,13 +220,14 @@ EOF
                   (make-thread
                    (lambda ()
                      (with-exception-catcher
-                      (lambda (exn) (handle-debug-exception exn) #f)
+                      handle-debug-exception
                       (lambda ()
                         (parameterize
                             ;; There should be a simpler way!
                             ((current-input-port srv) (current-output-port srv))
                           (let ((conn (fossils-http-serve* local repository #f scheme)))
-                            (ports-connect! conn conn srv srv 0))))))
+                            (ports-connect! conn conn srv srv)
+                            (process-status conn))))))
                    repository))
                  port))))
     fossils-http-serve))
@@ -223,7 +239,7 @@ EOF
         (when dir
           (let ((conn (fossils-http-serve #f dir #f)))
             (when (port? conn)
-              (ports-connect! conn conn (current-input-port) (current-output-port) 0))))))
+              (ports-connect! conn conn (current-input-port) (current-output-port)))))))
     (tag-thunk-as-service fossils-directory-service)))
 
 (wire!
@@ -249,11 +265,11 @@ EOF
                ((or (not id) (equal? id unit-id))
                 (let ((conn (fossils-http-serve #t (fossils-directory) line)))
                   (when (port? conn)
-                    (ports-connect! conn conn (current-input-port) (current-output-port) 0))))
+                    (ports-connect! conn conn (current-input-port) (current-output-port)))))
                ((fossils-enable-http-hijacking)
                 (let ((conn (ot0cli-connect "local" id 80)))
                   (when (port? conn)
                     (display line conn) (newline conn)
                     (force-output conn)
-                    (ports-connect! conn conn (current-input-port) (current-output-port) 0))))
+                    (ports-connect! conn conn (current-input-port) (current-output-port)))))
                (else (previous-handler line)))))))))))
