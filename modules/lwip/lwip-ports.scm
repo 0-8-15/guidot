@@ -19,6 +19,8 @@
 
 (define lwip-connect-timeout (make-parameter 60))
 
+(define lwip-buffer-factor (make-parameter 50)) ;; as many MTU in memory
+
 ;;;*** lwIP TCP data structures and basics
 
 #;(define (%%tcp-context-set! pcb ctx)
@@ -130,7 +132,7 @@
         (read-port s) (open-u8vector-pipe '(buffering: #f) '(buffering: #f))
       (tcp-connection-client-port-set! conn read-port)
       (tcp-connection-srv-port-set! conn s)
-      (let ((buflim (* MTU 1)))
+      (let ((buflim (* MTU (lwip-buffer-factor))))
         (macro-u8vector-port-buffering-limit-set! s buflim)
         (macro-u8vector-port-buffering-limit-set! read-port buflim))
 #|
