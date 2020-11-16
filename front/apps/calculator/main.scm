@@ -391,12 +391,22 @@ NULL;
     (begin
       (audiofile-init)
       (vector
-       (audiofile-load "win")))))
+       (audiofile-load "win")
+       (audiofile-load "tata")
+       (audiofile-load "thatsit")))))
 
 (define (audible-beep!)
   (if (< (audiofile-getvolume) 0.3)
       (log-warning "Beep with low volume."))
-  (audiofile-forceplay (vector-ref (force sounds) 0)))
+  (let ((idx (let ((x (random-integer 100)))
+               (cond
+                ((= x 99) 0)
+                (else 1)))))
+    (audiofile-forceplay (vector-ref (force sounds) idx))
+    (when (< (random-integer 10) 2)
+      (kick! (box (lambda ()
+                    (thread-sleep! 10)
+                    (audiofile-forceplay (vector-ref (force sounds) 2))))))))
 
 (define (calculator-adhoc-network-id) 18374687579166474240)
 
