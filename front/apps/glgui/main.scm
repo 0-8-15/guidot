@@ -1,7 +1,25 @@
+;;; To be fixed upstream:
+
+(define-macro (macro-fix val)
+  `(if (fixnum? ,val) ,val (inexact->exact (round ,val))))
+
+(set! gdImageCreateTrueColor
+      (let ((orig gdImageCreateTrueColor))
+        (lambda (w h)
+          (orig (macro-fix w) (macro-fix h)))))
+
+(set! gdImageCopyResampled
+      (let ((orig gdImageCopyResampled))
+        (lambda (gd2 gd x y ox oy w2 h2 w h)
+          (orig gd2 gd x y ox oy w2 (macro-fix h2) w h))))
+
+;;;
+
 (define normal-exit exit)
 ;;(set! exit _exit) ;; FIXME: with lambdanative we see exit 0 always!
 
-(include "DejaVuSans-14,24,32.scm")
+;; (include "DejaVuSans-14,24,32.scm") currently in guide.
+
 (include "visit-symbol-table.scm")
 
 (utf8string->unicode:on-encoding-error 'replace)
@@ -146,50 +164,6 @@
   (with-exception-catcher handle-replloop-exception (lambda () (##repl-debug #f #t)))
   (replloop))
 
-;; LambdaNative glgui frame -- it's a bit tricky to work around that one.
-
-(define *glgui-main* main)
-
-(define (glgui-run init #!key
-                   (events glgui-dispatch-event)
-                   (suspend glgui-suspend)
-                   (resume (lambda ()
-                             (glgui-wakeup!)
-                             (glgui-resume)))
-                   (terminate (lambda () #t)))
-  (let ((gui #f)
-        (once *glgui-main*))
-    (set! *glgui-main* (lambda _ (exit 42)))
-    (once
-     ;; initialization
-     (lambda (w h)
-       (with-exception-catcher
-        (lambda (exn)
-          (handle-replloop-exception exn)
-          (exit 32))
-        (lambda () (set! gui (init w h)))))
-     ;; events
-     (lambda (t x y) (events gui t x y))
-     ;; termination
-     terminate
-     ;; suspend
-     suspend
-     ;; resume
-     resume
-     )))
-
-#|
-(glgui-run
- (lambda (w h)
-     (make-window 320 480)
-     (glgui-orientation-set! GUI_PORTRAIT)
-     (let ((gui (make-glgui)))
-       ;; initialize gui here
-       (values gui #f)))
- suspend: terminate)
-|#
-
-
 (define beaver-stdout-redirection #t)
 
 (register-command!
@@ -238,6 +212,6 @@
       (exit 23))))
   (parse (command-line)))
 
-(if (eq? *glgui-main* main) (exit 0))
+(guide-exit 0)
 
 ;; eof
