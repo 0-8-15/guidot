@@ -200,4 +200,8 @@
     (port-pipe+close! r1 w0)
     (thread-join! thr)))
 
+;;** Fix gambit lists
+
+(include "srfi-1.scm")
+
 ;;#| eof
