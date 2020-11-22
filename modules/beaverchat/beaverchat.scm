@@ -1,10 +1,12 @@
 
 (log-status "initializing chat")
 
-(include "../../front/apps/glgui/DejaVuSans-14,24,32.scm")
+(define select-font guide-select-font)
 
-(utf8string->unicode:on-encoding-error 'replace)
-
+(declare
+ (not standard-bindings
+      take drop ;; actually they need to be standard
+      ))
 
 ;;; BEGIN INSTEAD OF (include "~~tgt/lib/onetierzero/src/observable-notational-conventions.scm")
 (define-macro (define-values names . body)
@@ -38,231 +40,6 @@
             (write-subu8vector content 0 (u8vector-length content) port)))))
     (log-status "done. Initialized chat in "  dir)))
 
-;;;
-
-(define Xglgui-font
-  (let ((small.fnt DejaVuSans_14.fnt)
-        (medium.fnt DejaVuSans_24.fnt)
-        (large.fnt DejaVuSans_32.fnt))
-    (define (select-font #!key (size 'small) (height #f))
-      (case (cond
-              ((eq? height #f) size)
-              ((<= height 16) 'small)
-              ((<= height 26) 'medium)
-              ((<= height 35) 'large)
-              (else 'small))
-        ((small small:) small.fnt)
-        ((medium small:) medium.fnt)
-        ((large small:) large.fnt)
-        (else small.fnt)))
-    select-font))
-
-(define select-font Xglgui-font)
-
-(define Xglgui-label
-  (let ((orig.glgui-label glgui-label)
-        (select-font Xglgui-font))
-    (define (label gui x y w h #!key text (size 'small) (color White) (bgcolor #f))
-      (let ((font (select-font size: size height: h)))
-        (if bgcolor
-            (glgui-label gui x y w h text font color bgcolor)
-            (glgui-label gui x y w h text font color))))
-    label))
-
-(define Xglgui-valuelabel
-  (let ((orig.glgui-label glgui-label)
-        (select-font Xglgui-font)
-        (glgui-label Xglgui-label)
-        (label-string (lambda (value) (if (string? value) value (object->string value)))))
-    (define (change! gui wgt #!key (value #f))
-      (if value (glgui-widget-set! gui wgt 'label (label-string value))))
-    (define (label+value
-             gui x y w h #!key
-             (label "") (label-width 1/2)
-             (value "") (input #f)
-             (size 'small) (color White) (bgcolor #f))
-      (define (delegate-input gui wgt type x y)
-        (glgui-widget-set! gui wgt 'focus #f)
-        (input gui wgt type x y))
-      (let* ((w2 (* w label-width))
-             (r (+ x w2)))
-        (let ((lbl (glgui-label gui x y w2 h text: (label-string label) size: size color: color bgcolor: bgcolor))
-              (wgt (glgui-label gui r y w2 h text: (label-string value) size: size color: color bgcolor: bgcolor)))
-          (when (procedure? input)
-            (glgui-widget-set! gui wgt 'enableinput #t)
-            (glgui-widget-set! gui wgt 'onfocuscb delegate-input)
-            (glgui-widget-set! gui lbl 'enableinput #t)
-            (glgui-widget-set! gui lbl 'onfocuscb delegate-input))
-          (lambda args
-            (match
-             args
-             ((value) (glgui-widget-set! gui wgt 'label (label-string value)))
-             ((arg1 arg2 . more) (apply change! gui wgt arg1 arg2 more))
-             (X (debug 'Komisch X)))
-            (Xtrigger-redraw!)))))
-    label+value))
-
-(define keypad:hexnum
-  `(#;(
-     (#\0 #\1 #\2 #\3)
-     (#\4 #\5 #\6 #\7)
-     (#\8 #\9 #\a #\b)
-     (#\c #\d #\e #\f)
-     ( (,delchar ,glgui_keypad_delete.img) #\[ #\: #\] (,retchar ,glgui_keypad_return.img))
-     )
-    (
-     (#\1 #\2 #\3 #\[)
-     (#\4 #\5 #\6 #\])
-     (#\7 #\8 #\9 #\:)
-     (#\a #\b #\c #\.)
-     (#\d #\e #\f #\space)
-     ( (,delchar ,glgui_keypad_delete.img) #\0 (,retchar ,glgui_keypad_return.img))
-     )
-    ))
-
-(define Xglgui-value-edit-dialog
-  (let ((orig.glgui-label glgui-label)
-        (select-font Xglgui-font)
-        (glgui-label Xglgui-label)
-        (label-string (lambda (value) (if (string? value) value (object->string value)))))
-    (define (change! gui wgt #!key (value #f))
-      (if value (glgui-widget-set! gui wgt 'label (label-string value))))
-    (define (value-edit-dialog
-             gui x0 y0 w0 h0 #!key
-             (label "") (label-height 20)
-             (value "") (value-string #f)
-             (input (lambda (val) #f)) (keypad keypad:numeric)
-             (size 'small) (color White) (bgcolor Black))
-      (let* ((x (glgui-get gui 'xofs))
-             (y (glgui-get gui 'yofs))
-             (w (glgui-get gui 'w) #;(glgui-width-get))
-             (h (glgui-get gui 'h) #;(glgui-height-get))
-             (dlg (glgui-container gui x y w h))
-             (bg (glgui-box dlg 0 0 w h bgcolor))
-             (lbl (glgui-label
-                   dlg 0 (- h (* 3/2 label-height)) w label-height
-                   text: (label-string label) size: size color: color bgcolor: bgcolor))
-             (wgt (glgui-label
-                   dlg x (- h (* 32/10 label-height)) w label-height
-                   text: ((or value-string label-string) value) size: size color: color bgcolor: bgcolor))
-             (kbd (glgui-keypad dlg 0 0 w (/ h 2) (select-font size: 'medium) keypad)))
-        (define (edit-cb cb-gui cb-wgt type x y)
-          (let ((val (glgui-get wgt 'label)))
-            (glgui-widget-delete gui dlg)
-            (input val)))
-        (glgui-widget-set! dlg lbl 'align GUI_ALIGNCENTER)
-        (glgui-widget-set! dlg wgt 'align GUI_ALIGNCENTER)
-        (when (procedure? input)
-          (glgui-widget-set! dlg wgt 'enableinput #t)
-          (glgui-widget-set! dlg wgt 'callback edit-cb)
-          (glgui-widget-set! dlg wgt 'focus #t))
-        (lambda args
-          (match
-           args
-           ((value) (glgui-widget-set! dlg wgt 'label (label-string value)))
-           ((arg1 arg2 . more) (apply change! dlg wgt arg1 arg2 more))
-           (X (debug 'Komisch X)))
-          (Xtrigger-redraw!))))
-    value-edit-dialog))
-
-(define (Xglgui-pin-editable bag x y w h tag pin kbd #!key (value-string #f))
-  (define (conv v)
-    (case v
-      ((#f) "no")
-      ((#t) "yes")
-      (else
-       (cond
-        ((and (number? v) (exact? v)) (number->string v))
-        (else v)))))
-  (define (set-pin! val)
-    (pin val))
-  (define (pin-edit gui wgt type x1 y1)
-    (Xglgui-value-edit-dialog
-     bag x y w h
-     label: tag
-     value: (pin) value-string: value-string input: set-pin! keypad: kbd))
-  (let ((setter (Xglgui-valuelabel
-                 bag x y w h
-                 label: tag label-width: 3/4
-                 value: (conv (pin))
-                 ;; TBD: on input create modal dialog with appropriate
-                 ;; (for now numeric) keyboard
-                 ;;
-                 ;; input: #f
-                 ;;
-                 input: pin-edit
-                 )))
-    (wire! pin post: (lambda () (setter (conv (pin)))))))
-
-(define (Xglgui-select gui x y w h #!key (line-height 20) (color White))
-  (let ((font (select-font height: line-height)))
-    (lambda (lst continue #!key (permanent #f) #;(longpress #f))
-      (let* ((n (length lst))
-             (border-width 2)
-             (line-height line-height)
-             (border-left (/ border-width 2))
-             (border-right border-left)
-             (element-height (ceiling (+ (* 1.1 line-height) (* 2 border-width))))
-             (usable-n 0))
-        (define (list-element obj)
-          (let ((display-string (if (string? obj) obj (object->string obj))))
-            (lambda (g wgt x y w h selected)
-              (glgui:draw-text-left
-               (+ x border-left) (- y border-width)
-               (- w border-right) (- h 1 (* 2 border-width))
-               display-string font color))))
-        (let ((wgt (glgui-list gui x y w h element-height '() #f))
-              (offset 0))
-          (define (del) (glgui-widget-delete gui wgt))
-          (define (set-content . new)
-            (if (pair? new)
-                (let ((new (car new)))
-                  (set! lst new)
-                  (set! n (length lst))
-                  (set! offset 0)
-                  (set! usable-n (min (inexact->exact (floor (/ h element-height))) n))))
-            (let* ((up (> offset 0))
-                   (down (> (- n offset) (- usable-n (if up 1 0))))
-                   (visible (- usable-n (if up 1 0) (if down 1 0)))
-                   (part (take (list-tail lst offset) visible))
-                   (lst (map list-element
-                             (let ((tl (if down (append part (list "down")) part)))
-                               (if up (cons "up" tl) tl)))))
-              (glgui-widget-set! gui wgt 'list lst)))
-          (define (callback g wgt t x y)
-            (let* ((idx (glgui-widget-get g wgt 'current))
-                   (up (> offset 0))
-                   (down (> (- n offset) (- usable-n (if up 1 0))))
-                   (visible (- usable-n (if up 1 0) (if down 1 0)))
-                   (key (if up (- idx 1) idx)))
-              (cond
-               ((and down (eqv? idx (- usable-n 1)))
-                (set! offset (min (+ offset visible) (- n visible)))
-                (set-content))
-               ((and up (eqv? idx 0))
-                (set! offset (max (- offset visible) 0))
-                (if (eqv? offset 1) (set! offset 0))
-                (set-content))
-               (else
-                (unless permanent (del))
-                (continue (fx+ key offset) (/ x w))))))
-          (glgui-widget-set! gui wgt 'callback callback)
-          #;(when longpress
-            (glgui-widget-set! gui wgt 'longpress-callback longpress))
-          (glgui-widget-set! gui wgt 'bordercolor Black)
-          (glgui-widget-set! gui wgt 'scrollw 0)
-          (let ((cb (lambda (g wgt t x y) (unless permanent (del)))))
-            (glgui-widget-set! gui wgt 'callbackbeyond cb))
-          (set-content lst)
-          (lambda args
-            (match
-             args
-             (('close) (del))
-             (('hidden: v) (glgui-widget-set! gui wgt 'hidden (and v #t)) (Xtrigger-redraw!))
-             (('set: new) (set-content new))
-             (_ (begin (del) (error "Xglgui-select unhandled arguments" args))))
-            (Xtrigger-redraw!)))))))
-
 ;;; These are exported as input/output:
 
 (define-pin calculator-input
@@ -290,7 +67,7 @@
 (define-pin audible-beep
   initial: (lambda () #f)
   pred: procedure?
-  name: "hot to beep")
+  name: "hook to beep")
 
 (define (local-server-port-filter old new)
   (match new
@@ -405,10 +182,6 @@
   pred: chat-sender-list-valid?
   name: "List of senders having messages not yet seen.")
 
-(define (take lst n) ;; from srfi-1
-  (let rec ((lst lst) (n n))
-    (if (or (eqv? n 0) (null? lst)) '()
-        (cons (car lst) (rec (cdr lst) (- n 1))))))
 (define (chat-add-message! from reference msg kind #!key (store chat-messages))
   (let* ((from
           (cond
