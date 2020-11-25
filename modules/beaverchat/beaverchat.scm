@@ -8,27 +8,7 @@
       take drop ;; actually they need to be standard
       ))
 
-;;; BEGIN INSTEAD OF (include "~~tgt/lib/onetierzero/src/observable-notational-conventions.scm")
-(define-macro (define-values names . body)
-  (let ((vals (gensym 'vals)))
-    `(begin
-       ,@(map (lambda (name) `(define ,name #f)) names)
-       (call-with-values (lambda () . ,body)
-         (lambda ,vals
-           . ,(map (lambda (name)
-                     `(set! ,name (let ((,name (car ,vals))) (set! ,vals (cdr ,vals)) ,name)))
-                   names))))))
-
-(define-macro (kick expr . more)
-  `(kick! (lambda () ,expr . ,more)))
-
-(define-macro (kick/sync expr . more)
-  `(kick/sync! (lambda () ,expr . ,more)))
-
-(define-macro (define-pin name . more)
-  `(define ,name (make-pin . ,more)))
-
-;;; END INSTEAD OF (include "~~tgt/lib/onetierzero/src/observable-notational-conventions.scm")
+(include "../misc-conventions/observable-syntax.sch")
 
 (define (init-beaverchat! dir #!key (use-origin #f))
   (unless (file-exists? dir)
@@ -42,32 +22,14 @@
 
 ;;; These are exported as input/output:
 
-(define-pin calculator-input
-  initial: #f
-  name: "Calculator input value")
-
-(define-pin calculator-result
-  initial: #f
-  name: "Calculator result value")
-
-(define-pin calculator-mem1
-  initial: 0
-  name: "Calculator \"Mem\" value")
-
-(define-pin calculator-operations
-  initial: '()
-  name: "Calculator stack")
-
-(define-pin calculator-main-display
-  initial: #f
-  name: "Calculator value in display")
-
 ;; Other pins
 
 (define-pin audible-beep
   initial: (lambda () #f)
   pred: procedure?
   name: "hook to beep")
+
+(define select-font guide-select-font)
 
 (define (local-server-port-filter old new)
   (match new
@@ -160,10 +122,34 @@
         (let loop ((lst lst))
           (or (null? lst) (and (each (car lst)) (loop (cdr lst))))))))))
 
+;; Mode/Tool Switch (TBD: move)
+
+(define-pin visible-tl-options
+  initial: '()
+  pred: (lambda (lst) (every string? lst))
+  name: "Active Toplevel Switch Options")
+
+(define-pin selected-display
+  initial: "about"
+  filter: (lambda (o n) (if (member n (visible-tl-options)) n o))
+  name: "Toplevel Display (a registered option)")
+
+;; Modes
+
+(define (cb-tool-selection-change gui wgt type x y)
+  (kick (selected-display (list-ref (visible-tl-options) (glgui-widget-get gui wgt 'current)))))
+
+(define (tool-selection-draw-choice font)
+  (lambda (str)
+    (lambda (lg lw x y w h s)
+      (if s (glgui:draw-box x y w h Black))
+      (glgui:draw-text-left (+ x 5) y (- w 10) h str font White))))
+
 (define-pin chat-messages
   initial: '()
   pred: glgui-chat-messages-are-valid?
   name: "Chat messages")
+
 
 (define-pin chat-messages-limit 30)
 
@@ -247,12 +233,10 @@
 
 (wire! chat-address post: remove-chat-address-from-inbox-senders)
 
-(define known-tools '("calculator" "chat" "about"))
-
 (define-pin selected-display
   initial: "about"
-  filter: (lambda (o n) (if (member n known-tools) n o))
-  name: "The tool to display")
+  filter: (lambda (o n) (if (member n (visible-tl-options)) n o))
+  name: "Toplevel Display (a registered option)")
 
 (define chat-own-address beaver-local-unit-id)
 
@@ -381,265 +365,16 @@
 
 (wire! chat-address post: chat-set-current-partner!)
 
-(define (glgui-beaverchat launch-url beaver-domain) ;; Note: this is currently a once-at-most call!
-
-  ;; This simple calculator app uses the gambit in-fix interpreter
-  ;; It handles fractions, complex numbers, and large fixnums!
-
-  (define gui #f)
-  (define calculator-subdisplay #f)
-  (define calculator-display #f)
-
-  (define keypad
-    `((
-       ( (#\A "AC") (#\M "MC") #\C (,delchar ,glgui_keypad_delete.img) )
-       ( (#\m "MR")  (#\p "M+") (#\q "M-") #\/)
-       ( #\7 #\8 #\9 #\* )
-       ( #\4 #\5 #\6 #\- )
-       ( #\1 #\2 #\3 #\+ )
-       ( (#\0 "0" 2.)  #\. (#\= "=" 1. ,DarkOrange))
-       )))
-
-  ;; suppress floating point inaccuracies
-  (define (number->neatstring n)
-    (if (not (##flonum? n)) (number->string n)
-        (let* ((s (number->string (fl/ (flfloor (fl+ (fl* (flo n) 1.0e10) 0.5)) 1.0e10)))
-               (sl (string-length s))
-               (b (substring s 0 1))
-               (e (substring s (- sl 1) sl)))
-          (string-append (if (string=? b ".") "0" "")
-                         (if (string=? e ".") (substring s 0 (- sl 1)) s)))))
-
-  (define (value->neatstring n)
-    (cond
-     ((boolean? n) "")
-     ((number? n) (number->neatstring n))
-     (else (object->string n))))
-
-  (define (calculator-updatesub)
-    (let ((Ans (calculator-result))
-          (Mem (calculator-mem1)))
-      (glgui-widget-set!
-       gui calculator-subdisplay 'label
-       (string-append "In=" (value->neatstring (calculator-input)) "Mem=" (number->neatstring Mem) " Ans=" (value->neatstring Ans)  " "))
-      (Xtrigger-redraw!)))
-
-  (define (calculator-update-main-display)
-    (Xtrigger-redraw!)
-    (let ((Ans (calculator-main-display)))
-      (glgui-widget-set! gui calculator-display 'label (if (number? Ans) (number->neatstring Ans) (if (boolean? Ans) "" (object->string Ans))))
-      (glgui-widget-set! gui calculator-display 'bgcolor (if Ans #f Red))))
-
-  (define (calculator-evaluate)
-    (let ((input (string->number (glgui-widget-get gui calculator-display 'label))))
-      (kick
-       (calculator-result
-        (let ((input (or input (and (number? (calculator-input)) (calculator-input)))))
-          (and input
-               (if (pair? (calculator-operations))
-                   (let ((top (car (calculator-operations))))
-                     (calculator-operations (cdr (calculator-operations)))
-                     (with-exception-catcher
-                      (lambda (exn) exn)
-                      (lambda () (top input))))
-                   input))))
-       (calculator-input #f)
-       (calculator-main-display (calculator-result)))))
-
-  (define (calculator-C)  (kick (calculator-input #t) (calculator-main-display (calculator-input))))
-  ;;(define (calculator-C) (glgui-widget-set! gui calculator-display 'label ""))
-  (define (calculator-MC) (kick (calculator-mem1 0)))
-  (define (calculator-AC) (kick (calculator-result #t) (calculator-C) (calculator-MC) (calculator-operations '())))
-
-  (define (calculator-MR) (kick (calculator-input (calculator-mem1))))
-
-  (define (calculator-M+)
-    (let ((input (take-display-value)))
-      (kick
-       (calculator-input #f)
-       (if (number? input) (kick (calculator-mem1 (+ (calculator-mem1) input)))))))
-  (define (calculator-M-)
-    (let ((input (take-display-value)))
-      (kick
-       (calculator-input #f)
-       (if (number? input) (kick (calculator-mem1 (- (calculator-mem1) input)))))))
-
-  (define (take-display-value)
-    (let ((input (string->number (glgui-widget-get gui calculator-display 'label))))
-      (and input
-           (begin
-             (glgui-widget-set! gui calculator-display 'label "")
-             input))))
-
-  (define (calculator-push-label-to-pin! pin)
-    (let ((input (take-display-value)))
-      (and input (kick (pin input)))))
-
-  (define (calculator-sqrt)
-    (let ((input (take-display-value)))
-      (kick
-       (calculator-input input)
-       (calculator-result
-        (cond
-         ((number? (calculator-input)) (sqrt (calculator-input)))
-         ((number? (calculator-result)) (sqrt (calculator-result)))
-         (else #f)))
-       (calculator-main-display (calculator-result)))))
-
-  (define (calculator-push-operation op)
-    (let ((input (string->number (glgui-widget-get gui calculator-display 'label))))
-      (if input
-          (begin
-            (glgui-widget-set! gui calculator-display 'label "")
-            (kick
-             (calculator-result input)
-             (calculator-operations (cons (lambda (x) (op (calculator-result) x)) (calculator-operations))))))))
-
-  (define (calculator-on-event gui op event x y)
-    (let ((skipevent #t))
-      (if (= event EVENT_KEYRELEASE)
-          (cond
-           ((= x EVENT_KEYESCAPE)     (terminate))
-           ((= x (char->integer #\=)) (calculator-evaluate))
-           ((= x (char->integer #\+)) (calculator-push-operation +))
-           ((= x (char->integer #\-)) (calculator-push-operation -))
-           ((= x (char->integer #\*)) (calculator-push-operation *))
-           ((= x (char->integer #\/)) (calculator-push-operation /))
-           ((= x (char->integer #\A)) (calculator-AC))
-           ((= x (char->integer #\C)) (calculator-C))
-           ((= x (char->integer #\M)) (calculator-MC))
-           ((= x (char->integer #\p)) (calculator-M+))
-           ((= x (char->integer #\q)) (calculator-M-))
-           ((= x (char->integer #\m)) (calculator-MR))
-           ((= x (char->integer #\S)) (calculator-sqrt))
-           (else (set! skipevent #f)))
-          (set! skipevent #f))
-      (if (not skipevent) (glgui-dispatch-event gui op event x y))))
-
-  (define (calculator-update-display!) #t)
-
-  (define (calculatorcontainer-init! gui w h)
-    (set! calculator-subdisplay (glgui-label gui 0 (- h 20) w 20 "" (select-font size: 'small) White))
-    (glgui-widget-set! gui calculator-subdisplay 'align GUI_ALIGNRIGHT)
-    (set! calculator-display (glgui-label gui 5 (- h 80) (- w 10) 60 "" (select-font size: 'large) White))
-    (glgui-widget-set! gui calculator-display 'align GUI_ALIGNRIGHT)
-    (glgui-widget-set! gui calculator-display 'focus #t)
-    (let ((wgt (glgui-keypad gui 5 5 (- w 10) (- h 80 5) (select-font size: 'medium) keypad)))
-      (glgui-widget-set! gui wgt 'rounded #f)
-      (glgui-widget-set! gui wgt 'floatinghighlight #f))
-    (calculator-updatesub)
-    (values gui calculator-update-display!))
-
-  (define field_gradient (list (color:shuffle #xe8e9eaff) (color:shuffle #xe8e9eaff) (color:shuffle #xfefefeff) (color:shuffle #xfefefeff)))
-
-  (define calculator-container #f)
-
-  (define (make-about-container gui w h)
-    (let ((bag (glgui-container gui 0 0 w h))
-          (str "(C) JFW")
-          (fnt (select-font size: 'small))
-          (line-height 16)
-          (line-height-selectable 28))
-      (define (callback gui wgt type x y)
-        (glgui-widget-delete gui wgt)
-        #f)
-      (define (pin-display-chat-number n tag pin)
-        (define (conv v)
-          (case v
-            ((#f) "no")
-            ((#t) "yes")
-            (else
-             (cond
-              ((and (number? v) (exact? v)) (chat-number->neatstring v))
-              (else v)))))
-        (let ((setter (Xglgui-valuelabel
-                       bag 10 (- h 10 (* n line-height)) (- w 10) line-height
-                       label: tag
-                       value: (conv (pin))
-                       ;; input: #f
-                       )))
-          (wire! pin post: (lambda () (setter (conv (pin)))))))
-      (define (pin-display n tag pin)
-        (define (conv v)
-          (case v
-            ((#f) "no")
-            ((#t) "yes")
-            (else
-             (cond
-              ((and (number? v) (exact? v)) (number->string v))
-              (else v)))))
-        (let ((setter (Xglgui-valuelabel
-                       bag 10 (- h 10 (* n line-height)) (- w 10) line-height
-                       label: tag
-                       value: (conv (pin))
-                       ;; input: #f
-                       )))
-          (wire! pin post: (lambda () (setter (conv (pin)))))))
-      (define (pin-edit base n tag pin kbd value-string)
-        (Xglgui-pin-editable
-         bag  10 (- h base (* n line-height-selectable)) (- w 10) line-height-selectable
-         tag pin kbd value-string: value-string))
-      (pin-display 1 "kick-style" kick-style)
-      (pin-display 2 "vpn" ot0cli-server)
-      (pin-display-chat-number 3 "Address" chat-own-address)
-      (let ((base (* 4 line-height)))
-        (pin-edit base 1 "proxy port" beaver-proxy-port-number keypad:numeric #f)
-        (pin-edit base 2 "socks port" beaver-socks-port-number keypad:numeric #f)
-        (pin-edit base 3 "forward" beaver-socks-forward-addr keypad:hexnum
-                  (lambda (x) (if (not x) "" x)))
-        )
-      (glgui-button-string
-       bag (/ w 10) 100 (* w 8/10) line-height-selectable "Browse Homepage (needs proxy)" (select-font size: 'small)
-       (lambda (gui wgt type x y)
-         (if (positive? (beaver-proxy-port-number))
-             (launch-url
-              (string-append "http://127.0.0.1:" (number->string (beaver-proxy-port-number)))
-              via: (if (< x (/ w 2)) 'webview 'extern)))))
-      (let* ((w2 (/ w 2))
-             (border 10)
-             (w2w (- w2 border))
-             (y (* 4 line-height))
-             (fnt (select-font size: 'small)))
-        (Xglgui-label bag border y w2w line-height text: "Pending" size: 'small)
-        (let ((wgt (glgui-button-string
-                    bag w2 y w2w line-height "" fnt
-                    (lambda (gui wgt type x y)
-                      (kick (chat-pending-messages '()))))))
-          (define (setter)
-            (glgui-widget-set! bag wgt 'image (list (number->string (length (chat-pending-messages))))))
-          (setter)
-          (wire! chat-pending-messages post: setter)))
-      (let* ((border (/ line-height 2))
-             (line-height-selectable 28)
-             (content (chat-inbox-senders))
-             (ctrl
-              ((Xglgui-select
-                bag border border (- w (* 2 border)) (- h (* 2 border))
-                line-height: line-height-selectable color: White)
-               '()
-               (lambda (sel x)
-                 (if (>= sel 0)
-                     (let ((sel2 (list-ref content sel)))
-                       (kick
-                        (chat-address sel2)
-                        (selected-display "chat")))))
-               permanent: #t)))
-        (define (new-content)
-          (set! content (chat-inbox-senders))
-          (let ((new (map chat-partner->neatstring content)))
-            (ctrl set: new)
-            (ctrl hidden: (null? new))))
-        (new-content)
-        (wire! chat-inbox-senders post: new-content))
-      (glgui-button-string bag (/ w 4) (/ h 4) (/ w 2) (/ h 2) str fnt callback)
-      bag))
-
-  (define chat-container #f)
-
-  (define chat-on-event #f)
-
-  (define (make-chat-container gui w h)
-    (let* ((bag (glgui-container gui 0 0 w h))
+(define (beaverchat-payload-config launch-url)
+  (define (make-beaverchat-payload rect interval)
+    (let* ((xsw (interval-lower-bound interval 0))
+           (ysw (interval-lower-bound interval 1))
+           (xno (interval-upper-bound interval 0))
+           (yno (interval-upper-bound interval 1))
+           (w (- xno xsw))
+           (h (- yno ysw))
+           (gui (guide-rectangle-glgui rect))
+           (bag (glgui-container gui 0 0 w h))
            (fnt (select-font size: 'small))
            (cllx 0)
            (clly (/ h 2))
@@ -649,7 +384,10 @@
            (line-height-selectable 28)
            (text-keypad keypad:simplified)
            (dial-keypad keypad:numeric)
-           (keypad (glgui-keypad bag 0 0 w (- clly line-height line-height) fnt)))
+           (keypad (cond-expand
+                    ((and exclude-this-code android)
+                     (glgui-native-keypad bag 0 0 w (- clly line-height line-height)))
+                    (else (glgui-keypad bag 0 0 w (- clly line-height line-height) fnt)))))
       (define (callback gui wgt type x y)
         (debug 'chat-callback y)
         #f)
@@ -728,9 +466,10 @@
         (define (close-chat!)
           (when ponebook-dialog (ponebook-dialog 'close) (set! ponebook-dialog #f))
           (kick (chat-address #f)
-                (selected-display (list-ref known-tools 0))))
-        (define (on-event gui op event x y)
+                (selected-display (list-ref (visible-tl-options) 0))))
+        (define (on-event rect pl event x y)
           (define skip #f)
+          (define gui (guide-rectangle-glgui rect))
           (cond
            ((= event EVENT_KEYRELEASE)
             (cond
@@ -754,7 +493,7 @@
                     (if (ot0cli-server)
                         (chat-post-message! to timestamp payload)
                         (glgui-widget-set! bag input 'label "Error: not connected!"))))
-                 (nick-dialog (glgui-dispatch-event gui op event x y))
+                 (nick-dialog (guide-default-event-dispatch rect pl event x y))
                  ((not (chat-address))
                   (let ((to (string-chat-address->unit-id msg)))
                     (cond
@@ -769,112 +508,204 @@
                       (glgui-widget-set! bag input 'label msg))))))
                 #f))))
            ((and (= event EVENT_KEYPRESS) (= x EVENT_KEYESCAPE)) (set! skip #t)))
-          (or skip (glgui-dispatch-event gui op event x y)))
-        (set! chat-on-event on-event)
+          (or skip (guide-default-event-dispatch rect pl event x y)))
         (glgui-widget-set! gui input 'focus #t)
         (glgui-widget-set! gui input 'enableinput #t)
-;;        (glgui-widget-set! gui input 'draw-handle Xglgui:label-draw2)
+        ;;        (glgui-widget-set! gui input 'draw-handle Xglgui:label-draw2)
         (wire! chat-messages post: follow-input)
         (wire! chat-address post: update-keypad)
         (wire! chat-address post: follow-to)
-        bag)))
+        ;; Wired to globals, MUST be instanciated once only.
+        (make-guide-payload
+         widget: bag lifespan: 'once
+         on-any-event: on-event))))
+  make-beaverchat-payload)
 
-  (define about-container #f)
+(define (define-payload-beaverchat! name launch-url)
+  ;; Wired to globals, MUST be instanciated once only.
+  (guide-define-payload name 'once (beaverchat-payload-config launch-url)))
 
-  (define tool-switcher #f)
+(define (glgui-beaverchat launch-url beaver-domain) ;; Note: this is currently a once-at-most call!
 
-  (define glgui-event-dispatcher
-    (let ((current glgui-dispatch-event))
-      (case-lambda
-       ((gui op event x y) (current gui op event x y))
-       (() current)
-       ((val) (set! current val)))))
+;;;  (define field_gradient (list (color:shuffle #xe8e9eaff) (color:shuffle #xe8e9eaff) (color:shuffle #xfefefeff) (color:shuffle #xfefefeff)))
 
-  (define glgui-dispatch-event-default glgui-dispatch-event)
+  (define make-about-payload
+    (let ((lifespan 'once)) ;; wired to globals - once only!
+      (define (make-about-payload rect interval)
+        (let* ((xsw (interval-lower-bound interval 0))
+               (ysw (interval-lower-bound interval 1))
+               (xno (interval-upper-bound interval 0))
+               (yno (interval-upper-bound interval 1))
+               (w (- xno xsw))
+               (h (- yno ysw))
+               (gui (guide-rectangle-glgui rect))
+               (bag (glgui-container gui 0 0 w h))
+               (str "(C) JFW")
+               (fnt (select-font size: 'small))
+               (line-height 16)
+               (line-height-selectable 28))
+          (define (callback gui wgt type x y)
+            (glgui-widget-delete gui wgt)
+            #f)
+          (define (pin-display-chat-number n tag pin)
+            (define (conv v)
+              (case v
+                ((#f) "no")
+                ((#t) "yes")
+                (else
+                 (cond
+                  ((and (number? v) (exact? v)) (chat-number->neatstring v))
+                  (else v)))))
+            (let ((setter (Xglgui-valuelabel
+                           bag 10 (- h 10 (* n line-height)) (- w 10) line-height
+                           label: tag
+                           value: (conv (pin))
+                           ;; input: #f
+                           )))
+              (wire! pin post: (lambda () (setter (conv (pin)))))))
+          (define (pin-display n tag pin)
+            (define (conv v)
+              (case v
+                ((#f) "no")
+                ((#t) "yes")
+                (else
+                 (cond
+                  ((and (number? v) (exact? v)) (number->string v))
+                  (else v)))))
+            (let ((setter (Xglgui-valuelabel
+                           bag 10 (- h 10 (* n line-height)) (- w 10) line-height
+                           label: tag
+                           value: (conv (pin))
+                           ;; input: #f
+                           )))
+              (wire! pin post: (lambda () (setter (conv (pin)))))))
+          (define (pin-edit base n tag pin kbd value-string)
+            (Xglgui-pin-editable
+             bag  10 (- h base (* n line-height-selectable)) (- w 10) line-height-selectable
+             tag pin kbd value-string: value-string))
+          (pin-display 1 "kick-style" kick-style)
+          (pin-display 2 "vpn" ot0cli-server)
+          (pin-display-chat-number 3 "Address" chat-own-address)
+          (let ((base (* 4 line-height)))
+            (pin-edit base 1 "proxy port" beaver-proxy-port-number keypad:numeric #f)
+            (pin-edit base 2 "socks port" beaver-socks-port-number keypad:numeric #f)
+            (pin-edit base 3 "forward" beaver-socks-forward-addr keypad:hexnum
+                      (lambda (x) (if (not x) "" x)))
+            )
+          (glgui-button-string
+           bag (/ w 10) 100 (* w 8/10) line-height-selectable "Browse Homepage (needs proxy)" (select-font size: 'small)
+           (lambda (gui wgt type x y)
+             (if (positive? (beaver-proxy-port-number))
+                 (launch-url
+                  (string-append "http://127.0.0.1:" (number->string (beaver-proxy-port-number)))
+                  via: (if (< x (/ w 2)) 'webview 'extern)))))
+          (let* ((w2 (/ w 2))
+                 (border 10)
+                 (w2w (- w2 border))
+                 (y (* 4 line-height))
+                 (fnt (select-font size: 'small)))
+            (Xglgui-label bag border y w2w line-height text: "Pending" size: 'small)
+            (let ((wgt (glgui-button-string
+                        bag w2 y w2w line-height "" fnt
+                        (lambda (gui wgt type x y)
+                          (kick (chat-pending-messages '()))))))
+              (define (setter)
+                (glgui-widget-set! bag wgt 'image (list (number->string (length (chat-pending-messages))))))
+              (setter)
+              (wire! chat-pending-messages post: setter)))
+          (let* ((border (/ line-height 2))
+                 (line-height-selectable 28)
+                 (content (chat-inbox-senders))
+                 (ctrl
+                  ((Xglgui-select
+                    bag border border (- w (* 2 border)) (- h (* 2 border))
+                    line-height: line-height-selectable color: White)
+                   '()
+                   (lambda (sel x)
+                     (if (>= sel 0)
+                         (let ((sel2 (list-ref content sel)))
+                           (kick
+                            (chat-address sel2)
+                            (selected-display "chat")))))
+                   permanent: #t)))
+            (define (new-content)
+              (set! content (chat-inbox-senders))
+              (let ((new (map chat-partner->neatstring content)))
+                (ctrl set: new)
+                (ctrl hidden: (null? new))))
+            (new-content)
+            (wire! chat-inbox-senders post: new-content))
+          (glgui-button-string bag (/ w 4) (/ h 4) (/ w 2) (/ h 2) str fnt callback)
+          (let* ((ctx bag)
+                 (wb (/ w 5))
+                 (x 0 #;(- w wb))
+                 (y (* h 0))
+                 (h (/ h 15))
+                 (fnt fnt)
+                 (label "exit")
+                 (callback (lambda (gui wgt type x y) (terminate))))
+            (Xglgui-button ctx x y wb h font: fnt label: label glgui-callback: callback))
+          (make-guide-payload widget: bag lifespan: lifespan)))
+      (guide-define-payload "about" lifespan make-about-payload)
+      make-about-payload))
 
-  (define (switch-event-dispatcher)
-    (match
-     (selected-display)
-     ("calculator" (glgui-event-dispatcher calculator-on-event))
-     ("chat" (glgui-event-dispatcher chat-on-event))
-     (_ (glgui-event-dispatcher glgui-dispatch-event-default))))
+  (define (guide-start!)
 
-  (define switch-selected-tool
-    (let ((current #f))
-      (lambda ()
-        (let* ((to (selected-display))
-               (new (cond
-                     ((equal? to "calculator") calculator-container)
-                     ((equal? to "chat") chat-container)
-                     ((equal? to "about") about-container)
-                     (else #f))))
-          (when new
-            (when tool-switcher
-              (glgui-widget-set!
-               gui tool-switcher
-               'current (- (length known-tools) (length (member to known-tools)))))
-            (when (and current (not (eq? current new)))
-              (glgui-widget-set! gui current 'hidden #t))
-            (when (not (eq? current new))
-              (set! current new)
-              (glgui-widget-set! gui current 'hidden #f))
-            (Xtrigger-redraw!))))))
+    (define (init! w h)
+      (make-window 320 502 #;480)
+      (glgui-orientation-set! GUI_PORTRAIT)
+      (let* ((rect (guide-make-gui))
+             (payload (guide-make-payload rect "guide"))
+             (w (guide-rectangle-width rect))
+             (h (guide-rectangle-height rect))
+             (gui (guide-rectangle-glgui rect))
+             (mh 28)
+             (menu-font (select-font size: 'medium))
+             (k 'dd))
+        (let ()
+          (define (switch-selected-tool! old new)
+            (let ((new (guide-payload-ref new #f)))
+              (when new (payload (new rect (make-interval '#(0 0) (vector w (- h mh))))))))
+          (wire! selected-display sequence: switch-selected-tool!))
+        (when (> mh 0)
+          (case k
+            ((men)
+             (glgui-menubar gui 0 (- h (* mh 2)) w (* mh 2))
+             ;; (glgui-button-string bag (/ w 4) (/ h 4) (/ w 2) (/ h 2) str fnt callback)
+             (glgui-label gui 0 (- h mh) #;(- h (/ mh 2)) 80 mh "Menu" menu-font White))
+            ((dd)
+             (let* ((dd (glgui-dropdownbox
+                         gui 0 (- h mh) w mh
+                         '() Black Orange Black))
+                    (update-dd
+                     (lambda ()
+                       (glgui-widget-set!
+                        gui dd 'list
+                        (map (tool-selection-draw-choice menu-font) (visible-tl-options)))
+                       (glgui-widget-set!
+                        gui dd 'current
+                        (let* ((options (visible-tl-options))
+                               (n (length options)))
+                          (if (positive? n)
+                              (- n (length (member (selected-display) (visible-tl-options))))
+                              -1))))))
+               (glgui-widget-set! gui dd 'callback cb-tool-selection-change)
+               (wire! (list selected-display visible-tl-options) post: update-dd)))))
+        (kick
+         (visible-tl-options '("calculator" "chat" "about"))
+         (selected-display "calculator"))
+        (values rect payload)))
 
-  (define (cb-tool-selection-change gui wgt type x y)
-    (kick (selected-display (list-ref known-tools (glgui-widget-get gui wgt 'current)))))
-
-  (define (tool-selection-draw-choice font)
-    (lambda (str)
-      (lambda (lg lw x y w h s)
-        (if s (glgui:draw-box x y w h Black))
-        (glgui:draw-text-left (+ x 5) y (- w 10) h str font White))))
-
-  (define (example-init! w h)
-    (make-window 320 502 #;480)
-    (glgui-orientation-set! GUI_PORTRAIT)
-    (set! gui (make-glgui))
-    (let* ((w (glgui-width-get))
-           (h (glgui-height-get))
-           (mh 28)
-           (menu-font (select-font size: 'medium))
-           (k 'dd))
-      (set! calculator-container (glgui-container gui 0 0 w (- h mh)))
-      (when (> mh 0)
-        (case k
-          ((men)
-           (glgui-menubar gui 0 (- h (* mh 2)) w (* mh 2))
-           ;; (glgui-button-string bag (/ w 4) (/ h 4) (/ w 2) (/ h 2) str fnt callback)
-           (glgui-label gui 0 (- h mh) #;(- h (/ mh 2)) 80 mh "Menu" menu-font White))
-          ((dd)
-           (let ((dd (glgui-dropdownbox
-                      gui 0 (- h mh) w mh
-                      (map (tool-selection-draw-choice menu-font) known-tools)
-                      Black Orange Black)))
-             (glgui-widget-set! gui dd 'callback cb-tool-selection-change)
-             (set! tool-switcher dd)))))
-      (set! about-container (make-about-container gui w (- h mh)))
-      (set! chat-container (make-chat-container gui w (- h mh)))
-      (glgui-widget-set! gui about-container 'hidden #t)
-      (receive (container update!) (calculatorcontainer-init! calculator-container w (- h mh))
-        (kick (selected-display "calculator"))
-        (values gui update!))))
-
-  (wire! calculator-mem1 post: calculator-updatesub)
-  (wire! calculator-result post: calculator-updatesub)
-  (wire! calculator-input post: calculator-updatesub)
-  (wire! calculator-main-display post: calculator-update-main-display)
-
-  (wire! selected-display post: switch-selected-tool)
-  (wire! selected-display post: switch-event-dispatcher)
-  (wire! selected-display post: update-pages!)
-
-  (glgui-run
-   ;; initialization
-   example-init!
-   events: glgui-event-dispatcher
-   ;;suspend: terminate
-   )
-  )
+    (guide-define-payload-calculator! "calculator")
+    (define-payload-beaverchat! "chat" launch-url)
+    (guide-main
+     ;; initialization
+     init!
+     ;; events: event-dispatcher
+     ;; suspend: terminate
+     )
+    )
+  (guide-start!))
 
 (log-status "initializing chat completed")
 ;; eof

@@ -145,7 +145,7 @@ NULL;
 
 (define glgui-dispatch-event
   (let ((check-magic-keys
-	 (lambda (gui op t x y)
+	 (lambda (gui t x y)
 	   ;; (debug 'event t)
 	   (when (= t EVENT_KEYPRESS)
 		 (if (= x EVENT_KEYESCAPE)
@@ -163,85 +163,28 @@ NULL;
           ;; (check-magic-keys gui op t x y)
           (glgui-event gui t x y)))))
      (else
-      (lambda (gui update-pages-now! t x y)
-        (please-do-me-the-favor-and-make-progress! 0)
-	(check-magic-keys gui update-pages-now! t x y)
-        (Xconditional-redraw)
+      (lambda (gui t x y)
+        (thread-yield!)
+	(check-magic-keys gui t x y)
 	(cond
          ((eq? t EVENT_REDRAW)
           ;; (log-status "REDRAW")
           (glgui-event gui t x y))
          ((eq? t EVENT_IDLE)
-          (please-do-me-the-favor-and-make-progress! 2)
-          #; (log-status "IDLE")
-          )
-         ((eq? t 126) (kick! (lambda () (LNjScheme-result))))
-	 (else
-          (kick! (lambda () (glgui-event gui t x y)))
-          #;(please-do-me-the-favor-and-make-progress! 1)
-          #;(Xconditional-redraw)
-          #;(if glCore:needsinit (please-do-me-the-favor-and-make-progress! 1))
-          ;;(if (Xconditional-redraw) (glgui-event gui EVENT_REDRAW 0 0))
-          #;(begin (glgui-suspend) (glgui-resume))
-          )))))))
+          #t)
+	 (else (kick! (lambda () (glgui-event gui t x y))))))))))
 
 (define (handle-replloop-exception e)
-  (cond
-   ((unbound-global-exception? e)
-    (println port: (current-error-port) "Unbound variable " (unbound-global-exception-variable e)))
-   (else (display-exception e (current-error-port))))
+  (let ((port (current-error-port)))
+    (continuation-capture
+     (lambda (cont)
+       (display-exception-in-context e cont port)
+       (display-continuation-backtrace cont port))))
   #!void)
 
 (define (replloop) ;; interactive read-evaluate-print-loop
   (with-exception-catcher handle-replloop-exception (lambda () (##repl-debug #f #t)))
   (replloop))
-
-;; LambdaNative glgui frame -- it's a bit tricky to work around that one.
-
-(define *glgui-main* main)
-
-(define (glgui-run init #!key
-                   (events glgui-dispatch-event)
-                   (suspend glgui-suspend)
-                   (resume glgui-resume)
-                   (terminate (lambda () #t)))
-  (foreground-service! #t)
-  (let ((gui #f)
-        (update! (lambda _ #f))
-        (once *glgui-main*))
-    (set! *glgui-main* (lambda _ (exit 42)))
-    (once
-     ;; initialization
-     (lambda (w h)
-       (with-exception-catcher
-        (lambda (exn)
-          (handle-replloop-exception exn)
-          (exit 32))
-        (lambda ()
-          (receive (g u) (init w h)
-            (set! gui g)
-            (set! update! (or u (lambda () #f)))))))
-     ;; events
-     (lambda (t x y) (events gui update! t x y))
-     ;; termination
-     terminate
-     ;; suspend
-     suspend
-     ;; resume
-     resume
-     )))
-
-#|
-(glgui-run
- (lambda (w h)
-     (make-window 320 480)
-     (glgui-orientation-set! GUI_PORTRAIT)
-     (let ((gui (make-glgui)))
-       ;; initialize gui here
-       (values gui #f)))
- suspend: terminate)
-|#
-
 
 (define beaver-stdout-redirection #t)
 
@@ -254,29 +197,12 @@ NULL;
 (register-command! "beaver" beaver-process-commands)
 
 ;;; BEGIN INSTEAD OF (include "~~tgt/lib/onetierzero/src/observable-notational-conventions.scm")
-(define-macro (define-values names . body)
-  (let ((vals (gensym 'vals)))
-    `(begin
-       ,@(map (lambda (name) `(define ,name #f)) names)
-       (call-with-values (lambda () . ,body)
-         (lambda ,vals
-           . ,(map (lambda (name)
-                     `(set! ,name (let ((,name (car ,vals))) (set! ,vals (cdr ,vals)) ,name)))
-                   names))))))
+(include "../../modules/misc-conventions/observable-syntax.sch")
 
 (define-macro (define-macro/rt expr nexpr)
   `(begin
      (define-macro ,expr ,nexpr)
      (eval '(define-macro ,expr ,nexpr))))
-
-(define-macro (kick expr . more)
-  `(kick! (lambda () ,expr . ,more)))
-
-(define-macro (kick/sync expr . more)
-  `(kick/sync! (lambda () ,expr . ,more)))
-
-(define-macro (define-pin name . more)
-  `(define ,name (make-pin . ,more)))
 
 (define-macro (define-sense* name val . more)
   (let ((in (string->symbol (string-append "." (symbol->string name))))
@@ -300,8 +226,6 @@ NULL;
 ;;; END INSTEAD OF (include "~~tgt/lib/onetierzero/src/observable-notational-conventions.scm")
 
 (define chat-dir "beaver")
-
-(log-status "try system-appdirectory")
 
 (define (system-appdirectory-subdirectory dir)
   (cond-expand
@@ -476,6 +400,6 @@ NULL;
       (exit 23))))
   (parse (command-line)))
 
-(if (eq? *glgui-main* main) (exit 0))
+(guide-exit 0)
 
 ;; eof

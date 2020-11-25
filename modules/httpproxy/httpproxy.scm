@@ -1,5 +1,3 @@
-(include "~~tgt/lib/onetierzero/src/observable-notational-conventions.scm")
-
 (define (uri-parse ent)
   (define (string-index s char/char-set/pred i)
     (let loop ((i i))

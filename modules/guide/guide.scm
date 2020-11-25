@@ -48,11 +48,6 @@
       (glgui-event glgui event x y))
      ((eq? event EVENT_IDLE)
       #t)
-     ((eq? event EVENT_REDRAW)
-      ;; (log-status "REDRAW")
-      (glgui-event glgui event x y))
-     ((eq? event EVENT_IDLE)
-      #t)
      ((and (fx= event EVENT_KEYPRESS)
            (let ((termkey (guide-terminate-on-key)))
              (and termkey (fx= x termkey))))
@@ -121,7 +116,9 @@
 (define-values
     ;; optional sugar: mapping from names to payload constructors
     (guide-define-payload guide-payload-ref)
-  (let ((defined (make-table)))
+  (let ((defined (make-table))
+        ;; payload-contructor? should become a specialized/tagged procedure
+        (payload-contructor? procedure?))
     (define (guide-make-payload-definition-once constructor)
       ;; This locking is supposed to be useless overhead; just to be
       ;; safe we run into exceptions when missued.
@@ -141,9 +138,12 @@
                 (payload (cdr lifespan+payload)))
             (when (null? payload) (error "guide-define-payload: name lifespan payload"))
             (let ((constructor
-                   (case lifespan
-                     ((#f ephemeral) (car payload))
-                     (else (guide-make-payload-definition-once (car payload))))))
+                   (let ((obj (car payload)))
+                     (unless (payload-contructor? obj)
+                       (error "not a payload contructor" guide-define-payload obj))
+                     (case lifespan
+                       ((#f ephemeral) obj)
+                       (else (guide-make-payload-definition-once obj))))))
               (table-set! defined name constructor)))
           (table-set! defined name)))
     (define (guide-payload-ref name . default)
@@ -388,6 +388,8 @@
 (define Xglgui-button Xglgui-button1)
 
 ;;; end Xglgui
+
+(include "calculator.scm")
 
 ;; LambdaNative glgui frame -- it's a bit tricky to work around that one.
 
