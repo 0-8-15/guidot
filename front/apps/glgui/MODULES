@@ -1,7 +1,8 @@
 generalized-arrays
-config eventloop ln_core ln_glcore guide
-likely akwmatch unsocket
+config eventloop ln_core ln_glcore
+likely misc-conventions akwmatch unsocket
 daemonian lwip socks beaver httpproxy
+guide
 ospath
 lnjscheme webview
 audio

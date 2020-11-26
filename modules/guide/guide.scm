@@ -41,18 +41,20 @@
 
 (define (guide-default-event-dispatch rect payload event x y)
   ;; (check-magic-keys gui t x y)
-  (let ((glgui (guide-rectangle-glgui rect)))
-    (cond
-     ((eq? event EVENT_REDRAW)
-      ;; (log-status "REDRAW")
-      (glgui-event glgui event x y))
-     ((eq? event EVENT_IDLE)
-      #t)
-     ((and (fx= event EVENT_KEYPRESS)
-           (let ((termkey (guide-terminate-on-key)))
-             (and termkey (fx= x termkey))))
-      (terminate))
-     (else (kick! (lambda () (glgui-event glgui event x y)))))))
+  (define (dispatch rect payload event x y)
+    (let ((glgui (guide-rectangle-glgui rect)))
+      (glgui-event glgui event x y)))
+  (cond
+   ((eq? event EVENT_REDRAW)
+    ;; (log-status "REDRAW")
+    (dispatch rect payload event x y))
+   ((eq? event EVENT_IDLE)
+    #t)
+   ((and (fx= event EVENT_KEYPRESS)
+         (let ((termkey (guide-terminate-on-key)))
+           (and termkey (fx= x termkey))))
+    (terminate))
+   (else (kick! (lambda () (dispatch rect payload event x y))))))
 
 (set!
  make-guide-payload
