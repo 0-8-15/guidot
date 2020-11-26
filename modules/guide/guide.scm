@@ -2,22 +2,9 @@
 
 (utf8string->unicode:on-encoding-error 'replace)
 
-;;; BEGIN INSTEAD OF (include "~~tgt/lib/onetierzero/src/observable-notational-conventions.scm")
-(define-macro (define-values names . body)
-  (let ((vals (gensym 'vals)))
-    `(begin
-       ,@(map (lambda (name) `(define ,name #f)) names)
-       (call-with-values (lambda () . ,body)
-         (lambda ,vals
-           . ,(map (lambda (name)
-                     `(set! ,name (let ((,name (car ,vals))) (set! ,vals (cdr ,vals)) ,name)))
-                   names))))))
+;;** Imports
 
-(define-macro (kick expr . more)
-  `(kick! (lambda () ,expr . ,more)))
-
-(define-macro (kick/sync expr . more)
-  `(kick/sync! (lambda () ,expr . ,more)))
+(include "../misc-conventions/observable-syntax.sch")
 
 ;;; END INSTEAD OF (include "~~tgt/lib/onetierzero/src/observable-notational-conventions.scm")
 
@@ -154,7 +141,131 @@
      guide-define-payload
      guide-payload-ref)))
 
-;;;
+;;** Colors
+
+(define-structure glColor color-rgba)
+
+(define (guide-make-color-rgba r g b a)
+  (make-glColor (color-rgba r g b a)))
+
+(define-structure guide-colorscheme colors)
+
+(define (guide-color->glColor obj)
+  (cond
+   ((glColor? obj) (glColor-color-rgba obj))
+   ((##fixnum? obj) obj)
+   ((##flonum? obj)
+    (if (##fl< obj fix:fixnum-max-as-flonum)
+        (##flonum->fixnum obj) (##flonum->exact-int obj)))
+   ((##bignum? obj) obj)
+   ((##ratnum? obj) (##floor obj))
+   (else (error "guide-color->glColor: unhandled color" obj))))
+
+(set!
+ make-guide-colorscheme
+ (let ((make-guide-colorscheme make-guide-colorscheme)
+       (min-colors 4))
+   (lambda (#!key
+            colors)
+     (cond
+      ((array? colors)
+       (cond
+        #;((make-guide-colorscheme colors))
+        (else
+         (let ((domain #f) ;; keep domain
+               (safe #t)   ;; TBD: depend on debug
+               (mutable #f))
+           (make-guide-colorscheme
+            (array-copy
+             (array-map guide-color->glColor colors)
+             u64-storage-class domain mutable safe))))))
+      ((and (vector? colors)
+            (fx>= (vector-length colors) min-colors))
+       ;; FIXME: create u64vector instead
+       (make-guide-colorscheme (vector-map guide-color->glColor colors)))
+      (else (error "not a valid color scheme" colors))))))
+
+(define-values
+    (guide-current-colorscheme guide-select-color)
+  (let* ((convert
+          (lambda (old new)
+            (cond
+             ((guide-colorscheme? new) new)
+             ((array? new) (make-guide-colorscheme colors: new))
+             ((vector? new) (make-guide-colorscheme colors: new))
+             (else new))))
+         (current-colorscheme
+          (make-pin
+           initial: (convert #f (apply vector (map make-glColor (list Black Orange Black White))))
+           pred: guide-colorscheme?
+           filter: convert
+           name: "The current color scheme"))
+        (colors #f)
+        (array-ref #f))
+    (define (guide-select-color pref . more)
+      (cond
+       ((and (pair? more) array-ref)
+        (apply array-ref pref more))
+       ((number? pref)
+        (if (negative? pref)
+            (let ((index (- -1 pref)))
+              (cond
+               (array-ref (array-ref index))
+               ((vector? colors)
+                (vector-ref colors (modulo index (vector-length colors))))
+               (else (error "guide-select-color: bad spec:" pref more))))
+            pref))
+       (else (error "guide-select-color: bad spec:" pref more))))
+    (define (update-cache!)
+      (set! colors (guide-colorscheme-colors (current-colorscheme)))
+      (set! array-ref (and (array? colors) (array-getter colors))))
+    (update-cache!)
+    (wire! current-colorscheme post: update-cache!)
+    (wire! current-colorscheme post: glgui-wakeup!)
+    (values current-colorscheme guide-select-color)))
+
+(define guide-make-color-array ;; experimental
+  (let* ((min-colors 4)
+         (min-interval (make-interval '#(0) (vector min-colors))))
+    (lambda (obj #!key (interval min-interval) (convert make-glColor))
+      (cond
+       ((and (vector? obj) (fx>= (vector-length obj) min-colors))
+        (let* ((cap (max (interval-volume interval) (vector-length obj)))
+               (colors (lambda (i) (convert (vector-ref obj (modulo i cap))))))
+          (make-array interval colors)))
+       (error "guide-make-color-array: invalid argument" obj)))))
+
+(define (guide-select-color-1)
+  (guide-select-color -1))
+
+(define (guide-select-color-2)
+  (guide-select-color -2))
+
+(define (guide-select-color-3)
+  (guide-select-color -3))
+
+(define (guide-select-color-4)
+  (guide-select-color -4))
+
+#| ;;; Color Usage
+
+;;; lowlevel, deprecated (kick (guide-current-colorscheme (make-guide-colorscheme colors: (vector Blue Brown Red Blue))))
+
+(kick (guide-current-colorscheme (vector Blue Brown Red Blue)))
+
+(let* ((min-colors 4)
+       (interval (make-interval '#(0) (vector min-colors)))
+       (cv (vector Blue Brown Blue Red))
+       (colors (lambda (i) (make-glColor (vector-ref cv i))))
+       (color-array (make-array interval colors))
+       (glcolors (array-map guide-color->glColor color-array)))
+  (kick (guide-current-colorscheme glcolors)))
+
+(kick (guide-current-colorscheme (guide-make-color-array (vector White Black Yellow Green))))
+
+;;|#
+
+;;** Fonts
 
 (define Xglgui-font
   (let ((small.fnt DejaVuSans_14.fnt)
@@ -178,7 +289,7 @@
 (define Xglgui-label
   (let ((orig.glgui-label glgui-label)
         (select-font Xglgui-font))
-    (define (label gui x y w h #!key text (size 'small) (color White) (bgcolor #f))
+    (define (label gui x y w h #!key text (size 'small) (color (guide-select-color-4)) (bgcolor #f))
       (let ((font (select-font size: size height: h)))
         (if bgcolor
             (glgui-label gui x y w h text font color bgcolor)
@@ -196,7 +307,7 @@
              gui x y w h #!key
              (label "") (label-width 1/2)
              (value "") (input #f)
-             (size 'small) (color White) (bgcolor #f))
+             (size 'small) (color (guide-select-color-1)) (bgcolor #f))
       (define (delegate-input gui wgt type x y)
         (glgui-widget-set! gui wgt 'focus #f)
         (input gui wgt type x y))
@@ -248,7 +359,7 @@
              (label "") (label-height 20)
              (value "") (value-string #f)
              (input (lambda (val) #f)) (keypad keypad:numeric)
-             (size 'small) (color White) (bgcolor Black))
+             (size 'small) (color (guide-select-color-1)) (bgcolor (guide-select-color-3)))
       (let* ((x (glgui-get gui 'xofs))
              (y (glgui-get gui 'yofs))
              (w (glgui-get gui 'w) #;(glgui-width-get))
@@ -310,7 +421,7 @@
                  )))
     (wire! pin post: (lambda () (setter (conv (pin)))))))
 
-(define (Xglgui-select gui x y w h #!key (line-height 20) (color White))
+(define (Xglgui-select gui x y w h #!key (line-height 20) (color (guide-select-color-1)))
   (let ((font (guide-select-font height: line-height)))
     (lambda (lst continue #!key (permanent #f) #;(longpress #f))
       (let* ((n (length lst))
@@ -365,7 +476,7 @@
           (glgui-widget-set! gui wgt 'callback callback)
           #;(when longpress
             (glgui-widget-set! gui wgt 'longpress-callback longpress))
-          (glgui-widget-set! gui wgt 'bordercolor Black)
+          (glgui-widget-set! gui wgt 'bordercolor (guide-select-color-3))
           (glgui-widget-set! gui wgt 'scrollw 0)
           (let ((cb (lambda (g wgt t x y) (unless permanent (del)))))
             (glgui-widget-set! gui wgt 'callbackbeyond cb))
@@ -392,6 +503,10 @@
 ;;; end Xglgui
 
 (include "calculator.scm")
+
+(include "guide-dropdown.scm")
+
+(define make-tl-selection-payload make-selection-payload/dropdown)
 
 ;; LambdaNative glgui frame -- it's a bit tricky to work around that one.
 

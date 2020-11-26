@@ -1,7 +1,3 @@
-;;** Imports
-
-(include "../misc-conventions/observable-syntax.sch")
-
 ;;** Global Pins
 
 ;;; These are exported as input/output:

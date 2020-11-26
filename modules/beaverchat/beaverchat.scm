@@ -656,6 +656,7 @@
       (glgui-orientation-set! GUI_PORTRAIT)
       (let* ((rect (guide-make-gui))
              (payload (guide-make-payload rect "guide"))
+             (selector #f)
              (w (guide-rectangle-width rect))
              (h (guide-rectangle-height rect))
              (gui (guide-rectangle-glgui rect))
@@ -674,23 +675,14 @@
              ;; (glgui-button-string bag (/ w 4) (/ h 4) (/ w 2) (/ h 2) str fnt callback)
              (glgui-label gui 0 (- h mh) #;(- h (/ mh 2)) 80 mh "Menu" menu-font White))
             ((dd)
-             (let* ((dd (glgui-dropdownbox
-                         gui 0 (- h mh) w mh
-                         '() Black Orange Black))
-                    (update-dd
-                     (lambda ()
-                       (glgui-widget-set!
-                        gui dd 'list
-                        (map (tool-selection-draw-choice menu-font) (visible-tl-options)))
-                       (glgui-widget-set!
-                        gui dd 'current
-                        (let* ((options (visible-tl-options))
-                               (n (length options)))
-                          (if (positive? n)
-                              (- n (length (member (selected-display) (visible-tl-options))))
-                              -1))))))
-               (glgui-widget-set! gui dd 'callback cb-tool-selection-change)
-               (wire! (list selected-display visible-tl-options) post: update-dd)))))
+             (set!
+              selector
+              ((make-tl-selection-payload
+                rect payload
+                (make-interval (vector 0 (- h mh)) (vector w h))
+                (make-interval '#(0 0) (vector w (- h mh)))
+                menu-font)
+               selected-display visible-tl-options guide-current-colorscheme)))))
         (kick
          (visible-tl-options '("calculator" "chat" "about"))
          (selected-display "calculator"))
