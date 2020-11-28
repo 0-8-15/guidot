@@ -15,9 +15,11 @@
 
 ;;** lwIP TCP
 
-(define-macro (lwip-timeout outstanding) 60) ;; TODO: calculate better timeout
+(define-macro (lwip-timeout outstanding) 180) ;; TODO: calculate better timeout
 
 (define lwip-connect-timeout (make-parameter 60))
+
+(define lwip-close-timeout (make-parameter 60))
 
 (define lwip-buffer-factor (make-parameter 50)) ;; as many MTU in memory
 
@@ -73,7 +75,7 @@
                         (and ($lwip-debug) (debug (list conn dir) 'already-closed) #f))))
       (cond
        ((eq? rc ERR_MEM)
-        (thread-receive)
+        (thread-receive (lwip-close-timeout))
         (retry (let ((pcb (tcp-connection-pcb conn))) (and pcb (closeit pcb status dir))))))
       (when (eqv? (bitwise-and (tcp-connection-status conn) 3) 0)
         (tcp-connection-pcb-set! conn #f)
@@ -109,7 +111,7 @@
        ((eqv? n 0)
         (cond
          ((not outstanding)
-           (if ($lwip-debug) (debug 'closed-again conn))
+           (if ($lwip-debug) (debug 'output-closed-again conn))
           #f)
          (else
           (do ((r (await) (await))) ((not r)))
@@ -267,6 +269,7 @@
           (close-input-port in)
           (%%close-tcp-connection 'port-copy-to-lwip/always-copy conn 'output))
          (else
+          (input-port-timeout-set! in (lwip-timeout mtu))
           (let retry ((pcb (tcp-connection-pcb conn)))
             (cond
              (pcb
@@ -297,13 +300,14 @@
                     (##wait-input-port in)
                     (set! buffer (get-output-u8vector in))
                     (u8vector-length buffer))))
-             (input-port-timeout-set! in (lwip-timeout mtu))
              (cond
               ((eqv? n 0)
                (close-input-port in)
                ;; ??? FIXME: really close out???
                (close-output-port out))
-              (else (corout buffer offset n mtu loop))))))))
+              (else
+               (input-port-timeout-set! in (lwip-timeout mtu))
+               (corout buffer offset n mtu loop))))))))
 
 (define port-copy-to-lwip/default port-copy-lwip/flow-control)
 
