@@ -1,3 +1,24 @@
+;;** Debug Aid
+
+(define (check-not-observable-speculative! caller . more)
+  ;; Runtime assert (globally) that there is no current-transaction,
+  ;; hence expecting no repoeated invocation here.
+  (unless (stm-atomic?) (stm-consistency-error "observable NOT atomic" caller more)))
+
+(define (##opportunistic-sequential proc)
+  (define (checked . args)
+    (check-not-observable-speculative! proc args)
+    (apply proc args))
+  (tag-procedure checked 'sequence))
+
+(define opportunistic-sequential
+  ;; should be macro-defined away without debug, procedural fallback:
+  (cond-expand
+   (debug ##opportunistic-sequential)
+   (else identity)))
+
+;;** Utils
+
 (define filter-eq #f) ;; use default
 
 (define (filter-eqv old new)

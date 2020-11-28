@@ -1,9 +1,12 @@
-(declare
- (standard-bindings)
- (extended-bindings) ;; no overwrites of standard bindings
- (not standard-bindings thread-start!) ;; except this
- (block)
- )
+(cond-expand
+ (debug)
+ (else
+  (declare
+   (standard-bindings)
+   (extended-bindings) ;; no overwrites of standard bindings
+   (not standard-bindings thread-start!) ;; except this
+   (block)
+   )))
 
 (include "0001-dynamic-extent.scm")
 (include "0002-srfi-1.scm")
@@ -83,6 +86,8 @@
   ;; Debug & Deprecated
   ;;
   stm-atomic?
+  check-observable-sequential!
+  opportunistic-sequential check-not-observable-speculative!
   $kick-style
   kick-style
   ))

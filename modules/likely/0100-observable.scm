@@ -191,7 +191,7 @@
           (continuation-capture
            (lambda (cont)
              ;; (display-exception-in-context e cont port)
-             (display-continuation-backtrace cont port #f #f 10 10 2)))))
+             (display-continuation-backtrace cont port #t #t 10 10 -2)))))
        (else #f))
       #f)))
   (make-trigger-handler
@@ -244,6 +244,19 @@
        (for-each (lambda (thunk) (thunk)) l))))))
 
 (define observable-triggers (make-observable-triggers))
+
+(define (check-observable-sequential*!)
+  ;; Runtime assert (within the thread) that the stm critial mutex is held.
+  (unless (eq? (mutex-state *hope*) (current-thread))
+    (raise 'stm-critical-region-not-locked)))
+
+(define check-observable-sequential!
+  ;; Runtime assert (globally) that the stm critial mutex is held.
+  (let ((error-out
+         (dynamic (lambda (caller more) (stm-consistency-error "observable NOT sequential" caller more)))))
+    (lambda (caller . more)
+      (unless (eq? (mutex-state *hope*) (current-thread))
+        (error-out caller more)))))
 
 (define stm-critical-execute!
   (dynamic
