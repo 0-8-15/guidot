@@ -333,7 +333,7 @@
              gui x y w h #!key
              (label "") (label-width 1/2)
              (value "") (input #f)
-             (size 'small) (color (guide-select-color-1)) (bgcolor #f))
+             (size 'small) (color (guide-select-color-4)) (bgcolor #f))
       (define (delegate-input gui wgt type x y)
         (glgui-widget-set! gui wgt 'focus #f)
         (input gui wgt type x y))
@@ -385,7 +385,7 @@
              (label "") (label-height 20)
              (value "") (value-string #f)
              (input (lambda (val) #f)) (keypad keypad:numeric)
-             (size 'small) (color (guide-select-color-1)) (bgcolor (guide-select-color-3)))
+             (size 'small) (color (guide-select-color-4)) (bgcolor (guide-select-color-1)))
       (let* ((x (glgui-get gui 'xofs))
              (y (glgui-get gui 'yofs))
              (w (glgui-get gui 'w) #;(glgui-width-get))
