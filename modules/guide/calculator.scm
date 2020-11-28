@@ -178,7 +178,7 @@
         (wire! calculator-main-display post: calculator-update-main-display)
         ;; Wired to globals, MUST be instanciated once only.
         (make-guide-payload
-         widget: gui lifespan: 'once
+         in: interval widget: gui lifespan: 'once
          on-any-event: calculator-on-event)))
     make-calculator-payload))
 

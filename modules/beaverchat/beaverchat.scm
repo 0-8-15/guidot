@@ -517,7 +517,7 @@
         (wire! chat-address post: follow-to)
         ;; Wired to globals, MUST be instanciated once only.
         (make-guide-payload
-         widget: bag lifespan: 'once
+         in: interval widget: bag lifespan: 'once
          on-any-event: on-event))))
   make-beaverchat-payload)
 
@@ -645,7 +645,7 @@
                  (label "exit")
                  (callback (lambda (gui wgt type x y) (terminate))))
             (Xglgui-button ctx x y wb h font: fnt label: label glgui-callback: callback))
-          (make-guide-payload widget: bag lifespan: lifespan)))
+          (make-guide-payload in: interval widget: bag lifespan: lifespan)))
       (guide-define-payload "about" lifespan make-about-payload)
       make-about-payload))
 
@@ -661,13 +661,10 @@
              (h (guide-rectangle-height rect))
              (gui (guide-rectangle-glgui rect))
              (mh 28)
+             (menu-area (make-interval (vector 0 (- h mh)) (vector w h)))
+             (payload-area (make-interval '#(0 0) (vector w (- h mh))))
              (menu-font (select-font size: 'medium))
              (k 'dd))
-        (let ()
-          (define (switch-selected-tool! old new)
-            (let ((new (guide-payload-ref new #f)))
-              (when new (payload (new rect (make-interval '#(0 0) (vector w (- h mh))))))))
-          (wire! selected-display sequence: switch-selected-tool!))
         (when (> mh 0)
           (case k
             ((men)
@@ -678,10 +675,7 @@
              (set!
               selector
               ((make-tl-selection-payload
-                rect payload
-                (make-interval (vector 0 (- h mh)) (vector w h))
-                (make-interval '#(0 0) (vector w (- h mh)))
-                menu-font)
+                rect payload menu-area payload-area menu-font)
                selected-display visible-tl-options guide-current-colorscheme)))))
         (kick
          (visible-tl-options '("calculator" "chat" "about"))

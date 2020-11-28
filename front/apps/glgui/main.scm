@@ -120,38 +120,6 @@
   (glgui-wakeup!)
   #f)
 
-
-(define glgui-dispatch-event
-  (let ((check-magic-keys
-	 (lambda (gui t x y)
-	   ;; (debug 'event t)
-	   (when (= t EVENT_KEYPRESS)
-		 (if (= x EVENT_KEYESCAPE)
-		     (terminate))))))
-    (cond
-     #;(app:android? ;;(member (system-platform) '("android"))
-      (lambda (gui op t x y)
-        (##thread-heartbeat!)
-        (thread-yield!)
-	(cond
-         ((eq? t EVENT_IDLE)
-          ;; (log-debug "idle" 1)
-          #t)
-         (else
-          ;; (check-magic-keys gui op t x y)
-          (glgui-event gui t x y)))))
-     (else
-      (lambda (gui t x y)
-        (thread-yield!)
-	(check-magic-keys gui t x y)
-	(cond
-         ((eq? t EVENT_REDRAW)
-          ;; (log-status "REDRAW")
-          (glgui-event gui t x y))
-         ((eq? t EVENT_IDLE)
-          #t)
-	 (else (kick! (lambda () (glgui-event gui t x y))))))))))
-
 (define (handle-replloop-exception e)
   (let ((port (current-error-port)))
     (continuation-capture

@@ -26,6 +26,9 @@
                 (if (positive? n)
                     (- n (length (member (selected-display) (visible-tl-options))))
                     -1))))
+           (dd-events
+            (lambda (rect payload event x y)
+              (guide-default-event-dispatch rect payload (debug 'DD event) x y)))
            (build-dd
             (lambda ()
               (let ((c1 (guide-select-color-1))
@@ -34,8 +37,19 @@
                 (let ((dd (glgui-dropdownbox gui xsw ysw w h (build-content) c1 c2 c3)))
                   (glgui-widget-set! gui dd 'current (build-current))
                   (glgui-widget-set! gui dd 'callback cb-tool-selection-change)
-                  (make-guide-payload widget: dd lifespan: 'ephemenral)))))
+                  (make-guide-payload
+                   on-any-event: dd-events
+                   in: selection-interval widget: dd lifespan: 'ephemeral)))))
            (dd (guide-make-payload rect "dd"))
+           (events
+            (lambda (rect payload event x y)
+              (debug 'event event)
+              (cond
+               ((interval-contains-multi-index? selection-interval x y)
+                (guide-event-dispatch-to-payload rect (dd) event x y))
+               #;((interval-contains-multi-index? content-interval x y)
+                (guide-default-event-dispatch rect (current-payload) (debug 'content event) x y))
+               (else #f))))
            (update-dd
             (lambda ()
               (let ((dd (guide-payload-widget (dd))))
@@ -47,4 +61,13 @@
       (wire! (list selected-display visible-tl-options) post: update-dd)
       (wire! current-colorscheme post: replace-dd)
       (wire! selected-display sequence: switch-selected-tool!)
-      dd)))
+      (let ((result (make-guide-payload
+                     on-any-event: events
+                     in: selection-interval
+                     widget: gui
+                     lifespan: 'ephemeral)))
+        (if #t
+            result ;; return payload
+            (case-lambda ;; return payload selector
+             (() result)
+             ((pl) (debug 'ingnored pl))))))))

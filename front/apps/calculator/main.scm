@@ -179,7 +179,14 @@ NULL;
     (continuation-capture
      (lambda (cont)
        (display-exception-in-context e cont port)
-       (display-continuation-backtrace cont port))))
+       (display-continuation-backtrace
+        cont port
+        #f ;; all-frames?
+        #t ;; display-env?
+        10 ;; max-head (default 10)
+        4  ;; max-tail (default 4)
+        1  ;; depth default 0
+        ))))
   #!void)
 
 (define (replloop) ;; interactive read-evaluate-print-loop

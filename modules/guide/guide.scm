@@ -8,8 +8,11 @@
 
 ;;; END INSTEAD OF (include "~~tgt/lib/onetierzero/src/observable-notational-conventions.scm")
 
+(define-structure guide-widget redraw) ;; temporary helper for type safety
+
 (define-structure guide-rectangle glgui measures)
 (define-structure guide-payload
+  measures     ;; interval
   widget       ;; glgui or extended
   on-any-event ;; generic event dispatch (replace by r/w specific versions
   gui-before   ;; when exposed
@@ -24,79 +27,102 @@
   (let ((interval (guide-rectangle-measures obj)))
     (- (interval-upper-bound interval 1) (interval-lower-bound interval 1))))
 
+(define (guide-default-event-dispatch/fallback-to-glgui rect payload event x y)
+  ;; fallback to glgui
+  (let ((glgui (guide-rectangle-glgui rect)))
+    (cond
+     ((not glgui)) ;; TBD
+     (else (glgui-event glgui event x y)))))
+
+(define guide-default-event-dispatch guide-default-event-dispatch/fallback-to-glgui)
+
 (define guide-terminate-on-key (make-parameter EVENT_KEYESCAPE))
 
-(define (guide-default-event-dispatch rect payload event x y)
-  ;; (check-magic-keys gui t x y)
-  (define (dispatch rect payload event x y)
-    (let ((glgui (guide-rectangle-glgui rect)))
-      (glgui-event glgui event x y)))
-  (cond
-   ((eq? event EVENT_REDRAW)
-    ;; (log-status "REDRAW")
-    (dispatch rect payload event x y))
-   ((eq? event EVENT_IDLE)
-    #t)
-   ((and (fx= event EVENT_KEYPRESS)
-         (let ((termkey (guide-terminate-on-key)))
-           (and termkey (fx= x termkey))))
-    (terminate))
-   (else (kick! (lambda () (dispatch rect payload event x y))))))
+(define (guide-default-event-dispatch/toplevel rect payload event x y)
+  (let ((event-handler (guide-payload-on-any-event payload)))
+    (cond
+     ((eq? event EVENT_REDRAW)
+      ;; (log-status "REDRAW")
+      (event-handler rect payload event x y))
+     ((eq? event EVENT_IDLE)
+      #t)
+     ;; (check-magic-keys gui t x y)
+     ((and (fx= event EVENT_KEYPRESS)
+           (let ((termkey (guide-terminate-on-key)))
+             (and termkey (fx= x termkey))))
+      (terminate))
+     (else (kick! (lambda () (event-handler rect payload event x y)))))))
+
+(define (guide-event-dispatch-to-payload rect payload event x y)
+  ((guide-payload-on-any-event payload) gui payload event x y))
 
 (set!
  make-guide-payload
  (let ((make-guide-payload make-guide-payload)
        (exposed
         (lambda (payload rect)
-          (glgui-widget-set! (guide-rectangle-glgui rect) (guide-payload-widget payload) 'hidden #f)))
+          (let ((wgt (guide-payload-widget payload)))
+            (cond
+             ((not wgt)) ;; TBD
+             (else (glgui-widget-set! (guide-rectangle-glgui rect) wgt 'hidden #f))))))
        (hidden
         (lambda (payload rect)
-          (glgui-widget-set! (guide-rectangle-glgui rect) (guide-payload-widget payload) 'hidden #t)))
+          (let ((wgt (guide-payload-widget payload)))
+            (cond
+             ((not wgt)) ;; TBD
+             (else (glgui-widget-set! (guide-rectangle-glgui rect) wgt 'hidden #t))))))
        (remove
         (lambda (payload rect)
-          (glgui-widget-delete (guide-rectangle-glgui rect) (guide-payload-widget payload))))
+          (let ((wgt (guide-payload-widget payload)))
+            (cond
+             ((not wgt)) ;; TBD
+             (else (glgui-widget-delete (guide-rectangle-glgui rect) wgt))))))
        (events guide-default-event-dispatch))
    (lambda (#!key
+            (in #f)
             (widget (make-gtable))
             (lifespan #t)
             (on-any-event events)
             (gui-before exposed)
             (gui-after hidden))
+     (unless (interval? in) (error "mak-guide-payload: 'in:' must be an interval" in))
      (cond
       ((or (eq? lifespan #f) (eq? lifespan 'ephemeral))
-       (make-guide-payload widget on-any-event gui-before remove))
-      (else (make-guide-payload widget on-any-event gui-before gui-after))))))
+       (make-guide-payload in widget on-any-event gui-before remove))
+      (else (make-guide-payload in widget on-any-event gui-before gui-after))))))
 
 (define guide-open-rectangle
   (let ((empty (make-guide-payload
+                in: (make-interval '#(0 0) '#(1 1))
                 gui-before: #f
                 gui-after: #f
                 )))
+    (define switch-over
+      (identity #;opportunistic-sequential ;; upon debug: check no transaction active
+       (lambda (rect current new)
+         (let ((after (guide-payload-gui-after current)))
+           (when after (after current rect)))
+         (set! current new)
+         (let ((before (guide-payload-gui-before current)))
+           (when before (before current rect)))
+         (glgui-wakeup!)
+         current)))
     (define (guide-open-rectangle rect #!optional (name #f))
       (unless (guide-rectangle? rect) (error "guide-open-rectangle: rectangle required" rect))
-      #;(make-pin
-       initial: empty
-       pred: guide-payload?
-       name: name)
       (let ((current empty))
         (case-lambda
          (() current)
          ((new)
-          (unless (guide-payload? new) (error "illegal payload" new))
           (cond
            ((eq? current new))
            (else
-            (let ((after (guide-payload-gui-after current)))
-              (when after (after current rect)))
-            (set! current new)
-            (let ((before (guide-payload-gui-before current)))
-              (when before (before current rect)))
-            (glgui-wakeup!)))))))
+            (unless (guide-payload? new) (error "illegal payload" new))
+            (set! current (switch-over rect current new))))))))
     guide-open-rectangle))
 
-(define (guide-make-gui)
+(define (guide-make-gui #!optional (content (make-glgui)))
   (make-guide-rectangle
-   (make-glgui)
+   content
    (make-interval '#(0 0) (vector (glgui-width-get) (glgui-height-get)))))
 
 (define (guide-make-payload gui #!optional name)
@@ -534,13 +560,17 @@
               (exit 32))
             (lambda ()
               (receive (a b) (init w h)
+                (unless (and (guide-rectangle? a)
+                             (or (guide-payload? b)
+                                 (and (procedure? b) (guide-payload? (b)))))
+                  (error "initialization must return a rectangle and a payload or payload accessor" a b))
                 (set! gui a)
                 (set! payload b)))))
          ;; events
          (lambda (event x y)
            (thread-yield!) ;; At least for Android
-           (let ((cpl (payload)))
-             ((guide-payload-on-any-event cpl) gui cpl event x y)))
+           (let ((cpl (if (procedure? payload) (payload) payload)))
+             (guide-default-event-dispatch/toplevel gui cpl event x y)))
          ;; termination
          terminate
          ;; suspend
