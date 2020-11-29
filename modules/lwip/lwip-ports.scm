@@ -128,7 +128,10 @@
                 (set! outstanding (fx+ outstanding n))
                 (lwip-tcp-force-output pcb)
                 (continue buffer 0 0 mx write-buffer))
-               ((eq? rc ERR_MEM) (and (await) (retry (tcp-connection-pcb conn))))
+               ((eq? rc ERR_MEM)
+                (if (await)
+                    (retry (tcp-connection-pcb conn))
+                    (%%close-tcp-connection 'port-copy-to-lwip/always-copy+error conn 'output)))
                (else (debug 'port-copy-to-lwip:fail (lwip-err rc)))))))))))
     (receive
         (read-port s) (open-u8vector-pipe '(buffering: #f) '(buffering: #f))
@@ -403,8 +406,11 @@
   (define (on-tcp-sent ctx connection len)
     ;; signal conn free
     (let ((t (if ctx (tcp-connection-next ctx) (begin #;(debug 'on-tcp-sent:conn-already-closed len) #f))))
-      (if t (thread-send t len)))
-    ERR_OK)
+      (if t
+          (begin
+            (thread-send t len)
+            ERR_OK)
+          ERR_ABRT)))
 
   (define (on-tcp-receive ctx connection pbuf err)
     (cond
@@ -421,7 +427,7 @@
            (if (fx= (write-subu8vector u8 0 n s) n)
                (force-output s)
                ;; lost client connection
-               (lwip-tcp-close connection))))))
+               (%%close-tcp-connection on-tcp-receive ctx 'input))))))
      ((and (not ctx) connection) (lwip/after-safe-return (lwip-tcp-close connection)))
      (else ERR_IF)))
 
@@ -464,6 +470,7 @@
       (tcp-connection-status-set! ctx 0)
       (close-tcp-connection "closing connection on error" ctx)
       ERR_OK)
+     ((eq? err ERR_ABRT) (debug 'on-tcp-error/abort ctx) ERR_OK)
      (else (debug 'on-tcp-error/missing-context err) ERR_OK)))
 
   (on-tcp-event
