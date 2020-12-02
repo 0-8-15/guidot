@@ -116,10 +116,6 @@
 
 ;; GUI helpers
 
-(define (update-pages!)
-  (glgui-wakeup!)
-  #f)
-
 (define (handle-replloop-exception e)
   (let ((port (current-error-port)))
     (continuation-capture

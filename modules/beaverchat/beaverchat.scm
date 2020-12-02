@@ -636,6 +636,7 @@
             (new-content)
             (wire! chat-inbox-senders post: new-content))
           (glgui-button-string bag (/ w 4) (/ h 4) (/ w 2) (/ h 2) str fnt callback)
+          #|
           (let* ((ctx bag)
                  (wb (/ w 5))
                  (x 0 #;(- w wb))
@@ -643,8 +644,9 @@
                  (h (/ h 15))
                  (fnt fnt)
                  (label "exit")
-                 (callback (lambda (gui wgt type x y) (terminate))))
+                 (callback (lambda (gui wgt type x y) (force-terminate))))
             (Xglgui-button ctx x y wb h font: fnt label: label glgui-callback: callback))
+          |#
           (make-guide-payload in: interval widget: bag lifespan: lifespan)))
       (guide-define-payload "about" lifespan make-about-payload)
       make-about-payload))
@@ -654,6 +656,7 @@
     (define (init! w h)
       (make-window 320 502 #;480)
       (glgui-orientation-set! GUI_PORTRAIT)
+      (foreground-service! #t)
       (let* ((rect (guide-make-gui))
              (payload (guide-make-payload rect "guide"))
              (selector #f)
@@ -689,6 +692,7 @@
      init!
      ;; events: event-dispatcher
      ;; suspend: terminate
+     terminate: (lambda () (foreground-service! #f))
      )
     )
   (guide-start!))

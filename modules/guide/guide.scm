@@ -45,6 +45,7 @@
       ;; (log-status "REDRAW")
       (event-handler rect payload event x y))
      ((eq? event EVENT_IDLE)
+      (thread-yield!)
       #t)
      ;; (check-magic-keys gui t x y)
      ((and (fx= event EVENT_KEYPRESS)
@@ -85,7 +86,7 @@
             (on-any-event events)
             (gui-before exposed)
             (gui-after hidden))
-     (unless (interval? in) (error "mak-guide-payload: 'in:' must be an interval" in))
+     (unless (interval? in) (error "make-guide-payload: 'in:' must be an interval" in))
      (cond
       ((or (eq? lifespan #f) (eq? lifespan 'ephemeral))
        (make-guide-payload in widget on-any-event gui-before remove))
@@ -568,7 +569,11 @@
                 (set! payload b)))))
          ;; events
          (lambda (event x y)
-           (thread-yield!) ;; At least for Android
+           (cond-expand
+            (android
+             (##thread-heartbeat!)
+             (thread-sleep! 0.01))
+            (else))
            (let ((cpl (if (procedure? payload) (payload) payload)))
              (guide-default-event-dispatch/toplevel gui cpl event x y)))
          ;; termination
