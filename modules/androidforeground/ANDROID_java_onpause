@@ -1,1 +1,0 @@
-// startService(new Intent(this, LambdaNativeForegroundService.class));
