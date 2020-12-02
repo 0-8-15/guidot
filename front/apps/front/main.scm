@@ -262,20 +262,6 @@ NULL;
  (list ball-kernel-enabled:= ball-kernel-up??)
  post: front-trigger-ball-kernel-start-stop!)
 
-#;(wire!  ;; TODO: remove after a while
- ball-kernel-up?? post:
- (lambda ()
-   (call-kernel
-    'begin
-    '(for-each
-      http-host-remove!
-      (filter
-       (let ((mat (dsssl-pcre "onion|i2p")))
-         (lambda (h) (mat (http-host-lookup h))))
-       (quorum-others (http-all-hosts))))
-    ;; '(ball-trigger-save-config!)
-    '(ball-save-config))))
-
 (define (front-trigger-transfer-of-beaver-ip-to-ball!)
   (when (and (ball-kernel-up??) (front-beaver-ip-address))
     (log-status "configuring ball to use beaver at: " (front-beaver-ip-address))

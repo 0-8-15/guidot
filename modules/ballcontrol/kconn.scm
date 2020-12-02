@@ -13,6 +13,7 @@
 (define (get-kernel-connection)
   (with-exception-catcher
    (lambda (exn)
+     (handle-replloop-exception exn)
      ;; (log-debug "FAILED to connected to control socket " 1 exn)
      #f)
    (lambda ()
