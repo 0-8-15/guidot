@@ -8,6 +8,10 @@
     (display-exception e port))
   #!void)
 
+;;** Lowlevel data access
+
+(include "datastructures.scm")
+
 ;;** Lowlevel Port Operations
 
 (include "~~lib/_gambit#.scm")
