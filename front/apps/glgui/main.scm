@@ -24,6 +24,11 @@
 
 (utf8string->unicode:on-encoding-error 'replace)
 
+(cond-expand
+ (android)
+ (linux (setenv "TMPDIR" "/tmp/"))
+ (else))
+
 (define (debug l v)
   (let ((p  (current-error-port)))
     (display l p)
