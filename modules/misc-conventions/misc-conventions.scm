@@ -1,5 +1,60 @@
 ;(include "~~tgt/lib/onetierzero/src/observable-notational-conventions.scm")
 
+;;;* Code Maturity Level
+
+(define current-code-maturity-level (make-parameter 0)) ;;
+
+(define code-maturity-stable (make-parameter =))
+
+(define (code-maturity-stable? #!optional (quality #f) (ccml #f))
+  (or (equal? quality ccml)
+      (let ((quality (or quality (current-code-maturity-level)))
+            (ccml (or ccml (current-code-maturity-level))))
+        ((code-maturity-stable) quality ccml))))
+
+(define code-maturity-accept (make-parameter <=))
+
+(define (code-maturity-accept? quality #!optional (ccml (current-code-maturity-level)))
+  ((code-maturity-accept) quality ccml))
+
+(define code-maturity-tolerate (make-parameter >=))
+
+(define (code-maturity-tolerated? quality #!optional (ccml (current-code-maturity-level)))
+  ((code-maturity-tolerate) quality ccml))
+
+(define (code-maturity-level quality message #!optional location)
+  (cond-expand
+   (debug
+    (unless (number? quality) (error "code-maturity-level: invalid quality" quality location))
+    (unless (string? message) (error "code-maturity-level: message not a string" message location)))
+   (else))
+  (let ((ccml (current-code-maturity-level)))
+    (cond
+     ((code-maturity-stable? quality ccml))
+     (((code-maturity-accept) quality ccml)
+      (debug 'DEPRECATED (list message location))
+      #t)
+     (((code-maturity-tolerate) quality ccml)
+      (debug 'TOLERATING (list message location))
+      #t)
+     (else (error message quality location)))))
+
+(define $code-maturity-tolerance!
+  (case-lambda
+   ((x)
+    (let ((close-enough (lambda (m c) (<= (abs (- m c)) x))))
+      (code-maturity-stable close-enough)
+      (code-maturity-accept (lambda (r c) (or (close-enough r c) (< r c))))
+      (code-maturity-tolerate (lambda (r c) (or (close-enough r c) (> r c))))))
+   ((l h)
+    (code-maturity-stable =)
+    (code-maturity-accept (lambda (m c) (<= l (- c m))))
+    (code-maturity-tolerate (lambda (m c) (< (- c m) h))))
+   ((l h x)
+    (code-maturity-stable (lambda (m c) (<= (abs (- m c)) x)))
+    (code-maturity-accept (lambda (m c) (<= l (- c m))))
+    (code-maturity-tolerate (lambda (m c) (< (- c m) h))))))
+
 ;;;* Utilities
 
 (define (read-file-as-u8vector fn)
