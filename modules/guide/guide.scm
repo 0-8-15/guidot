@@ -1,6 +1,22 @@
+;;** Missplaced Code
+
 (include "../../front/apps/glgui/DejaVuSans-14,24,32.scm")
 
 (utf8string->unicode:on-encoding-error 'replace)
+
+;;;** X11
+
+(cond-expand
+ (linux
+  (c-declare "#include <stdint.h>\nextern int64_t microgl_getWindow();")
+  (define microgl-getWindow (c-lambda () int64 "microgl_getWindow")))
+ (else
+  (define (microgl-getWindow) -1)))
+
+(define (guide-floating-window!)
+  ;; i3 specific
+  (let ((i3cmd (string-append "[id=" (number->string (microgl-getWindow)) "] floating enable")))
+    (open-process `(path: "i3-msg" arguments: (,i3cmd)))))
 
 ;;** Imports
 
@@ -540,6 +556,9 @@
 (define-values
     (guide-main guide-exit)
   (let ((once main))
+    (cond-expand
+     (linux (define i3hook (delay (guide-floating-window!))))
+     (else))
     (define (guide-main
              init #!key
              ;; (events #f)
@@ -570,6 +589,7 @@
          ;; events
          (lambda (event x y)
            (cond-expand
+            (linux (force i3hook))
             (android
              (##thread-heartbeat!)
              (thread-sleep! 0.01))
