@@ -55,6 +55,84 @@
     (code-maturity-accept (lambda (m c) (<= l (- c m))))
     (code-maturity-tolerate (lambda (m c) (< (- c m) h))))))
 
+;;;* Call Caching
+
+(define $memoize-active (make-parameter #t)) ;; to disable for debug and test
+
+(define (memoize-last1 f cmp)
+  (let ((last-arg #f)
+        (last-vals #f))
+    (lambda (arg)
+      (if ($memoize-active)
+          (begin
+            (unless (and last-vals (cmp last-arg arg))
+              (receive vals (f arg)
+                (set! last-vals vals)
+                (set! last-arg arg)))
+            (apply values last-vals))
+          (f arg)))))
+
+(define (memoize-last2 f cmp1 cmp2)
+  (let ((last-arg1 #f)
+        (last-arg2 #f)
+        (last-vals #f))
+    (lambda (arg1 arg2)
+      (if ($memoize-active)
+          (begin
+            (unless (and last-vals (cmp1 last-arg1 arg1) (cmp2 last-arg2 arg2))
+              (receive vals (f arg1 arg2)
+                (set! last-vals vals)
+                (set! last-arg1 arg1)
+                (set! last-arg2 arg2)))
+            (apply values last-vals))
+          (f arg1 arg2)))))
+
+(define (memoize-last3 f cmp1 cmp2 cmp3)
+  (let ((last-arg1 #f)
+        (last-arg2 #f)
+        (last-arg3 #f)
+        (last-vals #f))
+    (lambda (arg1 arg2 arg3)
+      (if ($memoize-active)
+          (begin
+            (unless (and last-vals (cmp1 last-arg1 arg1) (cmp2 last-arg2 arg2)
+                         (cmp3 last-arg3 arg3))
+              (receive vals (f arg1 arg2 arg3)
+                (set! last-vals vals)
+                (set! last-arg1 arg1)
+                (set! last-arg2 arg2)
+                (set! last-arg3 arg3)))
+            (apply values last-vals))
+          (f arg1 arg2 arg3)))))
+
+(define (memoize-last4 f cmp1 cmp2 cmp3 cmp4)
+  (let ((last-arg1 #f)
+        (last-arg2 #f)
+        (last-arg3 #f)
+        (last-arg4 #f)
+        (last-vals #f))
+    (lambda (arg1 arg2 arg3 arg4)
+      (if ($memoize-active)
+          (begin
+            (unless (and last-vals (cmp1 last-arg1 arg1) (cmp2 last-arg2 arg2)
+                         (cmp3 last-arg3 arg3) (cmp4 last-arg4 arg4))
+              (receive vals (f arg1 arg2 arg3 arg4)
+                (set! last-vals vals)
+                (set! last-arg1 arg1)
+                (set! last-arg2 arg2)
+                (set! last-arg3 arg3)
+                (set! last-arg4 arg4)))
+            (apply values last-vals))
+          (f arg1 arg2 arg3 arg3)))))
+
+(define memoize-last
+  ;; intensionaly restricted to four arguments at most
+  (case-lambda
+   ((f cmp) (memoize-last1 f cmp))
+   ((f cmp1 cmp2) (memoize-last2 f cmp1 cmp2))
+   ((f cmp1 cmp2 cmp3) (memoize-last3 f cmp1 cmp2 cmp3))
+   ((f cmp1 cmp2 cmp3 cmp4) (memoize-last4 f cmp1 cmp2 cmp3 cmp4))))
+
 ;;;* Utilities
 
 (define (read-file-as-u8vector fn)
