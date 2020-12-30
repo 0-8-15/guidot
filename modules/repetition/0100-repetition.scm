@@ -13,6 +13,18 @@
 ;; TBD: remove fixnum & vector-free use case of range structure! (dev
 ;; artifact)
 
+;;*** syntax import
+
+(define-macro (define-values names . body)
+  (let ((vals (gensym 'vals)))
+    `(begin
+       ,@(map (lambda (name) `(define ,name #f)) names)
+       (call-with-values (lambda () . ,body)
+         (lambda ,vals
+           . ,(map (lambda (name)
+                     `(set! ,name (let ((,name (car ,vals))) (set! ,vals (cdr ,vals)) ,name)))
+                   names))))))
+
 ;;;** OVER
 
 ;;; (define (OVER0-attic #!optional (R values) (M values))
