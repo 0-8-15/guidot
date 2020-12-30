@@ -2,58 +2,140 @@
 
 ;;;* Code Maturity Level
 
-(define current-code-maturity-level (make-parameter 0)) ;;
+;;** Usage
 
-(define code-maturity-stable (make-parameter =))
+(define (NYI . args)
+  ;; A textual upper case marker for things in planning phase.  A three
+  ;; letter acronym and a warning when used as procedure.  More use
+  ;; cases might be added withouth harm.
+  (println port: (current-error-port) "NYI (Not Yet Implemented) " args))
 
-(define (code-maturity-stable? #!optional (quality #f) (ccml #f))
+(define (NYIE . args)
+  ;; Variant of NYI raising an error exception.
+  (let ((msg "NYI (Not Yet Implemented) "))
+    (println port: (current-error-port) msg args)
+    (error msg args)))
+
+;;; Use (unstable) $maturity-tolerance! as TOLERATE and
+;;; (current-maturity-level) as CCML and the first argument to
+;;; `maturity-level` (`quality`) as QUALITY in phase:
+;;;
+;;; 1) "assessment, explore, draft, experiment" as (TOLERATE 100) and
+;;; freely use `maturity-level` (recommended via macro expasion, see
+;;; below) with values around zero to label maturity with negative
+;;; values for legacy and positive values for imature sections.
+;;; Values up to 100 off from QUALTIY are accepted.
+;;;
+;;; 2) during debug, verification, profiling, testing etc.:
+;;;
+;;;    a) (TOLERATE LOWER UPPER) : warn unless CCML equals QUALITY
+;;;
+;;;    b) (TOLERATE LOWER UPPER SILENT) : warn wenn CCML differs more
+;;;       than SILENT from QUALITY.
+;;;
+;;;    Values of CCML outside the interval [LOWER UPPER] shall abort
+;;;    execution with error MESSAGE and LOCATION from the second and
+;;;    third parameter of `maturity-level`.
+;;;
+;;;    Use `maturity-level` with a parameter to adjust the current
+;;;    values of CCML for diagnosis, trial and error.
+;;;
+;;;    Dispatch on `maturity-level` without parameter selects
+;;;    code path.  Beware that such dispatches are invalid latest
+;;;    after testing.
+;;;
+;;; 3) testing and refinement: use (TOLERATE 0) and review expectable
+;;; viloations.
+
+
+;;** API
+
+;; This API is assumed to be hidden/removed at compile time, e.g. by a
+;; application defined macro.
+
+(define current-maturity-level
+  ;; COMPILE TIME: should be assumed to be fatal to access eventually.
+  ;;
+  ;; default: stable
+  (make-parameter 0))
+
+;;; (maturity-level quality message #!optional location) : #!void
+;;;
+;;; Parameters:
+;;; - quality: development stat relative of "stable"
+;;; - message: comment on reason
+;;; - location: source code location to report
+
+;;** CML Implementation
+
+;; TBD: maturity code is immature and unstable.
+
+(define (maturity-current? #!optional (offset 0))
+  ;; "zero" tolerance
+  (let* ((ccml (current-maturity-level))
+         (quality (+ ccml offset)))
+    (cond
+     ((eq? quality ccml)) ;; best case; don't dare to waste time
+     ((and (number? ccml) (number? quality)) (= ccml quality))
+     (else (equal? ccml quality)))))
+
+(define maturity-stable-pred (make-parameter =))
+
+(define (maturity-stable? #!optional (quality #f) (ccml #f))
   (or (equal? quality ccml)
-      (let ((quality (or quality (current-code-maturity-level)))
-            (ccml (or ccml (current-code-maturity-level))))
-        ((code-maturity-stable) quality ccml))))
+      (let ((quality (or quality (current-maturity-level)))
+            (ccml (or ccml (current-maturity-level))))
+        ((maturity-stable-pred) quality ccml))))
 
-(define code-maturity-accept (make-parameter <=))
+(define maturity-accept-pred (make-parameter <=))
 
-(define (code-maturity-accept? quality #!optional (ccml (current-code-maturity-level)))
-  ((code-maturity-accept) quality ccml))
+(define maturity-accept maturity-accept-pred)
 
-(define code-maturity-tolerate (make-parameter >=))
+(define (maturity-accept? quality #!optional (ccml (current-maturity-level)))
+  ((maturity-accept-pred) quality ccml))
 
-(define (code-maturity-tolerated? quality #!optional (ccml (current-code-maturity-level)))
-  ((code-maturity-tolerate) quality ccml))
+(define maturity-tolerate-pred (make-parameter >=))
 
-(define (code-maturity-level quality message #!optional location)
+(define (maturity-tolerated? quality #!optional (ccml (current-maturity-level)))
+  ((maturity-tolerate-pred) quality ccml))
+
+(define (maturity-level quality message #!optional location)
   (cond-expand
    (debug
-    (unless (number? quality) (error "code-maturity-level: invalid quality" quality location))
-    (unless (string? message) (error "code-maturity-level: message not a string" message location)))
+    (unless (number? quality) (error "maturity-level: invalid quality" quality location))
+    (unless (string? message) (error "maturity-level: message not a string" message location)))
    (else))
-  (let ((ccml (current-code-maturity-level)))
+  (let ((ccml (current-maturity-level)))
     (cond
-     ((code-maturity-stable? quality ccml))
-     (((code-maturity-accept) quality ccml)
+     ((maturity-stable? quality ccml))
+     (((maturity-accept-pred) quality ccml)
       (debug 'DEPRECATED (list message location))
       #t)
-     (((code-maturity-tolerate) quality ccml)
+     (((maturity-tolerate-pred) quality ccml)
       (debug 'TOLERATING (list message location))
       #t)
      (else (error message quality location)))))
 
-(define $code-maturity-tolerance!
+(define maturity-note maturity-level)
+(define MATURITY maturity-note)
+(define (MATURITY-LEVEL) (current-maturity-level)) ;; unable to set it
+(define (MATURITY-TARGET) (maturity-current?)) ;; experimental!
+
+(define $maturity-tolerance!
   (case-lambda
    ((x)
     (let ((close-enough (lambda (m c) (<= (abs (- m c)) x))))
-      (code-maturity-stable close-enough)
-      (code-maturity-accept (lambda (r c) (or (close-enough r c) (< r c))))
-      (code-maturity-tolerate (lambda (r c) (or (close-enough r c) (> r c))))))
+      (maturity-stable-pred close-enough)
+      (maturity-accept-pred (lambda (r c) (or (close-enough r c) (< r c))))
+      (maturity-tolerate-pred (lambda (r c) (or (close-enough r c) (> r c))))))
    ((l h)
-    (code-maturity-stable =)
-    (code-maturity-accept (lambda (m c) (<= l (- c m))))
-    (code-maturity-tolerate (lambda (m c) (< (- c m) h))))
+    (maturity-stable-pred =)
+    (maturity-accept-pred (lambda (m c) (<= l (- c m))))
+    (maturity-tolerate-pred (lambda (m c) (< (- c m) h))))
    ((l h x)
-    (code-maturity-stable (lambda (m c) (<= (abs (- m c)) x)))
-    (code-maturity-accept (lambda (m c) (<= l (- c m))))
-    (code-maturity-tolerate (lambda (m c) (< (- c m) h))))))
+    (maturity-stable-pred (lambda (m c) (<= (abs (- m c)) x)))
+    (maturity-accept-pred (lambda (m c) (<= l (- c m))))
+    (maturity-tolerate-pred (lambda (m c) (< (- c m) h))))))
 
 ;;;* Call Caching
 
