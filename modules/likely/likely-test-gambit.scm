@@ -1,5 +1,6 @@
 (include "0001-dynamic-extent.scm")
 (include "0002-srfi-1.scm")
+(include "0004-repetition.scm")
 (include "0010-debug.scm")
 (include "0011-stm-imports.scm")
 (include "0020-stm-impl.scm")

@@ -27,6 +27,8 @@
                      `(set! ,name (let ((,name (car ,vals))) (set! ,vals (cdr ,vals)) ,name)))
                    names))))))
 
+(include "0004-repetition.scm")
+
 (define-macro (this-module-works name exports . body)
   (let ((extern (lambda (e) (if (pair? e) (car e) e)))
         (intern (lambda (e) (if (pair? e) (cadr e) e))))

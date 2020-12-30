@@ -72,3 +72,4 @@
           (lambda () (test-report-fail ,expr))))))))
 
 (include "2001-basic.scm")
+(include "2004-repetition.scm")
