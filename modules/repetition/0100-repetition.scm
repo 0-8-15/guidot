@@ -329,7 +329,7 @@
      ((%%range-structure? obj) (positive? (range-dim obj)))
      (else (error "argument error" 'range-ascending? obj))))
 
-  (define (%%MARUTIRY+4:mdv-indexer range #!optional (storage-size #f) (storage-offset 0))
+  (define (%%MATURITY+4:mdv-indexer range #!optional (storage-size #f) (storage-offset 0))
     (when (and storage-size
                (fx< storage-size (fx+ storage-offset (range-volume range))))
       (%%raise-range-exception 2 'mdv-indexer-select range storage-size storage-offset))
@@ -366,9 +366,9 @@
                             obj)))
                     (%%raise-range-exception 2 'mdv-indexer i2))))
            (fx+ storage-offset (fx+ row0 (fx* offset element-size))))))
-      (else (NYI "generic case" %%MARUTIRY+4:mdv-indexer range))))
+      (else (NYI "generic case" %%MATURITY+4:mdv-indexer range))))
 
-  (define %%MARUTIRY+4:mdv-ref/getter
+  (define %%MATURITY+4:mdv-ref/getter
     (case-lambda
      ((ref vector range index)
       (unless (fx= (range-rank range) 1) ;; note: use safe/testing version
@@ -407,11 +407,11 @@
         (ref vector (fx+ row0 (fx* offset element-size)))))
      ((ref vector range i1 i2 . more)
       (NYI "mdv-ref: too many arguments - there shall be at most two indices, natural and complex" more))))
-  (define %%MARUTIRY+4:mdv-ref
+  (define %%MATURITY+4:mdv-ref
     (case-lambda
-     ((vector range index) (%%MARUTIRY+4:mdv-ref/getter vector-ref vector range index))
-     ((vector range i1 i2) (%%MARUTIRY+4:mdv-ref/getter vector-ref vector range i1 i2))
-     (otherwise (apply %%MARUTIRY+4:mdv-ref/getter vector-ref otherwise))))
+     ((vector range index) (%%MATURITY+4:mdv-ref/getter vector-ref vector range index))
+     ((vector range i1 i2) (%%MATURITY+4:mdv-ref/getter vector-ref vector range i1 i2))
+     (otherwise (apply %%MATURITY+4:mdv-ref/getter vector-ref otherwise))))
   (set! vector->rangemask %%vector->rangemask)
   (set! range-rank %%range-rank)
   (set! range? %%range?)
@@ -423,9 +423,9 @@
   (set! range-step %%range-step)  ;; maybe only internal?
   (set! range-ascending? %%range-ascending?)
   (set! range-row %%range-row)
-  (set! mdv-ref/getter %%MARUTIRY+4:mdv-ref/getter)
-  (set! mdv-ref %%MARUTIRY+4:mdv-ref)
-  (set! mdv-indexer %%MARUTIRY+4:mdv-indexer)
+  (set! mdv-ref/getter %%MATURITY+4:mdv-ref/getter)
+  (set! mdv-ref %%MATURITY+4:mdv-ref)
+  (set! mdv-indexer %%MATURITY+4:mdv-indexer)
   ) ;; end range refinement
 
 (define mdv-idx
@@ -447,7 +447,7 @@
 ;; other hand multiplying the ranges length should be easy enough, so
 ;; better return the volume!
 
-(define (MARUTIRY+2:for-range! range proc! . ranges)
+(define (MATURITY+2:for-range! range proc! . ranges)
   (cond
    ;; rearrange arguments ... :-/
    ((and (procedure? range) (range? proc!))
@@ -494,4 +494,4 @@
    (else
     (apply NYI 'for-range! range ranges) (apply error 'for-range! range ranges))))
 
-(define for-range! MARUTIRY+2:for-range!)
+(define for-range! MATURITY+2:for-range!)
