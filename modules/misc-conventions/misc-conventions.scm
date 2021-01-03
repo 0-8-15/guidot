@@ -11,7 +11,7 @@
   (println port: (current-error-port) "NYI (Not Yet Implemented) " args))
 
 (define (NYIE . args)
-  ;; Variant of NYI raising an error exception.
+  ;; Variant of NYI rasing an error exception.
   (let ((msg "NYI (Not Yet Implemented) "))
     (println port: (current-error-port) msg args)
     (error msg args)))
@@ -20,7 +20,7 @@
 ;;; (current-maturity-level) as CCML and the first argument to
 ;;; `maturity-level` (`quality`) as QUALITY in phase:
 ;;;
-;;; 1) "assessment, explore, draft, experiment" as (TOLERATE 100) and
+;;; 1) "assessement, explore, draft, experiment" as (TOLERATE 100) and
 ;;; freely use `maturity-level` (recommended via macro expasion, see
 ;;; below) with values around zero to label maturity with negative
 ;;; values for legacy and positive values for imature sections.
@@ -45,7 +45,7 @@
 ;;;    after testing.
 ;;;
 ;;; 3) testing and refinement: use (TOLERATE 0) and review expectable
-;;; viloations.
+;;; violations.
 
 
 ;;** API
@@ -99,22 +99,65 @@
 (define (maturity-tolerated? quality #!optional (ccml (current-maturity-level)))
   ((maturity-tolerate-pred) quality ccml))
 
-(define (maturity-level quality message #!optional location)
-  (cond-expand
-   (debug
-    (unless (number? quality) (error "maturity-level: invalid quality" quality location))
-    (unless (string? message) (error "maturity-level: message not a string" message location)))
-   (else))
-  (let ((ccml (current-maturity-level)))
-    (cond
-     ((maturity-stable? quality ccml))
-     (((maturity-accept-pred) quality ccml)
-      (debug 'DEPRECATED (list message location))
-      #t)
-     (((maturity-tolerate-pred) quality ccml)
-      (debug 'TOLERATING (list message location))
-      #t)
-     (else (error message quality location)))))
+(define ##print-maturity-warnings!)
+
+(define ##MATURITY)
+
+(define maturity-level
+  (let ((seen (make-table test: equal?)))
+    (define (print-maturity-warnings!)
+      (let ((port (current-error-port)))
+        (unless (eqv? (table-length seen) 0)
+          (println port: port "MATURITY warnings REPORT")
+          (table-for-each
+           (lambda (k v)
+             (let ((q (vector-ref k 0))
+                   (msg (vector-ref k 1))
+                   (loc (vector-ref k 2))
+                   (calls (vector-ref v 0)))
+               (println port: port "    " q " " msg " @ " loc " # " calls)))
+           seen))))
+    (define (count quality message location)
+      (let* ((key (vector quality message location))
+             (entry (table-ref seen key #f)))
+        (if entry
+            (let ((sumidx 0))
+              (vector-set! entry sumidx (fx+ (vector-ref entry sumidx) 1)))
+            (begin
+              (table-set! seen key (vector 1))
+              (debug quality (list message location))))
+        #t))
+    (define (maturity-level quality message #!key (loc '|unspecified location|) #!rest details)
+      (define location loc)
+      (cond-expand
+       (debug
+        (unless (number? quality) (error "maturity-level: invalid quality" quality location))
+        (unless (string? message) (error "maturity-level: message not a string" message location)))
+       (else))
+      (let ((ccml (current-maturity-level))
+            (give-developer-a-moment-to-think-about-the-unexpected-situation! thread-sleep!))
+        (cond
+         ((maturity-stable? quality ccml))
+         (((maturity-accept-pred) quality ccml) (count 'DEPRECATED message location))
+         (((maturity-tolerate-pred) quality ccml) (count 'TOLERATING message location))
+         (else
+          ;; (error message quality location)
+          (count '|MATURITY OUTRIGHT REJECTED| message location)
+          (let ((port (current-error-port)))
+            (for-each (lambda (d) (pp d port)) details)
+            (println
+             port: port
+             "  declared quality: "  quality
+             " current maturity level: " ccml)
+            (print-maturity-warnings!)
+            (give-developer-a-moment-to-think-about-the-unexpected-situation! 1)
+            (println port: port "... TERMINATING")
+            (give-developer-a-moment-to-think-about-the-unexpected-situation! 2))
+          (exit 23)))))
+    (##add-exit-job! print-maturity-warnings!)
+    (set! ##MATURITY count)
+    (set! ##print-maturity-warnings! print-maturity-warnings!)
+    maturity-level))
 
 (define maturity-note maturity-level)
 (define MATURITY maturity-note)
@@ -130,11 +173,11 @@
       (maturity-tolerate-pred (lambda (r c) (or (close-enough r c) (> r c))))))
    ((l h)
     (maturity-stable-pred =)
-    (maturity-accept-pred (lambda (m c) (<= l (- c m))))
+    (maturity-accept-pred (lambda (m c) (>= l (- c m))))
     (maturity-tolerate-pred (lambda (m c) (< (- c m) h))))
    ((l h x)
     (maturity-stable-pred (lambda (m c) (<= (abs (- m c)) x)))
-    (maturity-accept-pred (lambda (m c) (<= l (- c m))))
+    (maturity-accept-pred (lambda (m c) (>= l (- c m))))
     (maturity-tolerate-pred (lambda (m c) (< (- c m) h))))))
 
 ;;;* Call Caching
