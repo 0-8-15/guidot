@@ -193,6 +193,10 @@
 
 ;;;* range, for-range!
 
+(define (rangemask? obj)
+  (MATURITY +1 "planning, no damage, always failes" rangemask?)
+  #f)
+
 (define-structure range ;; a.k.a. fixnum iota
   ;; data cases: a) inline b) at offset in 3vector
   dim ;; (experimental: negative? => backwards) a: number of elements
@@ -202,11 +206,14 @@
   (in unprintable:)     ;; a: step size b: 3vector
   )
 
+(define dev#make-range make-range)
+
 (define debug#range-in range-in)
 
 (define vector->rangemask)
 
 (define range) ;; short for make-range (like vector etc.)
+(define call-in-range) ;; call proc with iota-style arguments (to be inlined in target code)
 (define range-rank)
 (define range-start) ;; maybe only internal?
 (define range-step)  ;; maybe only internal?
@@ -218,13 +225,16 @@
 (define mdv-ref/getter)
 (define mdv-indexer) ;; range size offset -> lambda with rank arity
 
-(let ((allocate-range make-range)
-      (%%range-structure? range?)
-      (%%structure-range-volume range-volume)
-      (%%range-in range-in))
+;;; (let () ;; --- range refinement ---  DEFINE-VALUES style block
+  (define allocate-range make-range)
+  (define %%range-structure? range?)
+  (define %%structure-range-volume range-volume)
+  (define %%range-in range-in)
   (define (%%raise-range-exception arg-num proc val . more)
     (##raise-range-exception arg-num proc (cons val more)))
   (define (%%vector->rangemask vec)
+    ;; FIXME: intented meaning: each entry is `(X . (,iota "(- X 1)"))
+    ;; TBD: likely buggy, test and cleanup
     (let ((leni (vector-length vec)))
       (let* ((len (* 3 leni))
              ;; TBD: avoid useless initialization of `result`
@@ -250,7 +260,8 @@
     ;; for argument checking/dispatching: error out on illegal numeric ranges
     (or (%%fixnum-range? obj)
         (and (number? obj)  (%%raise-range-exception 1 %%fixnum-range? obj))))
-  (define (%%range? obj)
+  (define (%%range? obj) ;; FIXME: bad idea, performance wise
+    ;;
     ;;(MATURITY +2 "draft" range?)
     (cond
      ((%%fixnum-range? obj))
@@ -258,21 +269,74 @@
      (else #f)))
   (define (%%make-range pat . more)
     (cond
+     ((rangemask? pat) (NYI "make-range rangemask?" pat))
      ((vector? pat)
       (let ((rank (vector-length pat))
             (interned (%%vector->rangemask pat)))
         (allocate-range
          rank
          (fx* ;; volume
-          (vector-ref interned (fx- (vector-length interned) 1))
-          (vector-ref pat (fx- (vector-length pat) 1)))
+          (##vector-ref interned (fx- (vector-length interned) 1))
+          (##vector-ref pat (fx- rank 1)))
          0 interned)))
-     ((number? pat) (%%make-range (apply vector pat more)))
+     ((number? pat) (%%make-range (apply vector (reverse! (cons pat more)))))
      (else (error "%%make-range: invalid arguments" pat more))))
+  (define (%%MATURITY+4:call-in-range range proc i1 . more)
+    (unless (and (%%range-structure? range) (procedure? proc))
+      (error "invalid arguments" 'call-in-range range proc))
+    (case (range-rank range)
+      ((1)
+       (let ((storage-offset 0) ;; TBD
+             (limit (%%range-volume range))
+             (idx (+ (fx* i1 (%%range-step range 0))
+                     (%%range-start range 0))))
+         (when (or (fx>= i1 limit) (fx< i1 0))
+           (%%raise-range-exception 3 'call-in-range i1 limit))
+         (proc
+          (fx+ storage-offset idx) ;; target index
+          1 ;; single element
+          ;; one running relative index
+          i1)))
+      ((2)
+       (cond
+        ((null? more) (NYI "call-in-range one index only"))
+        ((pair? (cdr more))
+         (error "wrong number of indices: range requires" (range-rank range) 'call-in-range))
+        (else
+         (let ((i2 (car more)))
+           (let ((element-size 1)
+                 (storage-offset 0) ;; TBD
+                 (row0
+                  (or (and
+                       (let ((obj i1)
+                             (lower-bound 0)
+                             (upper-bound (%%range-size range 1)))
+                         (and (number? obj) (integer? obj)
+                              (fx>= obj lower-bound)
+                              (fx< obj upper-bound)
+                              (fx* obj (%%range-start range 1)))))
+                      (%%raise-range-exception 1 'mdv-indexer i1)))
+                 (offset
+                  (or (and
+                       (let ((obj i2)
+                             (lower-bound 0)
+                             (upper-bound (%%range-size range 0)))
+                         (and (number? obj) (integer? obj)
+                              (fx>= obj lower-bound)
+                              (fx< obj upper-bound)
+                              obj)))
+                      (%%raise-range-exception 2 'mdv-indexer i2))))
+             (proc
+              (fx+ storage-offset (fx+ row0 (fx* offset element-size)))
+              1 ;; single element
+              ;; STILL TBD: just "scalar" result so far
+               ;; two runnig relative indices
+              i1 i2))))))
+      (else (NYI "generic case" %%MATURITY+4:call-in-range range))))
   (define (%%range-rank obj)
     (cond
-     ((%%fixnum-range/assert? obj) 1)
      ((%%range-structure? obj) (abs (range-dim obj)))
+     ((%%fixnum-range/assert? obj) 1)
      (else (error "not a range" 'range-rank obj))))
   (define (%%range-row obj n)
     (cond
@@ -294,8 +358,8 @@
         (allocate-range (if (< d0 0) (- d1i) d1i) vol z (range-in obj)))))
   (define (%%range-volume obj)
     (cond
-     ((%%fixnum-range/assert? obj) (abs obj))
      ((%%range-structure? obj) (%%structure-range-volume obj))
+     ((%%fixnum-range/assert? obj) (abs obj))
      (else (error "not a range" 'range-volume obj))))
   (define (dimension rng step d vzs) ;; FIXME: runs too often in tight loops
     (let (;; (z0 0 #;(range-offset rng)) ;; usually zero
@@ -306,42 +370,43 @@
       (vector-ref step (fx+ (fx* d 3) vzs))))
   (define (%%range-size obj dim)  ;; [maybe stay only internal?]
     (cond
-     ((number? obj) ;; disabled case
-      (%%raise-range-exception 1 %%range-size obj)
-      (unless (fx= dim 0) ;; error check
-        (%%raise-range-exception 2 %%range-size dim))
-      (%%range-volume obj))
      ((%%range-structure? obj)
       (let ((step (%%range-in obj)))
         (cond
          ((vector? step) (dimension obj step dim 0))
          (else step))))
+     ((number? obj) ;; disabled case
+      (%%raise-range-exception 1 %%range-size obj)
+      (unless (fx= dim 0) ;; error check
+        (%%raise-range-exception 2 %%range-size dim))
+      (%%range-volume obj))
      (else (error "argument error" 'range-size obj))))
   (define (%%range-start obj dim) ;; maybe only internal?
     (cond
-     ((%%fixnum-range/assert? obj) 0)
      ((%%range-structure? obj)
       (let ((step (%%range-in obj)))
         (cond
          ((vector? step) (dimension obj step dim 1))
          (else step))))
+     ((%%fixnum-range/assert? obj) 0)
      (else (error "argument error" 'range-start obj))))
   (define (%%range-step obj dim)  ;; maybe only internal?
     (cond
-     ((%%fixnum-range/assert? obj) 1)
      ((%%range-structure? obj)
       (let ((step (%%range-in obj)))
         (cond
          ((vector? step) (dimension obj step dim 2))
          (else step))))
+     ((%%fixnum-range/assert? obj) 1)
      (else (error "argument error" 'range-step obj))))
   (define (%%range-ascending? obj)
     (cond
-     ((%%fixnum-range/assert? obj) (positive? obj))
      ((%%range-structure? obj) (positive? (range-dim obj)))
+     ((%%fixnum-range/assert? obj) (positive? obj))
      (else (error "argument error" 'range-ascending? obj))))
 
   (define (%%MATURITY+4:mdv-indexer range #!optional (storage-size #f) (storage-offset 0))
+    (when (rangemask? range) (NYI "%%MATURITY+4:mdv-indexer rangemask?" range))
     (when (and storage-size
                (fx< storage-size (fx+ storage-offset (range-volume range))))
       (%%raise-range-exception 2 'mdv-indexer-select range storage-size storage-offset))
@@ -426,19 +491,20 @@
      (otherwise (apply %%MATURITY+4:mdv-ref/getter vector-ref otherwise))))
   (set! vector->rangemask %%vector->rangemask)
   (set! range-rank %%range-rank)
-  (set! range? %%range?)
+  (set! range? %%range?) ;; FIXME: bad idea, performance wise
   (set! make-range %%make-range)
   (set! range make-range)
+  (set! call-in-range %%MATURITY+4:call-in-range)
   (set! range-volume %%range-volume)
   (set! range-size %%range-size)
   (set! range-start %%range-start) ;; maybe only internal?
   (set! range-step %%range-step)  ;; maybe only internal?
-  (set! range-ascending? %%range-ascending?)
+  (set! range-ascending? %%range-ascending?) ;; obsolete?
   (set! range-row %%range-row)
   (set! mdv-ref/getter %%MATURITY+4:mdv-ref/getter)
   (set! mdv-ref %%MATURITY+4:mdv-ref)
   (set! mdv-indexer %%MATURITY+4:mdv-indexer)
-  ) ;; end range refinement
+;;;  ) ;; end --- range refinement ---
 
 (define mdv-idx
   (let ((extract (lambda (v idx) idx)))
@@ -450,6 +516,34 @@
       #;(values (mdv-ref/getter extract 'dummyvector range i1 i2) (range-step range 0))
       (mdv-ref/getter extract 'dummyvector range i1 i2))
      (otherwise (apply mdv-ref/getter vector-ref otherwise)))))
+
+(define-structure mdvector
+  body    ;; vector, homogenous vector or vector-alike object
+  offset  ;; non negative fixnum - offset in body
+  range   ;; dimension mask, iota vector
+  special ;; indicator if body is not a generic Scheme vector
+  ) ;; mdvector
+
+(set! allocate-make-mdvector make-mdvector)
+
+(set!
+ make-mdvector
+ (lambda (?range
+          body
+          #!optional
+          (special #f)
+          (storage-size (vector-length body))
+          (storage-offset 0))
+   (when (and storage-size
+              (fx< storage-size (fx+ storage-offset (range-volume ?range))))
+     (##raise-range-exception 2 'make-mdvector ?range storage-size storage-offset))
+   (when (number? ?range) (set! ?range (range ?range)))
+   (allocate-make-mdvector body storage-offset ?range special)))
+
+(define (mdvector-special? obj key)
+  (and (mdvector? obj)
+       (let ((s (mdvector-special obj)))
+         (and (pair? s) (memq key s)))))
 
 ;; for-range! proc! range ... call f with range numbers of indices in lecixographic order
 ;;

@@ -4,6 +4,8 @@
 ;;;
 ;;; OVER -> to be hidden by macro expansion
 
+;;** OVER
+
 (test-assert "OVER" (= ((OVER values identity values) 0) 0))
 
 (test-assert
@@ -246,6 +248,8 @@
     (iter 3 7))
   73))
 
+;;** RANGE
+
 (test-assert "range? fixnum" (range? 2))
 (test-assert "range? fixnum" (range? -2))
 (test-assert "range? fixnum" (not (range? 0)))
@@ -269,7 +273,7 @@
 (test-assert "range? make-range" (range? (make-range 4)))
 (test-assert "range? (range 4 2)" (range? (range 4 2)))
 (test-assert "range? (range 4 2 3)" (range? (range 4 2 3)))
-(test-assert "range? (range-step (range 4 2 3))" (= (range-step (range 4 2 3) 2) 8))
+(test-assert "range? (range-step (range 4 2 3))" (= (range-step (range 4 2 3) 2) 6))
 (test-assert "range? (range '#(4 2 3))" (range? (range '#(4 2 3))))
 (test-assert "range? (range '#(2 2) 2)" (range? (range '#(2 2) 2)))
 
@@ -286,18 +290,52 @@
 (test-assert "range-volume" (= (range-volume range-2x2) 4))
 
 (test-assert
- "for-range! positive fixnum"
- (let ((src '#(1 2 3))
-       (dst (make-vector 3)))
-   (and (= (for-range! (lambda (idx start len) (vector-set! dst idx (+ idx 1))) 3) 3)
-        (equal? src dst))))
+ "range-row dimension row 0"
+ (=
+  (range-rank (range-row range-2x2 0))
+  1))
 
 (test-assert
- "for-range! positive fixnum"
- (let ((src '#(1 2 3))
-       (dst '()))
-   (and (= (for-range! (lambda (idx start len) (set! dst (cons (+ idx 1) dst))) -3) 3)
-        (equal? src (list->vector dst)))))
+ "range-row volume row 0"
+ (=
+  (range-volume (range-row range-2x2 0))
+  2))
+
+(test-assert
+ "range-row dimension row 1"
+ (=
+  (range-rank (range-row range-2x2 1))
+  1))
+
+(test-assert
+ "range-row volume row 1"
+ (=
+  (range-volume (range-row range-2x2 0))
+  2))
+
+;;** call-in-range
+
+(test-assert
+ "call-in-range: base case"
+ (equal?
+  (call-in-range
+   (range 1)
+   (lambda (opaque-target-index segment-limit zero-based-loop-index)
+     (vector segment-limit opaque-target-index zero-based-loop-index))
+   0)
+  '#(1 0 0)))
+
+(test-assert
+ "call-in-range: trivial non-base case"
+ (equal?
+  (call-in-range
+   (range 2)
+   (lambda (opaque-target-index segment-limit zero-based-loop-index)
+     (vector opaque-target-index segment-limit zero-based-loop-index))
+   1)
+  '#(1 1 1)))
+
+;;** mdv-ref
 
 (test-condition
  "mdv-ref left index negative OOR exception on -1"
@@ -342,6 +380,22 @@
  "mdv-ref index OOR exception"
  (mdv-ref '#(11 12 21 22) (range-row range-2x2 0) 2)
  range-exception?)
+
+;;** for-range!
+
+(test-assert
+ "for-range! positive fixnum"
+ (let ((src '#(1 2 3))
+       (dst (make-vector 3)))
+   (and (= (for-range! (lambda (idx start len) (vector-set! dst idx (+ idx 1))) 3) 3)
+        (equal? src dst))))
+
+(test-assert
+ "for-range! positive fixnum"
+ (let ((src '#(1 2 3))
+       (dst '()))
+   (and (= (for-range! (lambda (idx start len) (set! dst (cons (+ idx 1) dst))) -3) 3)
+        (equal? src (list->vector dst)))))
 
 (test-assert
  "for-range! range 1d ascending"
@@ -389,30 +443,6 @@
         (equal? pat (list->vector (reverse dst))))))
 
 (test-assert
- "range-row dimension row 0"
- (=
-  (range-rank (range-row range-2x2 0))
-  1))
-
-(test-assert
- "range-row volume row 0"
- (=
-  (range-volume (range-row range-2x2 0))
-  2))
-
-(test-assert
- "range-row dimension row 1"
- (=
-  (range-rank (range-row range-2x2 1))
-  1))
-
-(test-assert
- "range-row volume row 1"
- (=
-  (range-volume (range-row range-2x2 0))
-  2))
-
-(test-assert
  "for-range! nested call sequence range 2x2"
  (let ((pat '#((0 0) (0 1) (1 0) (1 1)))
        (dst '()))
@@ -449,14 +479,14 @@
     (equal? roflpat (list->vector (reverse rofl))))) )
 
 (test-assert
- "for-range! nested call sequence offset/length range 2x2x3"
+ "for-range! nested call sequence offset/length range 3x2x2"
  (let ((cpat '#((0 0) (0 1) (1 0) (1 1) (2 0) (2 1)))
        (roflpat '#((0 0 4) (1 4 4) (2 8 4)))
        (rofl '())
        (dst '()))
    (and
     (=
-     (let ((full (range 2 2 3)))
+     (let ((full (range 3 2 2)))
        (for-range!
         (lambda (row start0 len)
           (set! rofl `((,row ,start0 ,len) . ,rofl))
@@ -469,7 +499,7 @@
 
 
 (test-assert
- "for-range! nested call sequence offset/length range 2x2x3"
+ "for-range! nested call sequence offset/length range 3x2x2"
  (let ((cpat '#((0 0) (0 1) (1 0) (1 1) (2 0) (2 1)))
        (roflpat '#((0 0 4) (1 4 4) (2 8 4)))
        (colpat '((row 0 col 0 offset 0 len 2)
@@ -483,7 +513,7 @@
        (dst '()))
    (and
     (=
-     (let ((full (range 2 2 3)))
+     (let ((full (range 3 2 2)))
        (for-range!
         (lambda (row start0 len)
           (set! rofl `((,row ,start0 ,len) . ,rofl))
@@ -501,7 +531,7 @@
     (equal? colpat (reverse coll)))))
 
 (test-assert
- "for-range! nested call sequence offset/length range 3x2x2"
+ "for-range! nested call sequence offset/length range 2x2x3"
  (let ((cpat '#((0 0) (0 1) (1 0) (1 1)))
        (roflpat '#((0 0 6) (1 6 6)))
        (colpat '((row 0 col 0 offset 0 len 3)
@@ -513,7 +543,7 @@
        (dst '()))
    (and
     (=
-     (let ((full (range 3 2 2)))
+     (let ((full (range 2 2 3)))
        (for-range!
         (lambda (row start0 len)
           (set! rofl `((,row ,start0 ,len) . ,rofl))
@@ -533,16 +563,16 @@
  )
 
 (define (test-product-1/3x3/1 TESTNO)
-  (let* ((r3x1 (range 3 1))
-         (r1x3 (range 1 3))
+  (let* ((r1x3 (range 1 3))
+         (r3x1 (range 3 1))
          (r3x3 (range 3 3))
          (res (make-vector (range-volume r3x3) #f)))
     (receive (rl rr)
         (case TESTNO
-          ((1) (values r1x3 r3x1))
-          ((2) (values r3x1 r1x3))
-          ((3) (values r1x3 r1x3))
-          ((4) (values r3x1 r3x1))
+          ((1) (values r3x1 r1x3))
+          ((2) (values r1x3 r3x1))
+          ((3) (values r3x1 r3x1))
+          ((4) (values r1x3 r1x3))
           (else (error "out of test cases")))
       (let* ((call-number 0)
              (calls
@@ -564,7 +594,7 @@
   )
 
 (test-assert
- "product-1/3x3/1 TESTNO 1: r1x3 r3x1"
+ "product-1/3x3/1 TESTNO 1: r3x1 r1x3"
  (let* ((TESTNO 1)
         (pat
          '#((call 1 row 0 rowlen 1 col 0 collen 3)
@@ -582,7 +612,7 @@
  )
 
 (test-assert
- "product-1/3x3/1 TESTNO 2: r3x1 r1x3"
+ "product-1/3x3/1 TESTNO 2: r1x3 r3x1"
  (let* ((TESTNO 2)
         (pat
          '#((call 1 row 0 rowlen 3 col 0 collen 1)
@@ -601,7 +631,7 @@
  )
 
 (test-assert
- "product-1/3x3/1 TESTNO 3: r1x3 r1x3"
+ "product-1/3x3/1 TESTNO 3: r3x1 r3x1"
  (let* ((TESTNO 3)
         (pat
          '#((call 1 row 0 rowlen 1 col 0 collen 1)
@@ -618,13 +648,64 @@
 
 
 (test-assert
- "product-1/3x3/1 TESTNO 4; r3x1 r3x1"
+ "product-1/3x3/1 TESTNO 4; r1x3 r1x3"
  (let* ((TESTNO 4)
+        ;; TBD: optimize code to take tthe BEST-CASE path and optimize
+        ;; this path.
+        (BEST-CASE 1)
         (pat '#((call 1 row 0 rowlen 3 col 0 collen 3) #f #f #f #f #f #f #f #f)))
    (receive (calls res) (test-product-1/3x3/1 TESTNO)
-     (and (= calls 1) (equal? pat res))))
+     (and (= calls BEST-CASE) (equal? pat res)))))
 
- )
+(let () ;; shared storage I
+
+  (define storage (vector 0. 1. 2.))
+  (define mask-3x1 (vector->rangemask '#(3 1))) ;; #(1 0 1 3 1 1)
+
+  (define tmp1
+    (let ((rng
+           (dev#make-range
+            1 ;; dim
+            3 ;; vol
+            0 ;; offset
+            mask-3x1)))
+      (test-assert
+       "shared storage: mdv-ref base case"
+       (eqv? (mdv-ref storage rng 1) 1.))))
+
+  (define (tX rng x y expected)
+    (test-assert
+     (list "shared storage: mdv-ref" rng x y)
+     (eqv? (mdv-ref storage rng x y) expected)))
+
+  (define (tN x rng)
+    (tX rng x 0 0.)
+    (tX rng x 1 1.)
+    (tX rng x 2 2.))
+
+  (define tmp3
+    (tN
+     0
+     (dev#make-range
+      2 ;; dim
+      3 ;; vol
+      0 ;; offset
+      mask-3x1)))
+
+  (define tmp4
+    (tN
+     1 ;; second dimension ignored
+     (dev#make-range
+      2 ;; dim
+      6 ;; vol
+      0 ;; offset
+      ;; (vector->rangemask '#(3 2))
+      ;;
+      ;; '#(3 0 1 2 3 3) -> 1,2->0
+      '#(3 0 1 2 0 3))))
+
+  #t ;; no interesting value
+  )
 
 ;|#
 ;;  eof
