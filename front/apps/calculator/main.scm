@@ -13,15 +13,25 @@
  ((or #;android debug)
   ($debug-trace-triggers #t)
   ($async-exceptions 'catch)
-  ) (else #f))
+  ($kick-style 'sync)
+  (on-ot0-path-lookup
+   (lambda (node uptr thr nodeid family sa)
+     ;; (debug 'LOOKUP (number->string nodeid 16))
+     (debug 'LOOKUP (hexstr nodeid 12))
+     #; (debug 'LookupFamily family)
+     #f))
+  )
+ (else #f))
 
 (cond-expand
  (android
   (define (setup-heartbeat!)
-    #;((c-lambda () scheme-object "___setup_heartbeat_interrupt_handling"))
+    ((c-lambda () scheme-object "___setup_heartbeat_interrupt_handling"))
     (##set-heartbeat-interval! (exact->inexact 1/100)))
   (setup-heartbeat!)
   ($kick-style 'sync) (kick/sync! (lambda () (kick-style 'sync)))
+  ;; BEWARE, experimental
+  (kick! (lambda () (fossils-enable-http-hijacking #t)))
   )
  (else))
 

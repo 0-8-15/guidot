@@ -18,6 +18,13 @@
 (define normal-exit exit)
 ;;(set! exit _exit) ;; FIXME: with lambdanative we see exit 0 always!
 
+(set!
+ ##exit
+ (let ((old ##exit))
+   (lambda args
+     (##print-maturity-warnings!)
+     (apply old args))))
+
 ;; (include "DejaVuSans-14,24,32.scm") currently in guide.
 
 (include "visit-symbol-table.scm")
