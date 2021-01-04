@@ -2,8 +2,6 @@
 
 (include "../../front/apps/glgui/DejaVuSans-14,24,32.scm")
 
-(utf8string->unicode:on-encoding-error 'replace)
-
 ;;;** X11
 
 (cond-expand
@@ -17,6 +15,10 @@
   ;; i3 specific
   (let ((i3cmd (string-append "[id=" (number->string (microgl-getWindow)) "] floating enable")))
     (open-process `(path: "i3-msg" arguments: (,i3cmd)))))
+
+;;;** GLC a fixes and improvements to glcore
+
+(include "glc.scm")
 
 ;;** Imports
 
@@ -36,12 +38,14 @@
   )
 
 (define (guide-rectangle-width obj)
+  ;; FIXME: OVERHEAD
   (let ((interval (guide-rectangle-measures obj)))
-    (- (interval-upper-bound interval 0) (interval-lower-bound interval 0))))
+    (- (mdvector-interval-upper-bound interval 0) (mdvector-interval-lower-bound interval 0))))
 
 (define (guide-rectangle-height obj)
+  ;; FIXME: OVERHEAD
   (let ((interval (guide-rectangle-measures obj)))
-    (- (interval-upper-bound interval 1) (interval-lower-bound interval 1))))
+    (- (mdvector-interval-upper-bound interval 1) (mdvector-interval-lower-bound interval 1))))
 
 (define (guide-default-event-dispatch/fallback-to-glgui rect payload event x y)
   ;; fallback to glgui
@@ -102,7 +106,8 @@
             (on-any-event events)
             (gui-before exposed)
             (gui-after hidden))
-     (unless (interval? in) (error "make-guide-payload: 'in:' must be an interval" in))
+     (unless (mdvector-interval? in)
+       (error "make-guide-payload: 'in:' must be an interval" in))
      (cond
       ((or (eq? lifespan #f) (eq? lifespan 'ephemeral))
        (make-guide-payload in widget on-any-event gui-before remove))
@@ -110,7 +115,7 @@
 
 (define guide-open-rectangle
   (let ((empty (make-guide-payload
-                in: (make-interval '#(0 0) '#(1 1))
+                in: (make-mdvector-interval 2 0 0 1 1)
                 gui-before: #f
                 gui-after: #f
                 )))
@@ -140,7 +145,7 @@
 (define (guide-make-gui #!optional (content (make-glgui)))
   (make-guide-rectangle
    content
-   (make-interval '#(0 0) (vector (glgui-width-get) (glgui-height-get)))))
+   (make-mdvector-interval 2 0 0 (glgui-width-get) (glgui-height-get))))
 
 (define (guide-make-payload gui #!optional name)
   (guide-open-rectangle gui name))
@@ -211,17 +216,6 @@
    (lambda (#!key
             colors)
      (cond
-      ((array? colors)
-       (cond
-        #;((make-guide-colorscheme colors))
-        (else
-         (let ((domain #f) ;; keep domain
-               (safe #t)   ;; TBD: depend on debug
-               (mutable #f))
-           (make-guide-colorscheme
-            (array-copy
-             (array-map guide-color->glColor colors)
-             u64-storage-class domain mutable safe))))))
       ((and (vector? colors)
             (fx>= (vector-length colors) min-colors))
        ;; FIXME: create u64vector instead
@@ -234,7 +228,6 @@
           (lambda (old new)
             (cond
              ((guide-colorscheme? new) new)
-             ((array? new) (make-guide-colorscheme colors: new))
              ((vector? new) (make-guide-colorscheme colors: new))
              (else new))))
          (current-colorscheme
@@ -244,16 +237,16 @@
            filter: convert
            name: "The current color scheme"))
         (colors #f)
-        (array-ref #f))
+        (%%colors-ref #f))
     (define (guide-select-color pref . more)
       (cond
-       ((and (pair? more) array-ref)
-        (apply array-ref pref more))
+       ((and (pair? more) %%colors-ref)
+        (apply %%colors-ref pref more))
        ((number? pref)
         (if (negative? pref)
             (let ((index (- -1 pref)))
               (cond
-               (array-ref (array-ref index))
+               (%%colors-ref (%%colors-ref index))
                ((vector? colors)
                 (vector-ref colors (modulo index (vector-length colors))))
                (else (error "guide-select-color: bad spec:" pref more))))
@@ -261,22 +254,12 @@
        (else (error "guide-select-color: bad spec:" pref more))))
     (define (update-cache!)
       (set! colors (guide-colorscheme-colors (current-colorscheme)))
-      (set! array-ref (and (array? colors) (array-getter colors))))
+      ;; (set! %%colors-ref (and (array? colors) (array-getter colors)))
+      #f)
     (update-cache!)
     (wire! current-colorscheme post: update-cache!)
     (wire! current-colorscheme post: glgui-wakeup!)
     (values current-colorscheme guide-select-color)))
-
-(define guide-make-color-array ;; experimental
-  (let* ((min-colors 4)
-         (min-interval (make-interval '#(0) (vector min-colors))))
-    (lambda (obj #!key (interval min-interval) (convert make-glColor))
-      (cond
-       ((and (vector? obj) (fx>= (vector-length obj) min-colors))
-        (let* ((cap (max (interval-volume interval) (vector-length obj)))
-               (colors (lambda (i) (convert (vector-ref obj (modulo i cap))))))
-          (make-array interval colors)))
-       (error "guide-make-color-array: invalid argument" obj)))))
 
 (define (guide-select-color-1)
   (guide-select-color -1))
@@ -295,14 +278,6 @@
 ;;; lowlevel, deprecated (kick (guide-current-colorscheme (make-guide-colorscheme colors: (vector Blue Brown Red Blue))))
 
 (kick (guide-current-colorscheme (vector Blue Brown Red Blue)))
-
-(let* ((min-colors 4)
-       (interval (make-interval '#(0) (vector min-colors)))
-       (cv (vector Blue Brown Blue Red))
-       (colors (lambda (i) (make-glColor (vector-ref cv i))))
-       (color-array (make-array interval colors))
-       (glcolors (array-map guide-color->glColor color-array)))
-  (kick (guide-current-colorscheme glcolors)))
 
 (kick (guide-current-colorscheme (guide-make-color-array (vector White Black Yellow Green))))
 
