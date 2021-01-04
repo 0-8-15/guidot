@@ -33,7 +33,11 @@
 (define mdvector-interval?)
 (define make-mdvector-interval
   ;; FIXME: make it a typed pair of an offset vector and a range!
-  (let ((tag '(exact positive)))
+  (let ((tag '(exact positive))
+        (d1 (range '#(2 1)))
+        (d2 (range '#(2 2)))
+        (d3 (range '#(2 3)))
+        (d4 (range '#(2 4))))
     (set! mdvector-interval?
           (lambda (obj) (and (mdvector? obj) (eq? (mdvector-special obj) tag))))
     (lambda (dimensions . inits)
@@ -42,7 +46,12 @@
       (unless (and (valid? dimensions) (positive? dimensions))
         (##raise-range-exception 1 'make-mdvector-interval dimensions))
       (make-mdvector
-       (range dimensions 2)
+       (case dimensions
+         ((4) d4)
+         ((2) d2)
+         ((3) d3)
+         ((1) d1)
+         (else (range (vector 2 dimensions))))
        (let* ((vec (apply vector inits))
               (len (vector-length vec)))
          (unless (even? len)
@@ -206,9 +215,17 @@
     %%make-mdvector-color))
 
 (define %%make-single-color-mdv/1
-  (let ((range-rgba (range 4)))
+  (let ((range-rgba/1 (range 4))
+        (range-rgba/2 (range 2 4))
+        (range-rgba/3 (range 3 4))
+        (range-rgba/4 (range 4 4)))
     (define (make-single-color-mdv/1 size color)
-      (let* ((rng (range size 4))
+      (let* ((rng (case size
+                    ((4) range-rgba/4)
+                    ((2) range-rgba/2)
+                    ((3) range-rgba/3)
+                    ((1) range-rgba/1)
+                    (else (range (vector 4 size)))))
              (storage (make-u8vector (range-volume rng))))
         (for-range-index! size (lambda (i) (u8vector/32-set! storage (fx* i 4) color)))
         (%%make-mdvector-color rng storage)))
