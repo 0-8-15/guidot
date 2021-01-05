@@ -247,7 +247,7 @@
         (lambda (rng storage)
           ;; safe&slow: (make-mdvector rng storage tag (range-volume rng))
           (let ((storage-offset 0))
-            (allocate-make-mdvector storage storage-offset rng tag)))))
+            (allocate-mdvector storage storage-offset rng tag)))))
 
 (define (make-legacy-texcoords x0 y0 x1 y1)
   (%%make-mdvector-texcoords
@@ -257,6 +257,41 @@
     x1 y1
     x0 y0
     x1 y0)))
+
+(define (cliptexcoords tex area clip)
+  (define (clipproc full-volume texture-volume clip-offset texture-origin)
+    ;;; TBD: is this correct at all?
+    (+ (if (= full-volume 0) ;; avoid device by zero
+           0
+           (*
+            (/ clip-offset full-volume)
+            texture-volume))
+       texture-origin))
+  (unless (guide-texcoords? tex) (error "illegal parameter" cliptexcoords 1 tex))
+  (unless (mdvector-interval? area) (error "illegal parameter" cliptexcoords 2 area))
+  (unless (mdvector-interval? clip) (error "illegal parameter" cliptexcoords 3 clip))
+  ;; Canonical implementation. Rarely run, left as example.
+  ;;
+  ;; TBD: known to be 4 corners, maybe inline.
+  (let* ((tsv (mdvector-body tex))
+         (trv (make-f32vector (f32vector-length tsv)))
+         (texrng (mdvector-range tex))
+         (texidx (mdv-indexer texrng)))
+    (do ((i (fx- (range-volume texrng) 1) (fx- i 2)))
+        ((fx< i 0) (%%make-mdvector-texcoords texrng trv))
+      (let* ((v (modulo i 2))
+             ;; outer
+             (full-volume (fx- (mdvector/vector-ref area v 1) (mdvector/vector-ref area v 0)))
+             (texture-volume (- (f32vector-ref tsv (texidx v 1)) (f32vector-ref tsv (texidx v 0)))))
+        (let* ((bound 0)
+               (i (fx- i 1))
+               (clip-offset (fx- (mdvector/vector-ref clip v bound) (mdvector/vector-ref area v bound)))
+               (texture-origin (f32vector-ref tsv i)))
+          (f32vector-set! trv i (clipproc full-volume texture-volume clip-offset texture-origin)))
+        (let* ((bound 1)
+               (clip-offset (fx- (mdvector/vector-ref clip v bound) (mdvector/vector-ref area v bound)))
+               (texture-origin (f32vector-ref tsv i)))
+          (f32vector-set! trv i (clipproc full-volume texture-volume clip-offset texture-origin)))))))
 
 ;;;**
 
@@ -515,13 +550,15 @@
         (@y2 (glC:image-yno img)))
     (make-legacy-texcoords @x1 @y1 @x2 @y2)))
 
-(define (glC:image-clip-texcoords img clip-interval)
+(define (glC:image-clip-texcoords img clip)
   (let ((@x1 (glC:image-xsw img))
         (@y1 (glC:image-ysw img))
         (@x2 (glC:image-xno img))
         (@y2 (glC:image-yno img)))
-    (NYI "glC:image-clip-texcoords")
-    (make-legacy-texcoords @x1 @y1 @x2 @y2)))
+    (cliptexcoords
+     (make-legacy-texcoords @x1 @y1 @x2 @y2)
+     (make-mdvector-interval 2 0 0 (glC:image-w img) (glC:image-h img))
+     clip)))
 
 (define (glC:image->guide-image img #!optional (position #f) (y0 0))
   (let ((interval
