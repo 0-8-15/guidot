@@ -723,7 +723,8 @@
        ((procedure? x) (set! active x))
        ((eq? #t x) (set! active compiled))
        ((eq? #f x) (set! active original))
-       (else (error "unhandled" x)))))))
+       (else (error "unhandled" x)))
+      (set! glCoreTextureDraw active)))))
 
 ($glC:overwrite-glcore #t)
 
@@ -764,7 +765,7 @@
            (goy (exact->inexact (glgui:glyph-offsety glyph)))
            (gax (exact->inexact (glgui:glyph-advancex glyph)))
            (x (fl+ x gox))
-           (y (fl+ y goy (fl- (exact->inexact gh)))))
+           (y (fl- (fl+ y goy) (exact->inexact gh))))
       (f32vector x y 0.)))
   (MATURITY 0 "working: renders glyp at correct position" loc: glC:rederglyph-into!0)
   (let* ((img glCimage)
