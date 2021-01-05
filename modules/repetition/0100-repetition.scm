@@ -524,7 +524,7 @@
   special ;; indicator if body is not a generic Scheme vector
   ) ;; mdvector
 
-(set! allocate-make-mdvector make-mdvector)
+(set! allocate-mdvector make-mdvector)
 
 (set!
  make-mdvector
@@ -538,12 +538,46 @@
               (fx< storage-size (fx+ storage-offset (range-volume ?range))))
      (##raise-range-exception 2 'make-mdvector ?range storage-size storage-offset))
    (when (number? ?range) (set! ?range (range ?range)))
-   (allocate-make-mdvector body storage-offset ?range special)))
+   (allocate-mdvector body storage-offset ?range special)))
 
 (define (mdvector-special? obj key)
   (and (mdvector? obj)
        (let ((s (mdvector-special obj)))
          (and (pair? s) (memq key s)))))
+
+(define (mdvector/vector-ref mdv i1 . more) ;; experimental
+  (let* ((rng (mdvector-range mdv))
+         (idx (mdv-indexer rng)))
+    (vector-ref
+     (mdvector-body mdv)
+     (cond
+      ((null? more) (idx i1))
+      (else (apply idx i1 more))))))
+
+(define (mdvector-ref mdv i1 . more) ;; experimental
+  (let* ((rng (mdvector-range mdv))
+         (body (mdvector-body mdv))
+         (idx (mdv-indexer rng)))
+    (cond
+     ((vector? body)
+      (vector-ref
+       body
+       (cond
+        ((null? more) (idx i1))
+        (else (apply idx i1 more)))))
+     ((f32vector? body)
+      (f32vector-ref
+       body
+       (cond
+        ((null? more) (idx i1))
+        (else (apply idx i1 more)))))
+     ((u8vector? body)
+      (u8vector-ref
+       body
+       (cond
+        ((null? more) (idx i1))
+        (else (apply idx i1 more)))))
+     (else "unhandled mdvector kind" mdvector-ref))))
 
 ;; for-range! proc! range ... call f with range numbers of indices in lecixographic order
 ;;
