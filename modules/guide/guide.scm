@@ -142,10 +142,11 @@
             (set! current (switch-over rect current new))))))))
     guide-open-rectangle))
 
+(define (current-guide-gui-interval)
+  (make-mdvector-interval 2 0 0 (glgui-width-get) (glgui-height-get)))
+
 (define (guide-make-gui #!optional (content (make-glgui)))
-  (make-guide-rectangle
-   content
-   (make-mdvector-interval 2 0 0 (glgui-width-get) (glgui-height-get))))
+  (make-guide-rectangle content (current-guide-gui-interval)))
 
 (define (guide-make-payload gui #!optional name)
   (guide-open-rectangle gui name))
