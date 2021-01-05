@@ -1,4 +1,3 @@
-generalized-arrays
 config eventloop ln_core ln_glcore
 likely misc-conventions akwmatch unsocket
 daemonian lwip socks beaver httpproxy
