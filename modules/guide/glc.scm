@@ -146,10 +146,10 @@
             (unless (or (eq? rng vertex-rect-range2d)
                         (and (eqv? (range-rank rng) 2)
                              (eqv? (range-size rng 0) 2)))
-              (error "range not 4x2" make-mdvector-rect-vertices rng))
+              (error "range not 4x2" 'make-mdvector-rect-vertices rng))
             (when storage
-              (unless (> (f32vector-length storage) (+ (range-volume rng) offset))
-                (error "stotrage too small to hande range" make-mdvector-rect-vertices))))
+              (unless (>= (f32vector-length storage) (+ (range-volume rng) offset))
+                (error "storage too small to hande range" make-mdvector-rect-vertices))))
           (set! rng vertex-rect-range2d))
       (let ((vol (range-volume rng)))
         (unless (f32vector? storage)
@@ -234,7 +234,8 @@
 (define (make-rect-single-color-array color) ;; 4 sides each a color
   (%%make-single-color-mdv/1 4 color))
 
-(define guide-color-black-array (make-rect-single-color-array Black))
+(define guide-color-transparent+black-array
+  (make-rect-single-color-array (color-rgba 0 0 0 255)))
 
 ;;;
 
@@ -257,6 +258,10 @@
     x1 y1
     x0 y0
     x1 y0)))
+
+(define legacy-rect-full-texcoords (make-legacy-texcoords 0.1 0.1 0.9 0.9))
+
+(define rect-full-texcoords (make-legacy-texcoords 0. 0. 1. 1.))
 
 (define (cliptexcoords tex area clip)
   (define (clipproc full-volume texture-volume clip-offset texture-origin)
@@ -441,7 +446,7 @@
 (define (glC:fill-rect-full-vertex-set! target idx interval color)
   (MATURITY -1 "remove dependency on srfi 179" loc: glC:fill-rect-full-vertex-set!)
   (let* ((vertices (make-mdvector-rect-vertices/mdvector-interval interval))
-         (texcoords rect-texcoords)
+         (texcoords rect-full-texcoords)
          (colors (make-rect-single-color-array color)))
     (glC:vertex-set-set! target idx vertices texcoords colors)
     target))
@@ -496,10 +501,14 @@
 ;;;** Clipping
 
 (define glC:clip-int
-  ;; TBD: for the time being, should look at lnglgui's clip to.
-  (let ((i #f))
+  ;; TBD: for the time being, should look at lnglgui's clip too.
+  (let ((i (delay
+             ;; note: NOT inlinung (current-guide-gui-interval) as
+             ;; this one is supposed to be pushed to lower level and
+             ;; the other one expected to be changed.
+             (make-mdvector-interval 2 0 0 (glgui-width-get) (glgui-height-get)))))
     (case-lambda
-     (() i)
+     (() (force i))
      ((v) (unless (or (mdvector-interval? v) (not v)) (error "not an mdvector-interval or #f" v)) (set! i v))
      ((x0 y0 x1 y1) (set! i (make-mdvector-interval 2 x0 y0 x1 y1))))))
 
@@ -561,30 +570,21 @@
      clip)))
 
 (define (glC:image->guide-image img #!optional (position #f) (y0 0))
-  (let ((interval
-         (cond
-          ((not position)
-           (make-mdvector-interval 2 0 0 (glC:image-w img) (glC:image-h img)))
-          ((number? position)
-           (make-mdvector-interval
-            2
-            (round (inexact->exact position)) (round (inexact->exact y0))
-            (glC:image-w img) (glC:image-h img)))
-          ((mdvector-interval? position) position)
-          (else (error "glC:image->guide-image: illegal position" position))))
-        (vertices
-         (cond
-          ((not position)
-           (make-mdvector-rect-vertices/x0y0x1y1 0 0 (glC:image-w img) (glC:image-h img)))
-          ((number? position)
-           (make-mdvector-rect-vertices/x0y0x1y1
-            (round (inexact->exact position)) (round (inexact->exact y0))
-            (glC:image-w img) (glC:image-h img)))
-          (else (error "glC:image->guide-image: illegal position" position))))
-        (colors #f)
-        (texture
-         (let ((t (glC:image-t img)))
-           (if (glCore:texture? t) t (glCore:textures-ref t identity)))))
+  (let* ((interval
+          (cond
+           ((not position)
+            (make-mdvector-interval 2 0 0 (glC:image-w img) (glC:image-h img)))
+           ((number? position)
+            (let ((x (round (inexact->exact position)))
+                  (y (round (inexact->exact y0))))
+              (make-mdvector-interval 2 x y (fx+ x (glC:image-w img)) (fx+ y (glC:image-h img)))))
+           ((mdvector-interval? position) position)
+           (else (error "glC:image->guide-image: illegal position" position))))
+         (vertices (make-mdvector-rect-vertices/mdvector-interval interval))
+         (colors #f)
+         (texture
+          (let ((t (glC:image-t img)))
+            (if (glCore:texture? t) t (glCore:textures-ref t identity)))))
     (make-guide-image
      texture
      interval
@@ -596,18 +596,18 @@
   ;; TBD: update arglist
   (define (color-conv color)
     (cond ;; FIXME define & use consistent conversion
-     ((or (equal? color 0) (not color)) guide-color-black-array)
+     ((not color) guide-color-transparent+black-array)
      ((fixnum? color) (make-rect-single-color-array color))
      (else colors)))
   (if (and (fx> w 0) (fx> h 0))
       (let* ((drawinterval0 (make-mdvector-interval 2 0 0 w h))
-             (positioned
+             #;(positioned
               (and clip-int
-                   (let (#;(img-interval
+                   (let ((img-interval
                          (make-vector-dimension (vector (glC:image-w img) (glC:image-h img))))
                          (xfi (inexact->exact (round x)))
                          (yfi (inexact->exact (round y))))
-                     #;(interval-translate img-interval (vector xfi yfi))
+                     (interval-translate img-interval (vector xfi yfi))
                      (make-mdvector-interval 2 xfi (fx+ xfi w) yfi (fx+ yfi h)))))
              (drawinterval (if clip-int (glC:clip drawinterval0 clip-int) drawinterval0)))
         (if drawinterval
@@ -617,7 +617,7 @@
               (unless (mdvector-interval? drawinterval)
                 (MATURITY -10 "unless (mdvector-interval? drawinterval)" loc: 'glC:ImageTextureDrawInto!))
               (let ((end (let ((texcoords
-                                (if (eq? drawinterval 0)
+                                (if (eq? drawinterval drawinterval0)
                                     (glC:image-legacy-texcoords img)
                                     (glC:image-clip-texcoords img drawinterval)))
                                (vertices (make-mdvector-rect-vertices/mdvector-interval drawinterval))
@@ -650,67 +650,43 @@
 (define (%%glC:read-legacy-global-color-variable)
   (color-rgba glCore:red glCore:green glCore:blue glCore:alpha))
 
-(define (MATURITY-1:glC:glCoreTextureDraw x y w0 h0 t x1 y1 x2 y2 r #!rest colors)
+(define (glC:glCoreTextureDraw! x y w0 h0 t x1 y1 x2 y2 r #!rest colors)
   #; (apply glCoreTextureDraw x y w0 h0 t x1 y1 x2 y2 r colors)
+  (define (color-conv color)
+    (cond ;; FIXME define & use consistent conversion
+     ((fixnum? color) (make-rect-single-color-array color))
+     ((not color) guide-color-transparent+black-array)
+     (else color)))
   (let ((entry (%%glCore:textures-ref t #f)))
     (if entry
-        (let* ((w0 (if (fixnum? w0) w0 (inexact->exact (floor w0))))
-               (h0 (if (fixnum? h0) h0 (inexact->exact (floor h0))))
-               (w (if (fx= w0 0) (glCore:texture-width entry) w0))
-               (h (if (fx= h0 0) (glCore:texture-height entry) h0))
-               (x1 (exact->inexact x1))
-               (y1 (exact->inexact y1))
-               (x2 (exact->inexact x2))
-               (y2 (exact->inexact y2))
-               (colors (if (pair? colors)
-                           (apply vector (debug 'COLORS!!! colors))
-                           (%%glC:read-legacy-global-color-variable)))
-               (img (make-glC:image w h entry x1 y1 x2 y2)))
-          (glC:ImageTextureDraw! img w h (debug 'colors colors) x y r))
+        (let ((w (if (= w0 0) (glCore:texture-width entry) (round (inexact->exact w0))))
+              (h (if (= h0 0) (glCore:texture-height entry) (round (inexact->exact h0)))))
+          (let* ((target (create-glC:vertex-set 2 4))
+                 (idx 0)
+                 (interval (make-mdvector-interval 2 0 0 w h))
+                 (colors (color-conv
+                          (if (pair? colors)
+                              (apply vector (debug 'COLORS!!! colors))
+                              (%%glC:read-legacy-global-color-variable))))
+                 (vertices (make-mdvector-rect-vertices/mdvector-interval interval))
+                 (texcoords (let ((x1 (exact->inexact x1))
+                                  (y1 (exact->inexact y1))
+                                  (x2 (exact->inexact x2))
+                                  (y2 (exact->inexact y2)))
+                              (make-legacy-texcoords x1 y1 x2 y2)))
+                 (end (let ()
+                        (glC:vertex-set-set! target idx vertices texcoords colors)))
+                 (texture t)
+                 (shift (f32vector (exact->inexact x) (exact->inexact y) 0.))
+                 (scale #f)
+                 (rot #f))
+            (if (fx> end idx)
+                (glC:TextureDrawGlArrays texture target scale shift rot))))
         (log-error "glCoreTextureDraw: unbound index " t))))
-
-(define (MATURITY-3:glC:glCoreTextureDraw x y w0 h0 t x1 y1 x2 y2 r #!rest colors)
-  (MATURITY -10 "Gone, KEEP FOR REFERENCE for a while!" loc: MATURITY-3:glC:glCoreTextureDraw)
-  #; (apply glCoreTextureDraw x y w0 h0 t x1 y1 x2 y2 r colors)
-  (let ((entry (%%glCore:textures-ref t #f)))
-    (if entry
-        (if (> (CCML) -2)
-            (let* ((w0 (if (fixnum? w0) w0 (inexact->exact (floor w0))))
-                   (h0 (if (fixnum? h0) h0 (inexact->exact (floor h0))))
-                   (w (if (fx= w0 0) (glCore:texture-width entry) w0))
-                   (h (if (fx= h0 0) (glCore:texture-height entry) h0))
-                   (x1 (exact->inexact x1))
-                   (y1 (exact->inexact y1))
-                   (x2 (exact->inexact x2))
-                   (y2 (exact->inexact y2))
-                   (colors (if (pair? colors)
-                               (apply vector (debug 'COLORS!!! colors))
-                               (%%glC:read-legacy-global-color-variable)))
-                   (img (make-glC:image w h entry x1 y1 x2 y2)))
-              (if #t ;;
-                  (glC:ImageTextureDraw! img w h (debug 'colors colors) x y r)))
-            (let ((w (flo (if (fx= (fix w0) 0) (glCore:texture-width entry) w0)))
-                  (h (flo (if (fx= (fix h0) 0) (glCore:texture-height entry) h0))))
-              (if (null? glcore:cliplist)
-                  (if (pair? colors)
-                      (glCore:TextureDrawUnClipped
-                       (flo x) (flo y) w h t (flo x1) (flo y1) (flo x2) (flo y2) (flo r)
-                       (car colors))
-                      (glCore:TextureDrawUnClipped
-                       (flo x) (flo y) w h t (flo x1) (flo y1) (flo x2) (flo y2) (flo r)))
-                  (if (pair? colors)
-                      (glCore:TextureDrawClipped
-                       (flo x) (flo y) w h t (flo x1) (flo y1) (flo x2) (flo y2) (flo r)
-                       (car colors))
-                      (glCore:TextureDrawClipped
-                       (flo x) (flo y) w h t (flo x1) (flo y1) (flo x2) (flo y2) (flo r))))))
-        (log-error "glCoreTextureDraw: unbound index " t))))
-
-(define glC:glCoreTextureDraw MATURITY-1:glC:glCoreTextureDraw!)
 
 (define $glC:overwrite-glcore
   (let ((original glCoreTextureDraw)
-        (compiled glC:glCoreTextureDraw)
+        (compiled glC:glCoreTextureDraw!)
         (active glCoreTextureDraw))
     (case-lambda
      (()
@@ -790,8 +766,8 @@
         (idx 0))
     (define (color-conv color)
       (cond ;; FIXME define & use consistent conversion
-       ((or (= color 0) (not color)) guide-color-black-array)
        ((fixnum? color) (make-rect-single-color-array color))
+       ((not color) guide-color-transparent+black-array)
        (else color)))
     (define (renderglyph x y glyph img color) ;; NOTE: positions are inexact!
       ;; => x-delta
