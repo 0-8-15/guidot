@@ -225,6 +225,21 @@
 (define mdv-ref/getter)
 (define mdv-indexer) ;; range size offset -> lambda with rank arity
 
+(define-macro (macro-%%range-start//checks obj dim)
+  (let ((step (gensym 'step)))
+    `(let ((,step (%%range-in ,obj)))
+       (cond
+        ((vector? ,step)
+         (vector-ref ,step (fx+ (fx* ,dim 3) 1)))
+        (else ,step)))))
+
+(define-macro (macro-%%range-size//checks obj dim)
+  (let ((step (gensym 'step)))
+    `(let ((,step (%%range-in ,obj)))
+       (cond
+        ((vector? ,step) (vector-ref ,step (fx* ,dim 3)))
+        (else ,step)))))
+
 ;;; (let () ;; --- range refinement ---  DEFINE-VALUES style block
   (define allocate-range make-range)
   (define %%range-structure? range?)
@@ -415,7 +430,7 @@
        (lambda (index)
          (let ((limit (%%range-volume range))
                (idx (+ (fx* index (%%range-step range 0))
-                       (%%range-start range 0))))
+                       (macro-%%range-start//checks range 0))))
            (when (or (fx>= index limit) (fx< index 0))
              (%%raise-range-exception 1 'mdv-indexer index limit))
            (fx+ storage-offset idx))))
@@ -426,17 +441,17 @@
                 (or (and
                      (let ((obj i1)
                            (lower-bound 0)
-                           (upper-bound (%%range-size range 1)))
+                           (upper-bound (macro-%%range-size//checks range 1)))
                        (and (number? obj) (integer? obj)
                             (fx>= obj lower-bound)
                             (fx< obj upper-bound)
-                            (fx* obj (%%range-start range 1)))))
+                            (fx* obj (macro-%%range-start//checks range 1)))))
                     (%%raise-range-exception 1 'mdv-indexer i1)))
                (offset
                 (or (and
                      (let ((obj i2)
                            (lower-bound 0)
-                           (upper-bound (%%range-size range 0)))
+                           (upper-bound (macro-%%range-size//checks range 0)))
                        (and (number? obj) (integer? obj)
                             (fx>= obj lower-bound)
                             (fx< obj upper-bound)
