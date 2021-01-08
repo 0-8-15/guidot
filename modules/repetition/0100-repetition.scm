@@ -547,7 +547,14 @@
           body
           #!optional
           (special #f)
-          (storage-size (vector-length body))
+          (storage-size
+           (cond
+            ((vector? body) (vector-length body))
+            ((string? body) (string-length body))
+            ((u8vector? body) (u8vector-length body))
+            ((u16vector? body) (u16vector-length body))
+            ((f32vector? body) (f32vector-length body))
+            (else ("unhandled mdvector kind" make-mdvector body))))
           (storage-offset 0))
    (when (and storage-size
               (fx< storage-size (fx+ storage-offset (range-volume ?range))))
@@ -575,7 +582,7 @@
          (idx (mdv-indexer rng)))
     (cond
      ((vector? body)
-      (vector-ref
+      (##vector-ref
        body
        (cond
         ((null? more) (idx i1))
@@ -592,7 +599,19 @@
        (cond
         ((null? more) (idx i1))
         (else (apply idx i1 more)))))
-     (else "unhandled mdvector kind" mdvector-ref))))
+     ((string? body)
+      (string-ref
+       body
+       (cond
+        ((null? more) (idx i1))
+        (else (apply idx i1 more)))))
+     ((u16vector? body)
+      (u16vector-ref
+       body
+       (cond
+        ((null? more) (idx i1))
+        (else (apply idx i1 more)))))
+     (else (error "unhandled mdvector kind" mdvector-ref)))))
 
 ;; for-range! proc! range ... call f with range numbers of indices in lecixographic order
 ;;
