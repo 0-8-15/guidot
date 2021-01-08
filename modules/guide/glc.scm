@@ -685,7 +685,6 @@
                  (interval (if clipping
                                (mdvector-interval-intersect interval0 clipping/00)
                                interval0)))
-            (when (not interval) (unless huhu (set! huhu (list  x y interval0 clipping positioned))))
             (if interval
                 (let* ((target (create-glC:vertex-set 2 4))
                        (idx 0)
@@ -703,12 +702,6 @@
                           (if (eq? interval interval0)
                               t0
                               (let ((result (cliptexcoords t0 interval0 interval)))
-                                (when (not off)
-                                  (set! off
-                                        (list 'tex t0
-                                              'src interval0 'clipped interval
-                                              'clipping clipping
-                                              'clipped result)))
                                 result))))
                        (end (let ()
                               (glC:vertex-set-set! target idx vertices texcoords colors)))
