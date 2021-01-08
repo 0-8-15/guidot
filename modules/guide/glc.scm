@@ -649,8 +649,16 @@
 (define glC:ImageTextureDrawInto! MATURITY+2:glC:ImageTextureDrawInto!)
 
 (define (glcore:cliplist-top->interval)
+  (define (conv x)
+    (cond
+     ((fixnum? x) x)
+     (else (inexact->exact (floor x)))))
   (let ((lst glcore:cliplist))
-    (and (pair? lst) (apply make-x0y0x1y1-interval/coerce (car lst)))))
+    (and (pair? lst)
+         (receive (x0 y0 x1 y1) (apply values (car lst))
+           (let ((w (- x1 x0))
+                 (h (- y1 y0)))
+             (make-mdv-rect-interval 0 0 (conv w) (conv h)))))))
 
 (define (MATURITY-2:glC:ImageTextureDraw! img w h colors x y a)
   (let ((target glC:legacy-vertex-set-2d)
@@ -681,17 +689,8 @@
           (let* ((interval0 (make-mdv-rect-interval 0 0 w h))
                  ;; TBD: remove glC:clip-mode when done debugging
                  (clipping (and (glC:clip-mode) (glcore:cliplist-top->interval)))
-                 (clipping/00
-                  (and clipping
-                       (let ((x0/fx (floor (inexact->exact x)))
-                             (y0/fx (round (inexact->exact y))))
-                         (let ((w (fx- (mdvector-interval-upper-bound clipping 0)
-                                           (mdvector-interval-lower-bound clipping 0)))
-                                   (h (fx- (mdvector-interval-upper-bound clipping 1)
-                                           (mdvector-interval-lower-bound clipping 1))))
-                               (mdvector-interval-intersect interval0 (make-mdv-rect-interval 0 0 w h))))))
                  (interval (if clipping
-                               (mdvector-interval-intersect interval0 clipping/00)
+                               (mdvector-interval-intersect interval0 clipping)
                                interval0)))
             (if interval
                 (let* ((colors (color-conv
