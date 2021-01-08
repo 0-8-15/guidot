@@ -285,7 +285,7 @@
      (else #f)))
   (define (%%make-range pat . more)
     (cond
-     ((rangemask? pat) (NYI "make-range rangemask?" pat))
+     ;; ((rangemask? pat) (NYI "make-range rangemask?" pat))
      ((vector? pat)
       (let ((rank (vector-length pat))
             (interned (%%vector->rangemask pat)))
