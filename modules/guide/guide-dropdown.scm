@@ -10,10 +10,10 @@
   (lambda (selected-display visible-tl-options current-colorscheme)
     (define (cb-tool-selection-change gui wgt type x y)
       (kick (selected-display (list-ref (visible-tl-options) (glgui-widget-get gui wgt 'current)))))
-    (let* ((xsw (interval-lower-bound selection-interval 0))
-           (ysw (interval-lower-bound selection-interval 1))
-           (xno (interval-upper-bound selection-interval 0))
-           (yno (interval-upper-bound selection-interval 1))
+    (let* ((xsw (mdvector-interval-lower-bound selection-interval 0))
+           (ysw (mdvector-interval-lower-bound selection-interval 1))
+           (xno (mdvector-interval-upper-bound selection-interval 0))
+           (yno (mdvector-interval-upper-bound selection-interval 1))
            (w (- xno xsw))
            (h (- yno ysw))
            (gui (guide-rectangle-glgui rect))
@@ -45,7 +45,7 @@
             (lambda (rect payload event x y)
               (debug 'event event)
               (cond
-               ((interval-contains-multi-index? selection-interval x y)
+               (#t
                 (guide-event-dispatch-to-payload rect (dd) event x y))
                #;((interval-contains-multi-index? content-interval x y)
                 (guide-default-event-dispatch rect (current-payload) (debug 'content event) x y))

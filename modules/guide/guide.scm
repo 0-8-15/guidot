@@ -143,7 +143,7 @@
     guide-open-rectangle))
 
 (define (current-guide-gui-interval)
-  (make-mdvector-interval 2 0 0 (glgui-width-get) (glgui-height-get)))
+  (make-mdv-rect-interval 0 0 (glgui-width-get) (glgui-height-get)))
 
 (define (guide-make-gui #!optional (content (make-glgui)))
   (make-guide-rectangle content (current-guide-gui-interval)))
