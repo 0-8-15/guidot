@@ -422,7 +422,7 @@
      (else (error "argument error" 'range-ascending? obj))))
 
   (define (%%MATURITY+4:mdv-indexer range #!optional (storage-size #f) (storage-offset 0))
-    (when (rangemask? range) (NYI "%%MATURITY+4:mdv-indexer rangemask?" range))
+    ;; (when (rangemask? range) (NYI "%%MATURITY+4:mdv-indexer rangemask?" range))
     (when (and storage-size
                (fx< storage-size (fx+ storage-offset (range-volume range))))
       (%%raise-range-exception 2 'mdv-indexer-select range storage-size storage-offset))
@@ -567,6 +567,9 @@
   (and (mdvector? obj)
        (let ((s (mdvector-special obj)))
          (and (pair? s) (memq key s)))))
+
+(define (mdvector-make-instance? key)
+  (lambda (obj) (and (mdvector? obj) (eq? key (mdvector-special obj)))))
 
 (define (mdvector/vector-ref mdv i1 . more) ;; experimental
   (let* ((rng (mdvector-range mdv))
