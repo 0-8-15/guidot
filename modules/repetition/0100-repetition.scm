@@ -240,7 +240,8 @@
         ((vector? ,step) (vector-ref ,step (fx* ,dim 3)))
         (else ,step)))))
 
-;;; (let () ;; --- range refinement ---  DEFINE-VALUES style block
+(let () ;; --- range refinement ---  DEFINE-VALUES style block
+  ;;; comment this block out for debugging/profiling, required for production
   (define allocate-range make-range)
   (define %%range-structure? range?)
   (define %%structure-range-volume range-volume)
@@ -519,7 +520,7 @@
   (set! mdv-ref/getter %%MATURITY+4:mdv-ref/getter)
   (set! mdv-ref %%MATURITY+4:mdv-ref)
   (set! mdv-indexer %%MATURITY+4:mdv-indexer)
-;;;  ) ;; end --- range refinement ---
+  ) ;; end --- range refinement ---
 
 (define mdv-idx
   (let ((extract (lambda (v idx) idx)))
