@@ -14,7 +14,9 @@
 (define (guide-floating-window!)
   ;; i3 specific
   (let ((i3cmd (string-append "[id=" (number->string (microgl-getWindow)) "] floating enable")))
-    (open-process `(path: "i3-msg" arguments: (,i3cmd)))))
+    (with-exception-catcher
+     (lambda (exn) #f)
+     (lambda () (open-process `(path: "i3-msg" arguments: (,i3cmd)))))))
 
 ;;;** GLC a fixes and improvements to glcore
 
