@@ -31,6 +31,7 @@
 ;;;** srfi-179 compat
 
 (define mdvector-interval?)
+(define make-mdv-rect-interval)
 (define make-mdvector-interval
   ;; FIXME: make it a typed pair of an offset vector and a range!
   (let ((tag '(exact positive))
@@ -40,6 +41,13 @@
         (d4 (range '#(2 4))))
     (set! mdvector-interval?
           (lambda (obj) (and (mdvector? obj) (eq? (mdvector-special obj) tag))))
+    (set! make-mdv-rect-interval
+          (lambda (l1 l2 u1 u2)
+            (define (valid? arg) (and (number? arg) (integer? arg) (not (negative? arg))))
+            (unless (and (valid? l1) (valid? u1) (fx> u1 l1)
+                         (valid? l2) (valid? u2) (fx> u2 l2))
+              (error "invalid arguments" make-mdv-rect-interval l1 l2 u1 u2))
+            (make-mdvector d2 (vector l1 l2 u1 u2) tag)))
     (lambda (dimensions . inits)
       ;; TBD: support alternative API compatible with srfi-179 for the sake of copatibility
       (define (valid? arg) (and (number? arg) (integer? arg) (not (negative? arg))))
@@ -78,7 +86,7 @@
     (cond
      ((fixnum? x) x)
      (else (inexact->exact (floor x)))))
-  (make-mdvector-interval 2 (conv x0) (conv y0) (conv x1) (conv y1)))
+  (make-mdv-rect-interval (conv x0) (conv y0) (conv x1) (conv y1)))
 
 (define (mdvector-interval-lower-bound interval dim)
   (unless (mdvector-interval? interval)
@@ -227,8 +235,10 @@
                     ((1) range-rgba/1)
                     (else (range (vector 4 size)))))
              (storage (make-u8vector (range-volume rng))))
-        (for-range-index! size (lambda (i) (u8vector/32-set! storage (fx* i 4) color)))
-        (%%make-mdvector-color rng storage)))
+        ;; (for-range-index! size (lambda (i) (u8vector/32-set! storage (fx* i 4) color)))
+        (do ((i (fx* 4 (fx- size 1)) (fx- i 4)))
+            ((eqv? i -4) (%%make-mdvector-color rng storage))
+          (u8vector/32-set! storage i color))))
     make-single-color-mdv/1))
 
 (define (make-rect-single-color-array color) ;; 4 sides each a color
@@ -265,7 +275,6 @@
 
 (define (cliptexcoords tex area clip)
   (define (clipproc full-volume texture-volume clip-offset texture-origin)
-    ;;; TBD: is this correct at all?
     (+ (if (= full-volume 0) ;; avoid device by zero
            0
            (*
@@ -284,10 +293,10 @@
          (texidx (mdv-indexer texrng)))
     (do ((i (fx- (range-volume texrng) 1) (fx- i 2)))
         ((fx< i 0) (%%make-mdvector-texcoords texrng trv))
-      (let* ((v (modulo i 2))
+      (let* ((v (modulo i 1))
              ;; outer
              (full-volume (fx- (mdvector/vector-ref area v 1) (mdvector/vector-ref area v 0)))
-             (texture-volume (- (f32vector-ref tsv (texidx v 1)) (f32vector-ref tsv (texidx v 0)))))
+             (texture-volume (fl- (f32vector-ref tsv (texidx v 1)) (f32vector-ref tsv (texidx v 0)))))
         (let* ((bound 0)
                (i (fx- i 1))
                (clip-offset (fx- (mdvector/vector-ref clip v bound) (mdvector/vector-ref area v bound)))
@@ -506,11 +515,11 @@
              ;; note: NOT inlinung (current-guide-gui-interval) as
              ;; this one is supposed to be pushed to lower level and
              ;; the other one expected to be changed.
-             (make-mdvector-interval 2 0 0 (glgui-width-get) (glgui-height-get)))))
+             (make-mdv-rect-interval 0 0 (glgui-width-get) (glgui-height-get)))))
     (case-lambda
      (() (force i))
      ((v) (unless (or (mdvector-interval? v) (not v)) (error "not an mdvector-interval or #f" v)) (set! i v))
-     ((x0 y0 x1 y1) (set! i (make-mdvector-interval 2 x0 y0 x1 y1))))))
+     ((x0 y0 x1 y1) (set! i (make-mdv-rect-interval x0 y0 x1 y1))))))
 
 (define glC:clip-mode (make-parameter #t)) ;; deprecated, for debugging.
 
@@ -566,18 +575,18 @@
         (@y2 (glC:image-yno img)))
     (cliptexcoords
      (make-legacy-texcoords @x1 @y1 @x2 @y2)
-     (make-mdvector-interval 2 0 0 (glC:image-w img) (glC:image-h img))
+     (make-mdv-rect-interval 0 0 (glC:image-w img) (glC:image-h img))
      clip)))
 
 (define (glC:image->guide-image img #!optional (position #f) (y0 0))
   (let* ((interval
           (cond
            ((not position)
-            (make-mdvector-interval 2 0 0 (glC:image-w img) (glC:image-h img)))
+            (make-mdv-rect-interval 0 0 (glC:image-w img) (glC:image-h img)))
            ((number? position)
             (let ((x (round (inexact->exact position)))
                   (y (round (inexact->exact y0))))
-              (make-mdvector-interval 2 x y (fx+ x (glC:image-w img)) (fx+ y (glC:image-h img)))))
+              (make-mdv-rect-interval x y (fx+ x (glC:image-w img)) (fx+ y (glC:image-h img)))))
            ((mdvector-interval? position) position)
            (else (error "glC:image->guide-image: illegal position" position))))
          (vertices (make-mdvector-rect-vertices/mdvector-interval interval))
@@ -600,7 +609,7 @@
      ((fixnum? color) (make-rect-single-color-array color))
      (else colors)))
   (if (and (fx> w 0) (fx> h 0))
-      (let* ((drawinterval0 (make-mdvector-interval 2 0 0 w h))
+      (let* ((drawinterval0 (make-mdv-rect-interval 0 0 w h))
              #;(positioned
               (and clip-int
                    (let ((img-interval
@@ -661,27 +670,54 @@
     (if entry
         (let ((w (if (= w0 0) (glCore:texture-width entry) (round (inexact->exact w0))))
               (h (if (= h0 0) (glCore:texture-height entry) (round (inexact->exact h0)))))
-          (let* ((target (create-glC:vertex-set 2 4))
-                 (idx 0)
-                 (interval (make-mdvector-interval 2 0 0 w h))
-                 (colors (color-conv
-                          (if (pair? colors)
-                              (apply vector (debug 'COLORS!!! colors))
-                              (%%glC:read-legacy-global-color-variable))))
-                 (vertices (make-mdvector-rect-vertices/mdvector-interval interval))
-                 (texcoords (let ((x1 (exact->inexact x1))
-                                  (y1 (exact->inexact y1))
-                                  (x2 (exact->inexact x2))
-                                  (y2 (exact->inexact y2)))
-                              (make-legacy-texcoords x1 y1 x2 y2)))
-                 (end (let ()
-                        (glC:vertex-set-set! target idx vertices texcoords colors)))
-                 (texture t)
-                 (shift (f32vector (exact->inexact x) (exact->inexact y) 0.))
-                 (scale #f)
-                 (rot #f))
-            (if (fx> end idx)
-                (glC:TextureDrawGlArrays texture target scale shift rot))))
+          (let* ((interval0 (make-mdv-rect-interval 0 0 w h))
+                 ;; TBD: remove glC:clip-mode when done debugging
+                 (clipping (and (glC:clip-mode) (glcore:cliplist-top->interval)))
+                 (clipping/00
+                  (and clipping
+                       (let ((x0/fx (floor (inexact->exact x)))
+                             (y0/fx (round (inexact->exact y))))
+                         (let ((w (fx- (mdvector-interval-upper-bound clipping 0)
+                                           (mdvector-interval-lower-bound clipping 0)))
+                                   (h (fx- (mdvector-interval-upper-bound clipping 1)
+                                           (mdvector-interval-lower-bound clipping 1))))
+                               (mdvector-interval-intersect interval0 (make-mdv-rect-interval 0 0 w h))))))
+                 (interval (if clipping
+                               (mdvector-interval-intersect interval0 clipping/00)
+                               interval0)))
+            (when (not interval) (unless huhu (set! huhu (list  x y interval0 clipping positioned))))
+            (if interval
+                (let* ((target (create-glC:vertex-set 2 4))
+                       (idx 0)
+                       (colors (color-conv
+                                (if (pair? colors)
+                                    (apply vector (debug 'COLORS!!! colors))
+                                    (%%glC:read-legacy-global-color-variable))))
+                       (vertices (make-mdvector-rect-vertices/mdvector-interval interval))
+                       (texcoords
+                        (let ((t0 (let ((x1 (exact->inexact x1))
+                                        (y1 (exact->inexact y1))
+                                        (x2 (exact->inexact x2))
+                                        (y2 (exact->inexact y2)))
+                                    (make-legacy-texcoords x1 y1 x2 y2))))
+                          (if (eq? interval interval0)
+                              t0
+                              (let ((result (cliptexcoords t0 interval0 interval)))
+                                (when (not off)
+                                  (set! off
+                                        (list 'tex t0
+                                              'src interval0 'clipped interval
+                                              'clipping clipping
+                                              'clipped result)))
+                                result))))
+                       (end (let ()
+                              (glC:vertex-set-set! target idx vertices texcoords colors)))
+                       (texture t)
+                       (shift (f32vector (exact->inexact x) (exact->inexact y) 0.))
+                       (scale #f)
+                       (rot #f))
+                  (if (fx> end idx)
+                      (glC:TextureDrawGlArrays texture target scale shift rot))))))
         (log-error "glCoreTextureDraw: unbound index " t))))
 
 (define $glC:overwrite-glcore
