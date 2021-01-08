@@ -529,7 +529,16 @@
      ((v) (unless (or (mdvector-interval? v) (not v)) (error "not an mdvector-interval or #f" v)) (set! i v))
      ((x0 y0 x1 y1) (set! i (make-mdv-rect-interval x0 y0 x1 y1))))))
 
-(define glC:clip-mode (make-parameter #t)) ;; deprecated, for debugging.
+(define glC:clip-mode ;; deprecated, for debugging.
+;; TBD: remove glC:clip-mode when done debugging
+  (let ((v #t))
+    (case-lambda
+     (()
+      ;; (MATURITY -1 "deprecated" loc: glC:clip-mode)
+      v)
+     ((x)
+      ;; (MATURITY -1 "deprecated" loc: glC:clip-mode)
+      (set! v (and x #t))))))
 
 (define (glC:clip interval #!optional (clipping #f)) ;; experimental
   (cond
