@@ -46,8 +46,7 @@
         (d2 (range '#(2 2)))
         (d3 (range '#(2 3)))
         (d4 (range '#(2 4))))
-    (set! mdvector-interval?
-          (lambda (obj) (and (mdvector? obj) (eq? (mdvector-special obj) tag))))
+    (set! mdvector-interval? (mdvector-make-instance? tag))
     (set! make-mdv-rect-interval
           (lambda (l1 l2 u1 u2)
             (define (valid? arg) (and (number? arg) (integer? arg) (not (negative? arg))))
@@ -203,6 +202,7 @@
       x1 y0))))
 
 (define (make-mdvector-rect-vertices/mdvector-interval interval) ;; x0y0x1y1
+  (define (convert v t) (exact->inexact (mdvector-ref interval v t)))
   ;;; y
   ;;; 1 +---+
   ;;;   |   |
@@ -210,18 +210,15 @@
   ;;; x 0   1
   (unless (mdvector-interval? interval)
     (error "invalid argument" interval))
-  (let ((idx (mdv-indexer (mdvector-range interval)))
-        (body (mdvector-body interval)))
-    (define (convert v t) (exact->inexact (vector-ref body (idx v t))))
-    (let ((x0 (convert 0 0)) (y0 (convert 0 1))
-          (x1 (convert 1 0)) (y1 (convert 1 1)))
-      (%%make-mdvector-rect-vertices
-       #f
-       (f32vector
-        x0 y1
-        x1 y1
-        x0 y0
-        x1 y0)))))
+  (let ((x0 (convert 0 0)) (y0 (convert 0 1))
+        (x1 (convert 1 0)) (y1 (convert 1 1)))
+    (%%make-mdvector-rect-vertices
+     #f
+     (f32vector
+      x0 y1
+      x1 y1
+      x0 y0
+      x1 y0))))
 
 (define %%make-mdvector-color
   (let ((tag '(color u8 #(4))))
@@ -778,62 +775,30 @@
         (texcoords (guide-image-texcoord img)))
     (glC:vertex-set-set! target idx vertices texcoords colors)))
 
-(define (glC:rederglyph-into!0 target idx x y glyph glCimage color)
-  (define (glyph+x+y+gh->f32vector-shift x y gh glyph)
-    ;; TODO: factor shift into the vertices!??
-    ;;(MATURITY -1 "working, computes shift" loc: glC:legacy-glyph+x+y+gh->f32vector-shift)
-    (let* ((gox (exact->inexact (glgui:glyph-offsetx glyph)))
-           (goy (exact->inexact (glgui:glyph-offsety glyph)))
-           (gax (exact->inexact (glgui:glyph-advancex glyph)))
-           (x (fl+ x gox))
-           (y (fl- (fl+ y goy) (exact->inexact gh))))
-      (f32vector x y 0.)))
-  (MATURITY 0 "working: renders glyp at correct position" loc: glC:rederglyph-into!0)
-  (let* ((img glCimage)
-         (gh (glC:image-h img))
-         (gax (glgui:glyph-advancex glyph)))
-    (if (and (fx> gh 0) (fx> (glC:image-w img) 0)) ;; anything to render?
-        (let* ((img (glC:image->guide-image img)))
-          (let ((end (let ((vertices (guide-image-area img))
-                           (texcoords (guide-image-texcoord img)))
-                       (glC:vertex-set-set! target idx vertices texcoords color)))
-                (scale #f)
-                (shift (glyph+x+y+gh->f32vector-shift x y gh glyph))
-                (rot #f))
-            (values gax end shift)))
-        (values gax idx #f))))
-
-(define (glC:rederglyph-1 x y glyph glCimage color)
-  (define (glyph+x+y+gh->f32vector-shift x y gh glyph)
-    ;; TODO: factor shift into the vertices!??
-    ;;(MATURITY -1 "working, computes shift" loc: glC:legacy-glyph+x+y+gh->f32vector-shift)
-    (let* ((gox (exact->inexact (glgui:glyph-offsetx glyph)))
-           (goy (exact->inexact (glgui:glyph-offsety glyph)))
-           (gax (exact->inexact (glgui:glyph-advancex glyph)))
-           (x (fl+ x gox))
-           (y (fl- (fl+ y goy) (exact->inexact gh))))
-      (f32vector x y 0.)))
-  (MATURITY 1 "working: returns glyp and position" loc: 'glC:rederglyph)
-  (let* ((img glCimage)
-         (gh (glC:image-h img))
-         (gax (glgui:glyph-advancex glyph)))
-    (if (and (fx> gh 0) (fx> (glC:image-w img) 0)) ;; anything to render?
-        (let* ((img (glC:image->guide-image img)))
-          (let ((target
-                 (let ((vertices (guide-image-area img))
-                       (texcoords (guide-image-texcoord img)))
-                   (make-glC:vertex-set
-                    (mdvector-body vertices)
-                    (mdvector-body texcoords)
-                    (mdvector-body colors)
-                    2 4)))
-                (scale #f)
-                (shift (glyph+x+y+gh->f32vector-shift x y gh glyph))
-                (rot #f))
-            (values gax (fx+ idx 4) target shift)))
-        (values gax idx #f #f))))
-
-(define glC:rederglyph-into! glC:rederglyph-into!0)
+(define (glC:rederglyph/xy x y glyph color)
+  (let ((gh (ttf:glyph-height glyph))
+        (gax (ttf:glyph-advancex glyph)))
+    (if (and (fx> gh 0) (fx> (ttf:glyph-width glyph) 0)) ;; anything to render?
+        (let ((target
+               (let ((vertices
+                      (make-mdvector-rect-vertices/x0y0x1y1
+                       0 0 (ttf:glyph-width glyph) (ttf:glyph-height glyph))))
+                 (make-glC:vertex-set
+                  (mdvector-body vertices)
+                  (ttf:glyph-rect-texcoords glyph)
+                  (mdvector-body color)
+                  2 4)))
+              (scale #f)
+              (shift
+               (let* ((gox (exact->inexact (ttf:glyph-offsetx glyph)))
+                      (goy (exact->inexact (ttf:glyph-offsety glyph)))
+                      (gax (exact->inexact (ttf:glyph-advancex glyph)))
+                      (x (fl+ x gox))
+                      (y (fl- (fl+ y goy) (exact->inexact gh))))
+                 (f32vector x y 0.)))
+              (rot #f))
+          (values gax target shift))
+        (values gax #f #f))))
 
 (define glGui:renderstring
   (let ((target glC:legacy-vertex-set-2d)
@@ -843,34 +808,30 @@
        ((fixnum? color) (make-rect-single-color-array color))
        ((not color) guide-color-transparent+black-array)
        (else color)))
-    (define (renderglyph x y glyph img color) ;; NOTE: positions are inexact!
+    (define (renderglyph x y glyph color) ;; NOTE: positions are inexact!
       ;; => x-delta
-      (MATURITY 0 "stable; adapt when glyph has distinct data type" loc: 'renderglyph)
-      (let ((img (if (pair? img) (apply make-glC:image img) img)))
-        (receive (gax end target shift) (glC:rederglyph-1 x y glyph img color)
-          (let ((texture (glC:image-t img))
-                (scale #f)
-                (rot #f))
-            (when (fx> end idx) (glC:TextureDrawGlArrays texture target scale shift rot)))
-          gax)))
+      (receive (gax target shift) (glC:rederglyph/xy x y glyph color)
+        (when target (glC:TextureDrawGlArrays (ttf:glyph-image glyph) target scale shift rot))
+        gax))
     (define (renderstring x y txt fnt color)
       (set! glC:renderstring-is-active #t)
       (when (exact? y)
         (MATURITY -1 "exact y unexpected" renderstring)
         (set! y (exact->inexact y)))
       (set! color (color-conv color))
-      (do ((i 0 (fx+ i 1))
-           (x0 (exact->inexact x))
-           (ccv (utf8string->u32vector txt)))
-          ((fx= i (u32vector-length ccv)))
-        (let* ((charcode (u32vector-ref ccv i))
-               (g (assoc charcode fnt)))
-          (if g
-              (let ((img (glgui:glyph-image g)))
-                (if img
-                    (set! x0 (fl+ x0 (renderglyph x0 y g img color)))
-                    (log-error "no image for glyph: " charcode g)))
-              (log-error "no glyph for charcode: " charcode)))))
+      (let ((fnt (find-font fnt)))
+        (do ((i 0 (fx+ i 1))
+             (x0 (exact->inexact x))
+             (ccv (utf8string->u32vector txt)))
+            ((fx= i (u32vector-length ccv)))
+          (let* ((charcode (u32vector-ref ccv i))
+                 (g (MATURITY+1:ln-ttf:font-ref fnt charcode)))
+            (if g
+                (let ((img (ttf:glyph-image g)))
+                  (if img
+                      (set! x0 (fl+ x0 (renderglyph x0 y g color)))
+                      (log-error "no image for glyph: " charcode g)))
+                (log-error "no glyph for charcode: " charcode))))))
     renderstring))
 
 (define $glC:overwrite-renderstring
