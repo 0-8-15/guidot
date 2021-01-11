@@ -230,14 +230,14 @@
     `(let ((,step (%%range-in ,obj)))
        (cond
         ((vector? ,step)
-         (vector-ref ,step (fx+ (fx* ,dim 3) 1)))
+         (##vector-ref ,step (fx+ (fx* ,dim 3) 1)))
         (else ,step)))))
 
 (define-macro (macro-%%range-size//checks obj dim)
   (let ((step (gensym 'step)))
     `(let ((,step (%%range-in ,obj)))
        (cond
-        ((vector? ,step) (vector-ref ,step (fx* ,dim 3)))
+        ((vector? ,step) (##vector-ref ,step (fx* ,dim 3)))
         (else ,step)))))
 
 (let () ;; --- range refinement ---  DEFINE-VALUES style block
@@ -557,7 +557,7 @@
             ((f32vector? body) (f32vector-length body))
             (else ("unhandled mdvector kind" make-mdvector body))))
           (storage-offset 0))
-   (when (and storage-size
+   (when (and storage-size ;; TBD: avoid calling `range-volume` - it is expensive!
               (fx< storage-size (fx+ storage-offset (range-volume ?range))))
      (##raise-range-exception 2 'make-mdvector ?range storage-size storage-offset))
    (when (number? ?range) (set! ?range (range ?range)))
