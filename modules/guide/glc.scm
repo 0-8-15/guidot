@@ -49,7 +49,7 @@
     (set! mdvector-interval? (mdvector-make-instance? tag))
     (set! make-mdv-rect-interval
           (lambda (l1 l2 u1 u2)
-            (define (valid? arg) (and (number? arg) (integer? arg) (not (negative? arg))))
+            (define (valid? arg) (and (number? arg) (fixnum? arg) (not (negative? arg))))
             (unless (and (valid? l1) (valid? u1) (fx> u1 l1)
                          (valid? l2) (valid? u2) (fx> u2 l2))
               (error "invalid arguments" make-mdv-rect-interval l1 l2 u1 u2))
@@ -90,7 +90,7 @@
 (define (make-x0y0x1y1-interval/coerce x0 y0 x1 y1)
   (define (conv x)
     (cond
-     ((fixnum? x) x)
+     ((integer? x) x)
      (else (inexact->exact (floor x)))))
   (make-mdv-rect-interval (conv x0) (conv y0) (conv x1) (conv y1)))
 
@@ -618,7 +618,7 @@
   (define (color-conv color)
     (cond ;; FIXME define & use consistent conversion
      ((not color) guide-color-transparent+black-array)
-     ((fixnum? color) (make-rect-single-color-array color))
+     ((integer? color) (make-rect-single-color-array color))
      (else colors)))
   (if (and (fx> w 0) (fx> h 0))
       (let* ((drawinterval0 (make-mdv-rect-interval 0 0 w h))
@@ -653,10 +653,7 @@
 (define glC:ImageTextureDrawInto! MATURITY+2:glC:ImageTextureDrawInto!)
 
 (define (glcore:cliplist-top->interval)
-  (define (conv x)
-    (cond
-     ((fixnum? x) x)
-     (else (inexact->exact (round x)))))
+  (define (conv x) (inexact->exact (round x)))
   (let ((lst glcore:cliplist))
     (and (pair? lst)
          (receive (x0 y0 x1 y1) (apply values (car lst))
@@ -683,7 +680,7 @@
   #; (apply glCoreTextureDraw x y w0 h0 t x1 y1 x2 y2 r colors)
   (define (color-conv color)
     (cond ;; FIXME define & use consistent conversion
-     ((fixnum? color) (make-rect-single-color-array color))
+     ((integer? color) (make-rect-single-color-array color))
      ((not color) guide-color-transparent+black-array)
      (else color)))
   (let ((entry (%%glCore:textures-ref t #f)))
@@ -897,7 +894,7 @@
   ;; TBD: get rid of this one!
   (define (color-conv color)
     (cond ;; FIXME define & use consistent conversion
-     ((fixnum? color) (make-rect-single-color-array color))
+     ((integer? color) (make-rect-single-color-array color))
      ((not color) guide-color-transparent+black-array)
      (else color)))
   (unless (mdvector? color) (set! color (color-conv color)))
@@ -1058,7 +1055,7 @@
         (idx 0))
     (define (color-conv color)
       (cond ;; FIXME define & use consistent conversion
-       ((fixnum? color) (make-rect-single-color-array color))
+       ((integer? color) (make-rect-single-color-array color))
        ((not color) guide-color-transparent+black-array)
        (else color)))
     (define (renderglyph x y glyph color) ;; NOTE: positions are inexact!
