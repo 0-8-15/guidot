@@ -458,24 +458,22 @@
     idx))
 
 (define (glC:fill-rect-full-vertex-set! target idx interval color)
-  (MATURITY -1 "remove dependency on srfi 179" loc: glC:fill-rect-full-vertex-set!)
   (let* ((vertices (make-mdvector-rect-vertices/mdvector-interval interval))
          (texcoords rect-full-texcoords)
          (colors (make-rect-single-color-array color)))
     (glC:vertex-set-set! target idx vertices texcoords colors)
     target))
 
-(define (%%glC:make-rect-full-vertex-set interval color)
-  ;; TBD: check! arrange the rectangle with SW edge as (0, 0)
-  (let ((target (create-glC:vertex-set 2 4)))
-    (glC:fill-rect-full-vertex-set! target 0 interval color)
-    target))
-
 (define (glC:make-rect-full-vertex-set interval color)
   ;; arrange the rectangle with SW edge as (0, 0)
-  (let ((target (create-glC:vertex-set 2 4)))
+  #;(let ((target (create-glC:vertex-set 2 4)))
     (glC:fill-rect-full-vertex-set! target 0 interval color)
-    target))
+    target)
+  (make-glC:vertex-set
+   (mdvector-body (make-mdvector-rect-vertices/mdvector-interval interval))
+   (mdvector-body rect-full-texcoords)
+   (mdvector-body (make-rect-single-color-array color))
+   2 4))
 
 (define (glC:glCoreEnd glc-vertexset line-type)
   (glVertexPointer (glC:vertex-set-d23 glc-vertexset) GL_FLOAT 0 (glC:vertex-set-v glc-vertexset))
@@ -658,7 +656,7 @@
   (define (conv x)
     (cond
      ((fixnum? x) x)
-     (else (inexact->exact (floor x)))))
+     (else (inexact->exact (round x)))))
   (let ((lst glcore:cliplist))
     (and (pair? lst)
          (receive (x0 y0 x1 y1) (apply values (car lst))
@@ -766,16 +764,106 @@
 
 (set! glgui:pixmap-draw glGui:pixmap-draw)
 
-;;;** Strings
+;;;** Glyhps
 
-(define (%glC:renderglyph1! target idx g img color)
-  ;; TBD: how does "legacy latex" drawing work?
-  (MATURITY 3 "experimental, SHALL factor shift into vertices" loc: %glC:renderglyph1!)
-  (let ((vertices (guide-image-area img))
-        (texcoords (guide-image-texcoord img)))
-    (glC:vertex-set-set! target idx vertices texcoords colors)))
+(define glyphvector-columns
+  ;; This is a good place to add additional columns for fancy things
+  ;; like the cross product of ligatures, hyphonation etc.
+  2)
 
-(define (glC:rederglyph/xy x y glyph color)
+(define-macro (%%glyphvector-tag) ''glyphvector)
+
+(define glyphvector?
+  (begin ;;mdvector-make-instance?
+   (lambda (obj)
+     (and (mdvector? obj) (eq? (%%glyphvector-tag) (mdvector-special obj))))))
+
+(define (MATURITY+0:utf8string->guide-glyphvector str font)
+  (unless (ln-ttf:font? font) (error "not a font" 'utf8string->glyphvector))
+  ;; convert UTF8 to unicode u32vector and glyph
+  (let* ((sl (string-length str))
+         (ie sl)
+         (a0 (make-vector ie)))
+    ;; TBD: optimize initialization, for now we use the pre-tested
+    ;; code as is, no matter how expensive the overhead is.
+    (do ((o 0 (fx+ o 1))
+         (codepoints (utf8string->unicode str) (cdr codepoints)))
+        ((null? codepoints)
+         (and
+          (not (eqv? o 0))
+          (let* ((len o)
+                 (rng (range (vector len glyphvector-columns)))
+                 (vol (range-volume rng))
+                 (result (make-vector vol)))
+            (subvector-move! a0 0 o result 0) ;; row 0: u32 unicode
+            (do ((o 0 (fx+ o 1)))
+                ((eqv? o len)
+                 (make-mdvector rng result (%%glyphvector-tag)))
+              (let ((to len)) ;; row 1: glyp
+                (vector-set! result (fx+ to o) (MATURITY+1:ln-ttf:font-ref font (vector-ref a0 o))))
+              #;(let* ((to (fx* len 2))
+                     (glyp-off len)
+                     (glyph (vector-ref result (fx+ o glyp-off))))
+                (let ((goy (ttf:glyph-offsety glyph)))
+                  ;; FIXME: check/defaults into constructor!
+                  (unless goy
+                    (MATURITY -1 "glyph without vertical offset" loc: utf8string->glyphvector)
+                    (set! goy 0.))
+                  ;; row 2: below
+                  (vector-set!
+                   result (fx+ to o)
+                   (let ((gh (ttf:glyph-height glyph)))
+                     (unless gh
+                       (MATURITY -1 "glyph without offset" loc: utf8string->glyphvector)
+                       (set! goy 0.))
+                     (fx- goy gh)))
+                  ;; row 3: above
+                  (let ((to (fx* len 3)))
+                    (vector-set! result (fx+ to o) goy))))))))
+      (vector-set! a0 o (car codepoints)))))
+
+(define utf8string->guide-glyphvector MATURITY+0:utf8string->guide-glyphvector)
+
+(define (guide-glyphvector-length vec)
+  (unless (glyphvector? vec) (error "illegal argument" guide-glyphvector-length))
+  (range-size (mdvector-range vec) 0))
+
+(define (MATURITY+0:guide-glypvector-bounds vec #!optional (construct #f))
+  (let* ((rng (mdvector-range vec))
+         (row-glyph 1)
+         (len (range-size rng 0)))
+    (do ((i (fx- len 1) (fx- i 1))
+         (above 0.)
+         (below 0.))
+        ((eqv? i -1) (if construct (construct below above) (values below above)))
+      (let ((glyph (mdvector-ref vec row-glyph i)))
+        (when glyph
+          (let* ((goy (ttf:glyph-offsety glyph)))
+            ;; FIXME: check/defaults into constructor!
+            (unless goy
+              (MATURITY +2 "glyph without vertical offset" loc: 'glypvectorheight)
+              (set! goy 0.))
+            (set! above (max above goy))
+            (let ((gh (ttf:glyph-height glyph)))
+              ;; FIXME: check/defaults into constructor!
+              (MATURITY -1 "glyph without height" loc: 'glypvectorheight)
+              (set! below (min below (fx- goy gh))))))))))
+
+(define guide-glypvector-bounds MATURITY+0:guide-glypvector-bounds)
+
+(define (MATURITY+0:guide-glypvector-width vec)
+  ;; return summary width as flownum
+  (let* ((rng (mdvector-range vec))
+         (row-glyph 1)
+         (len (range-size rng 0)))
+    (do ((i (fx- len 1) (fx- i 1))
+         (x 0.))
+        ((eqv? i -1) x)
+      (let ((glyph (mdvector-ref vec row-glyph i)))
+        (when glyph
+          (set! x (fl+ (ttf:glyph-advancex glyph) x)))))))
+
+(define (glC:rederglyph/xy x y glyph color) ;; --> (advance-x rendering shift)
   (let ((gh (ttf:glyph-height glyph))
         (gax (ttf:glyph-advancex glyph)))
     (if (and (fx> gh 0) (fx> (ttf:glyph-width glyph) 0)) ;; anything to render?
@@ -800,6 +888,171 @@
           (values gax target shift))
         (values gax #f #f))))
 
+;;*** glyph vector rendering (draft)
+
+(define glyphvector->render00-columns 3)
+
+(define (MATURITY+1:glC:glyphvector->render00
+         x y w h glyphs color #!optional (rtl #f) (offset 0) (limit #f))
+  ;; TBD: get rid of this one!
+  (define (color-conv color)
+    (cond ;; FIXME define & use consistent conversion
+     ((fixnum? color) (make-rect-single-color-array color))
+     ((not color) guide-color-transparent+black-array)
+     (else color)))
+  (unless (mdvector? color) (set! color (color-conv color)))
+  ;;(guide-glyphvector-length vec)
+  (let* ((limit
+          (let ((len (guide-glyphvector-length glyphs)))
+            (if (number? limit) (min limit len) len)))
+         (rng (range (vector glyphvector->render00-columns limit)))
+         (resvec (make-vector (range-volume rng) #f))
+         (result (make-mdvector rng resvec))
+         (glyphvec (mdvector-body glyphs))
+         (glyphidx (mdv-indexer (mdvector-range glyphs)))
+         (glyph-idx 1)
+         (yflo (exact->inexact y))
+         (istep (if rtl -1 1))
+         (idx (mdv-indexer rng)))
+    (do ((i (if rtl (- limit 1) offset) (fx+ i istep))
+         (to 0)
+         (x0 0)) ;; maybe we better don't use flownums here?
+        ((or (if rtl (< i 0) (>= i limit))
+             (> x0 w))
+         (cond
+          ((eqv? to limit) result)
+          ((eqv? to 0) #f)
+          (else
+           (make-mdvector
+            (range (vector glyphvector->render00-columns to))
+            resvec))))
+      (let ((glyph ;;; (mdvector-ref glyphs glyph-idx i)
+                   (vector-ref glyphvec (glyphidx glyph-idx i))))
+        (when glyph
+          (receive (gax target shift)
+              (glC:rederglyph/xy
+               (exact->inexact (+ x0 x)) yflo ;; TBD: make the other side accept propper fixnums!
+               glyph color)
+            (set! x0 (+ x0 gax))
+            (if target
+                (begin
+                  (unless (> x0 w)
+                    (vector-set! resvec (idx to 0) target)
+                    (vector-set! resvec (idx to 1) shift)
+                    (vector-set! resvec (idx to 2) (ttf:glyph-image glyph))
+                    (set! to (fx+ to 1)))))))))))
+
+(define (MATURITY+1:glC:render-target-mdv! targets)
+  (let* ((rng (mdvector-range targets))
+         (limit (range-size rng 1)))
+    (do ((i 0 (fx+ i 1)))
+        ((eqv? i limit))
+      (let ((vertices (mdvector-ref targets i 0))
+            (shift (mdvector-ref targets i 1))
+            (texture (mdvector-ref targets i 2))
+            (rot #f))
+        (unless texture
+          ;; ??? might be a regular case - when?
+          (MATURITY -2 "no texture found after rendering" loc: 'glC:render-target-mdv!))
+        ;;; (when texture (MATURITY +1 "texture found after rendering" loc: 'glC:render-target-mdv!))
+        (and texture (glC:TextureDrawGlArrays texture vertices scale shift rot))))))
+
+;;;** Strings
+
+(define (%%glyphvector-height glyphs font)
+  (receive (below above) (guide-glypvector-bounds glyphs)
+    (let ((override (MATURITY+1:ln-ttf:font-ref font (char->integer #\|))))
+      ;; note: this path is usually always taken
+      (when override
+        (let ((goy (ttf:glyph-offsety override)))
+          (set! above (max (max above goy) above))
+          (set! below (min (fx- goy (ttf:glyph-height override)) below)))))
+    (+ above below)))
+
+(define (%%glyphvector-bounds glyphs font)
+  (receive (below above) (guide-glypvector-bounds glyphs)
+    (let ((override (MATURITY+1:ln-ttf:font-ref font (char->integer #\|))))
+      ;; note: this path is usually always taken
+      (when override
+        (let ((goy (ttf:glyph-offsety override)))
+          (set! above (max (max above goy) above))
+          (set! below (min (fx- goy (ttf:glyph-height override)) below)))))
+    (values below above)))
+
+(define (MATURITY+0:glC:draw-text-left x y w h label fnt color) ;; -> #!void
+  ;; (MATURITY 0 "working, looks correct; mimics behavior" 'glC:draw-text-left)
+  (let* ((font (find-font fnt))
+         (glyphs (utf8string->guide-glyphvector label font)))
+    (and
+     glyphs
+     (receive (below above) (%%glyphvector-bounds glyphs font)
+       (let* ((heff (+ above below))
+              (hspace (- (if (> h 0) h heff) heff))
+              (centery (+ y (/ hspace 2))))
+         (let ((targets (MATURITY+1:glC:glyphvector->render00 x centery w h glyphs color)))
+           (if targets
+               (MATURITY+1:glC:render-target-mdv! targets)
+               (MATURITY -5 "DEV +4: no targets to render" loc: 'draw-text-left))))))))
+
+(define glC:draw-text-left MATURITY+0:glC:draw-text-left)
+
+(set! glgui:draw-text-left glC:draw-text-left) ;; !!! BEWARE! appears to be good enough
+
+(define (MATURITY+0:glC:draw-text-right x y w h label fnt color) ;; -> #!void
+  ;; (MATURITY 0 "working, looks correct; mimics behavior" 'glC:draw-text-left)
+  (let* ((font (find-font fnt))
+         (glyphs (utf8string->guide-glyphvector label font)))
+    (and
+     glyphs
+     (receive (below above) (%%glyphvector-bounds glyphs font)
+       (let* ((shx (let* ((strw (MATURITY+0:guide-glypvector-width glyphs))
+                          (txo (- w strw)))
+                     (if (> txo 0) (+ x txo))))
+              (heff (+ below above))
+              (hspace (- (if (> h 0) h heff) heff))
+              (centery (+ (+ y (/ hspace 2)) (* 1/2 below))))
+         (let ((targets (MATURITY+1:glC:glyphvector->render00 shx centery w h glyphs color)))
+           (if targets
+               (MATURITY+1:glC:render-target-mdv! targets)
+               (MATURITY -5 "DEV +4: no targets to render" loc: 'draw-text-right))))))))
+
+(define glC:draw-text-right MATURITY+0:glC:draw-text-right)
+
+(set! glgui:draw-text-right glC:draw-text-right) ;; !!! BEWARE! appears to be good enough
+
+(define (MATURITY+0:glC:draw-text-center x y w h label fnt color
+                                         #!optional (clipright #f)) ;; -> #!void
+  ;; (MATURITY 0 "working, looks correct; mimics behavior" 'glC:draw-text-left)
+  (let* ((font (find-font fnt))
+         (glyphs (utf8string->guide-glyphvector label font)))
+    (and
+     glyphs
+     (receive (below above) (%%glyphvector-bounds glyphs font)
+       (let* ((strw (MATURITY+0:guide-glypvector-width glyphs))
+              (shx (let ((txo (- w strw)))
+                     (if (> txo 0) (+ x (/ txo 2)))))
+              (heff (- above below))
+              (hspace (- (if (> h 0) h heff) above))
+              (centery (+ y (/ hspace 2))))
+         (let ((targets (MATURITY+1:glC:glyphvector->render00
+                         shx centery w h glyphs color clipright)))
+           (if targets
+               (MATURITY+1:glC:render-target-mdv! targets)
+               (MATURITY -5 "DEV +4: no targets to render" loc: 'draw-text-center))))))))
+
+(define glC:draw-text-center MATURITY+0:glC:draw-text-center)
+
+(set! glgui:draw-text-center glC:draw-text-center) ;; !!! BEWARE! appears to be good enough
+
+;;;*** Strings 1st draft
+
+(define (%glC:renderglyph1! target idx g img color)
+  ;; TBD: how does "legacy latex" drawing work?
+  (MATURITY 3 "experimental, SHALL factor shift into vertices" loc: %glC:renderglyph1!)
+  (let ((vertices (guide-image-area img))
+        (texcoords (guide-image-texcoord img)))
+    (glC:vertex-set-set! target idx vertices texcoords colors)))
+
 (define glGui:renderstring
   (let ((target glC:legacy-vertex-set-2d)
         (idx 0))
@@ -811,7 +1064,9 @@
     (define (renderglyph x y glyph color) ;; NOTE: positions are inexact!
       ;; => x-delta
       (receive (gax target shift) (glC:rederglyph/xy x y glyph color)
-        (when target (glC:TextureDrawGlArrays (ttf:glyph-image glyph) target scale shift rot))
+        (when target
+          (let ((rot #f))
+            (glC:TextureDrawGlArrays (ttf:glyph-image glyph) target scale shift rot)))
         gax))
     (define (renderstring x y txt fnt color)
       (set! glC:renderstring-is-active #t)
