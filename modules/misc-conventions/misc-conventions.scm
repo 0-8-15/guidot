@@ -187,6 +187,21 @@
 (define memoize-last
   ;; intensionaly restricted to four arguments at most
   (case-lambda
+   ((f)
+    (unless (procedure? f) (error "not a procedure" memoize-last f))
+    (let ((evaluating #f)
+          (last-vals #f))
+      (lambda ()
+        (cond
+         ((and last-vals ($memoize-active))
+          (if (null? (cdr last-vals)) (car last-vals) (apply values last-vals)))
+         (evaluating (error "procedure not rentrant" memoize-last f))
+         (else
+          (set! evaluating #t)
+          (receive vals (f)
+            (set! last-vals vals)
+            (set! evaluating #t)
+            (apply values last-vals)))))))
    ((f cmp)
     (unless (procedure? f) (error "not a procedure" memoize-last f))
     (unless (procedure? cmp) (error "not a procedure: cmp" memoize-last f cmp))
