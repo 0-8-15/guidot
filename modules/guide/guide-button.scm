@@ -148,7 +148,7 @@
                        ((left) 'left) ((right) 'right) ((center) 'center)
                        (else (error "alignment must be either left, right or center" (car more)))))
                (text-set! label))
-             label))
+             align))
         ((font:)
          (if (pair? more)
              (let ((v (car more)))
