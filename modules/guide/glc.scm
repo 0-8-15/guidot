@@ -171,10 +171,12 @@
       (make-mdvector rng storage tag vol)))
     %%make-mdvector-rect-vertices))
 
-(define (glC:mdv-vertex-area? obj)
+(define (guide-figure? obj)
   (and (mdvector-special? obj 'f32)
        (let ((rng (mdvector-range obj)))
          (and (eqv? (range-rank rng) 2) (eqv? (range-size rng 0) 2)))))
+
+(define glC:mdv-vertex-area? guide-figure?)
 
 (define (make-guide-area/x0y0x1y1 x0 y0 x1 y1)
   (make-mdvector
@@ -493,7 +495,7 @@
     (glPushMatrix))
   (cond
    ((f32vector? scale)
-    (glTranslatef//checks (f32vector-ref scale 0) (f32vector-ref scale 1) (f32vector-ref scale 2)))
+    (glScalef//checks (f32vector-ref scale 0) (f32vector-ref scale 1) (f32vector-ref scale 2)))
    ((procedure? shft) (shft)))
   (cond
    ((f32vector? shft)
@@ -1004,7 +1006,7 @@
      (receive (below above) (%%glyphvector-bounds glyphs font)
        (let* ((shx (let* ((strw (MATURITY+0:guide-glypvector-width glyphs))
                           (txo (- w strw)))
-                     (if (> txo 0) (+ x txo))))
+                     (if (> txo 0) (+ x txo) 0)))
               (heff (+ below above))
               (hspace (- (if (> h 0) h heff) heff))
               (centery (+ (+ y (/ hspace 2)) (* 1/2 below))))
@@ -1027,7 +1029,7 @@
      (receive (below above) (%%glyphvector-bounds glyphs font)
        (let* ((strw (MATURITY+0:guide-glypvector-width glyphs))
               (shx (let ((txo (- w strw)))
-                     (if (> txo 0) (+ x (/ txo 2)))))
+                     (if (> txo 0) (+ x (/ txo 2)) 0)))
               (heff (- above below))
               (hspace (- (if (> h 0) h heff) above))
               (centery (+ y (/ hspace 2))))

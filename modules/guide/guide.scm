@@ -22,6 +22,10 @@
 
 (include "glc.scm")
 
+;;;** Basic Generic Drawing.
+
+(include "guide-button.scm")
+
 ;;** Imports
 
 (include "../misc-conventions/observable-syntax.sch")
@@ -54,18 +58,43 @@
   (let ((glgui (guide-rectangle-glgui rect)))
     (cond
      ((not glgui)) ;; TBD
+     #;((eq? event EVENT_REDRAW)
+      (glgui-event glgui event x y)
+      (guide-meta-menu-draw!))
      (else (glgui-event glgui event x y)))))
 
 (define guide-default-event-dispatch guide-default-event-dispatch/fallback-to-glgui)
 
 (define guide-terminate-on-key (make-parameter EVENT_KEYESCAPE))
 
+(define guide-meta-menu (make-parameter #f))
+(define MATURITY+4:%%guide-overlay ;; note: keeping %%-prefix as this
+                                   ;; might be debug only!
+  (let ((c #f))
+    (case-lambda
+     (() c)
+     ((n)
+      (unless (or (not n) (procedure? n))
+        (error "illegal argument" 'guide-overlay n))
+      ;; swap
+      (let ((o c)) (set! c n) o)))))
+(define %%guide-overlay MATURITY+4:%%guide-overlay)
+
+(define (guide-meta-menu-draw!)
+  (let ((gmm (guide-meta-menu))
+        (overlay (MATURITY+4:%%guide-overlay)))
+    ;; For debug/meta/advanced controls; TBD: react to input!
+    (if (procedure? gmm) (gmm))
+    ;; For monitoring, e.g. during debug.  Do NOT make this active!
+    (if (procedure? overlay) (overlay))))
+
 (define (guide-default-event-dispatch/toplevel rect payload event x y)
   (let ((event-handler (guide-payload-on-any-event payload)))
     (cond
      ((eq? event EVENT_REDRAW)
       ;; (log-status "REDRAW")
-      (event-handler rect payload event x y))
+      (event-handler rect payload event x y)
+      (guide-meta-menu-draw!))
      ((eq? event EVENT_IDLE)
       (thread-yield!)
       #t)
@@ -511,15 +540,26 @@
              (_ (begin (del) (error "Xglgui-select unhandled arguments" args))))
             (glgui-wakeup!)))))))
 
-(define (Xglgui-button1
+(define (Xglgui-button
          ctx x y w h
          #!key
          (font (guide-select-font size: 'medium))
          (label "exit")
          (glgui-callback (lambda (gui wgt type x y) (terminate))))
-  (glgui-button-string ctx x y w h label font glgui-callback))
-
-(define Xglgui-button Xglgui-button1)
+  (cond
+   (#t ;; experimental
+    (let ((view! (make-guide-button-view)))
+      (view! size: w h)
+      (view! position: x y)
+      (view! text: label)
+      (view! align: 'center)
+      (view! font: (find-font font))
+      ;; drop in old scheme for now
+      (let ((wgt (glgui-button-string ctx x y w h #f #f glgui-callback))
+            (drawing (let ((actually! (view!))) (lambda (g wgt) (actually!)))))
+        (glgui-widget-set! ctx wgt 'draw-handle drawing))))
+   (else ;; frozen: old version
+    (glgui-button-string ctx x y w h label font glgui-callback))))
 
 ;;; end Xglgui
 
