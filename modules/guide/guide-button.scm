@@ -163,7 +163,8 @@
              ;; otherwise resolve all references
              (fixed-draw)))
         (else (error "unhandled" 'button-control key))))
-    (MATURITY +2 "fresh drawing pair created" loc: 'make-guide-container-view)
+    (MATURITY +2 "fresh drawing pair created"
+              loc: '(make-guide-container-view make-guide-bg+fg-view))
     (case-lambda
      (() ;; draw thunk without dynamic dependencies
       (if (%%guide-view-default-dynamic)
@@ -193,7 +194,7 @@
          (scale #f)
          (shift #f)
          (rot #f)
-         (visible #t)
+         (visible #t) ;; TBD: deprecated! use fg+bg pair instead!
          ;; derived
          (glyphs #f)
          (foreground-x-offset (lambda () 0.)) ;; example
@@ -234,7 +235,7 @@
          (fgvset #f))
     (define fixed-draw
       (lambda ()
-        (if visible
+        (if visible ;; TBD: deprecated! use fg+bg pair instead!
             (let ((shift-0 (and shift (vector-ref shift 0)))
                   (shift-1 (and shift (vector-ref shift 1)))
                   (shift-2 (and shift (vector-ref shift 2)))
@@ -297,7 +298,8 @@
       (set! texture t))
     (define (ctrl! key more)
       (case key
-        ((visible:) ;; maybe factor visibility out?
+        ((visible:) ;; TBD: deprecated!
+         ;;; factor visibility out! into fg+bg pair instead
          (if (pair? more) (set! visible (car more)) visible))
         ((text: foreground:)
          (if (null? more) label
