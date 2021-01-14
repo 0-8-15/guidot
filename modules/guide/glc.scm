@@ -941,7 +941,8 @@
                     (vector-set! resvec (idx to 2) (ttf:glyph-image glyph))
                     (set! to (fx+ to 1)))))))))))
 
-(define (MATURITY+1:glC:render-target-mdv! targets)
+(define (MATURITY-1:glC:render-target-mdv! targets)
+  (MATURITY -4 "outdated" loc: MATURITY-1:glC:render-target-mdv!)
   (let* ((rng (mdvector-range targets))
          (limit (range-size rng 1)))
     (do ((i 0 (fx+ i 1)))
@@ -949,6 +950,41 @@
       (let ((vertices (mdvector-ref targets i 0))
             (shift (mdvector-ref targets i 1))
             (texture (mdvector-ref targets i 2))
+            (rot #f))
+        (unless texture
+          ;; ??? might be a regular case - when?
+          (MATURITY -2 "no texture found after rendering" loc: 'glC:render-target-mdv!))
+        ;;; (when texture (MATURITY +1 "texture found after rendering" loc: 'glC:render-target-mdv!))
+        (and texture (glC:TextureDrawGlArrays texture vertices scale shift rot))))))
+
+#|
+(define (MATURITY-10:glC:render-target-mdv! targets)
+  (let* ((rng (mdvector-range targets))
+         (limit (range-size rng 1)))
+    (do ((i 0 (fx+ i 1)))
+        ((eqv? i limit))
+      (let ((vertices (mdvector-ref targets i 0))
+            (shift (mdvector-ref targets i 1))
+            (texture (mdvector-ref targets i 2))
+            (rot #f))
+        (unless texture
+          ;; ??? might be a regular case - when?
+          (MATURITY -2 "no texture found after rendering" loc: 'glC:render-target-mdv!))
+        ;;; (when texture (MATURITY +1 "texture found after rendering" loc: 'glC:render-target-mdv!))
+        (and texture (glC:TextureDrawGlArrays texture vertices scale shift rot))))))
+|#
+
+(define (MATURITY+1:glC:render-target-mdv! targets)
+  (let* ((rng (mdvector-range targets))
+         (limit (range-size rng 1))
+         ;; optimizations
+         (idx (mdv-indexer #|TBD: skip checks!|# rng))
+         (targets (mdvector-body targets)))
+    (do ((i 0 (fx+ i 1)))
+        ((eqv? i limit))
+      (let ((vertices (##vector-ref targets (idx i 0)))
+            (shift (##vector-ref targets (idx i 1)))
+            (texture (##vector-ref targets (idx i 2)))
             (rot #f))
         (unless texture
           ;; ??? might be a regular case - when?
