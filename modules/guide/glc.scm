@@ -661,7 +661,7 @@
          (receive (x0 y0 x1 y1) (apply values (car lst))
            (let ((w (- x1 x0))
                  (h (- y1 y0)))
-             (make-mdv-rect-interval 0 0 (conv w) (conv h)))))))
+             (and (> w 0) (> h 0) (make-mdv-rect-interval 0 0 (conv w) (conv h))))))))
 
 (define (MATURITY-2:glC:ImageTextureDraw! img w h colors x y a)
   (let ((target glC:legacy-vertex-set-2d)

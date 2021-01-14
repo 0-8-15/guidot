@@ -131,7 +131,15 @@
       (case key
         ((visible:) ;; maybe factor visibility out?
          (if (pair? more) (set! visible (car more)) visible))
-        ((text:) (if (pair? more) (text-set! (car more)) label))
+        ((text: foreground:)
+         (if (null? more) label
+             (let ((thing (car more)))
+               (cond
+                ((string? thing) (text-set! (car more)))
+                ((procedure? thing)
+                 (set! label #f)
+                 (set! fgvset thing))
+                (else (error "not a valid foreground" thing))))))
         ((align:)
          (if (pair? more)
              (begin
