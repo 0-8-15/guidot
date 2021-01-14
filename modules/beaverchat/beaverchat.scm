@@ -592,8 +592,9 @@
             (pin-edit base 3 "forward" beaver-socks-forward-addr keypad:hexnum
                       (lambda (x) (if (not x) "" x)))
             )
-          (glgui-button-string
-           bag (/ w 10) 100 (* w 8/10) line-height-selectable "Browse Homepage (needs proxy)" (select-font size: 'small)
+          (Xglgui-button
+           bag (/ w 10) 100 (* w 8/10) line-height-selectable
+           label: "Browse Homepage (needs proxy)" font: (select-font size: 'small) glgui-callback:
            (lambda (gui wgt type x y)
              (if (positive? (beaver-proxy-port-number))
                  (launch-url
@@ -605,8 +606,8 @@
                  (y (* 4 line-height))
                  (fnt (select-font size: 'small)))
             (Xglgui-label bag border y w2w line-height text: "Pending" size: 'small)
-            (let ((wgt (glgui-button-string
-                        bag w2 y w2w line-height "" fnt
+            (let ((wgt (Xglgui-button
+                        bag w2 y w2w line-height label: "" font: fnt glgui-callback:
                         (lambda (gui wgt type x y)
                           (kick (chat-pending-messages '()))))))
               (define (setter)
@@ -635,7 +636,7 @@
                 (ctrl hidden: (null? new))))
             (new-content)
             (wire! chat-inbox-senders post: new-content))
-          (glgui-button-string bag (/ w 4) (/ h 4) (/ w 2) (/ h 2) str fnt callback)
+          (Xglgui-button bag (/ w 4) (/ h 4) (/ w 2) (/ h 2) label: str font: fnt glgui-callback: callback)
           #|
           (let* ((ctx bag)
                  (wb (/ w 5))
@@ -672,7 +673,6 @@
           (case k
             ((men)
              (glgui-menubar gui 0 (- h (* mh 2)) w (* mh 2))
-             ;; (glgui-button-string bag (/ w 4) (/ h 4) (/ w 2) (/ h 2) str fnt callback)
              (glgui-label gui 0 (- h mh) #;(- h (/ mh 2)) 80 mh "Menu" menu-font White))
             ((dd)
              (set!
