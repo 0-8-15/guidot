@@ -188,6 +188,7 @@
   ;; intensionaly restricted to four arguments at most
   (case-lambda
    ((f cmp)
+    (unless (procedure? f) (error "not a procedure" memoize-last f))
     (unless (procedure? cmp) (error "not a procedure: cmp" memoize-last f cmp))
     (let ((last-arg #f)
           (last-vals #f))
@@ -201,6 +202,7 @@
               (apply values last-vals))
             (f arg)))))
    ((f cmp1 cmp2)
+    (unless (procedure? f) (error "not a procedure" memoize-last f))
     (unless (procedure? cmp1) (error "not a procedure: cmp" memoize-last f cmp1))
     (unless (procedure? cmp2) (error "not a procedure: cmp" memoize-last f cmp2))
     (let ((last-arg1 #f)
@@ -217,6 +219,7 @@
               (apply values last-vals))
             (f arg1 arg2)))))
    ((f cmp1 cmp2 cmp3)
+    (unless (procedure? f) (error "not a procedure" memoize-last f))
     (unless (procedure? cmp1) (error "not a procedure: cmp" memoize-last f cmp1))
     (unless (procedure? cmp2) (error "not a procedure: cmp" memoize-last f cmp2))
     (unless (procedure? cmp3) (error "not a procedure: cmp" memoize-last f cmp3))
@@ -237,6 +240,7 @@
               (apply values last-vals))
             (f arg1 arg2 arg3)))))
    ((f cmp1 cmp2 cmp3 cmp4)
+    (unless (procedure? f) (error "not a procedure" memoize-last f))
     (unless (procedure? cmp1) (error "not a procedure: cmp" memoize-last f cmp1))
     (unless (procedure? cmp2) (error "not a procedure: cmp" memoize-last f cmp2))
     (unless (procedure? cmp3) (error "not a procedure: cmp" memoize-last f cmp3))
