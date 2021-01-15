@@ -548,12 +548,16 @@
          (glgui-callback (lambda (gui wgt type x y) (terminate))))
   (cond
    (#t ;; experimental
-    (let ((view! (make-guide-button-view)))
+    (let ((view! (make-guide-button-view))
+          (label! (make-guide-label-view)))
+      (label! text: label)
+      (label! horizontal-align: 'center)
+      (label! vertical-align: 'center)
+      (label! font: (find-font font))
+      (label! size: w h)
       (view! size: w h)
       (view! position: x y)
-      (view! text: label)
-      (view! align: 'center)
-      (view! font: (find-font font))
+      (view! foreground: (label!))
       ;; drop in old scheme for now
       (let ((wgt (glgui-button-string ctx x y w h #f #f glgui-callback))
             (drawing (let ((actually! (view!))) (lambda (g wgt) (actually!)))))
