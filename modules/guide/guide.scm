@@ -32,6 +32,11 @@
   ;; gambit specific
   `(eq? ,x (macro-absent)))
 
+(define-macro (macro-alway-true-comparsion)
+  ;; usually it's IMPORTANT to pass this as expression rather than a
+  ;; free variable
+  '(lambda (a b) #t))
+
 (define-macro (macro-memoize:1->1 f cmp)
   (let ((last (gensym 'last))
         (current (gensym 'current))
