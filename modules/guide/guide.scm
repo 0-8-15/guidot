@@ -24,7 +24,7 @@
 
 ;;;** Basic Generic Drawing.
 
-(include "guide-button.scm")
+(include "guide-figure.scm")
 
 ;;** Imports
 
@@ -88,22 +88,107 @@
     ;; For monitoring, e.g. during debug.  Do NOT make this active!
     (if (procedure? overlay) (overlay))))
 
-(define (guide-default-event-dispatch/toplevel rect payload event x y)
-  (let ((event-handler (guide-payload-on-any-event payload)))
-    (cond
-     ((eq? event EVENT_REDRAW)
-      ;; (log-status "REDRAW")
-      (event-handler rect payload event x y)
-      (guide-meta-menu-draw!))
-     ((eq? event EVENT_IDLE)
-      (thread-yield!)
-      #t)
-     ;; (check-magic-keys gui t x y)
-     ((and (fx= event EVENT_KEYPRESS)
-           (let ((termkey (guide-terminate-on-key)))
-             (and termkey (fx= x termkey))))
-      (terminate))
-     (else (kick! (lambda () (event-handler rect payload event x y)))))))
+(define guide-wakeup!)
+(define %%guide-timings-set!) ;; deprecated
+
+(define guide-default-event-dispatch/toplevel
+  (let ((frame-period-max-value 0.5) ;; How long to sleep at most in redraw.
+        (step 0.05) ;; delay increase
+        (consecutive-redraw-count 1)
+        (customized-moment #f) ;; may be a procedure returning the wait time/moment
+        (wakeup-seen #f)
+        (wait-mutex (make-mutex 'glgui-event))
+        (wait-cv (make-condition-variable 'glgui-event)))
+    (define (timings-set! #!key (frame-period-max #f) (frame-period-min #f) (frame-period-custom #f))
+      (define (legal? x) (and (number? x) (positive? x)))
+      (if (legal? frame-period-max) (set! frame-period-max-value frame-period-max))
+      (if (legal? frame-period-min) (set! step frame-period-min))
+      (if (or (not frame-period-custom) (procedure? frame-period-custom))
+          (set! customized-moment frame-period-custom)))
+    (define (wakeup!)
+      (set! wakeup-seen #t)
+      (condition-variable-signal! wait-cv))
+    (define (reset-wait!)
+      (set! wakeup-seen #f)
+      (set! consecutive-redraw-count 1))
+    (define (wait-for-time-or-signal!)
+      ;; wait for delay or signal from other thread
+      (if (if wakeup-seen
+              (begin
+                (mutex-unlock! wait-mutex)
+                #f)
+              (let ((moment (if customized-moment
+                                (customized-moment consecutive-redraw-count)
+                                (min frame-period-max-value (* consecutive-redraw-count step)))))
+                (if (and (number? moment) (> moment 0))
+                    (cond-expand
+                     (win32
+                      ;; Work around bug in gambit
+                      (begin (mutex-unlock! wait-mutex wait-cv moment) wakeup-seen))
+                     (else (mutex-unlock! wait-mutex wait-cv moment)))
+                    (begin (mutex-unlock! wait-mutex) #t))))
+          (reset-wait!)
+          (set! consecutive-redraw-count (fx+ consecutive-redraw-count 1))))
+    (define (guide-default-event-dispatch/toplevel rect payload event x y)
+      (let ((event-handler (guide-payload-on-any-event payload)))
+        (cond
+         ((not (and glgui:active app:width app:height))
+          (if (fx= t EVENT_REDRAW)
+              (wait-for-time-or-signal!)
+              (if customized-moment
+                  (let ((moment (customized-moment 1)))
+                    (when (and (number? moment) (> moment 0))
+                      (thread-sleep! moment)))
+                  (begin
+                    (thread-sleep! step)
+                    (reset-wait!)))))
+         ((eq? event EVENT_REDRAW)
+          ;; (log-status "REDRAW")
+          (if (mutex-lock! wait-mutex 0)
+              (begin
+                (set! wakeup-seen #f)
+                (glCoreInit)
+                (event-handler rect payload event x y)
+                (guide-meta-menu-draw!)
+                (wait-for-time-or-signal!))
+              (begin
+                (log-warning "ignoring EVENT_REDRAW while handling EVENT_REDRAW")
+                (set! wakeup-seen #t))))
+         ((eq? event EVENT_IDLE)
+          (thread-yield!)
+          #t)
+         ;; (check-magic-keys gui t x y)
+         ((and (fx= event EVENT_KEYPRESS)
+               (let ((termkey (guide-terminate-on-key)))
+                 (and termkey (fx= x termkey))))
+          (terminate))
+         (else
+          (reset-wait!)
+          (kick! (lambda () (event-handler rect payload event x y)))))))
+    (set! guide-wakeup! wakeup!)
+    (set! %%guide-timings-set! timings-set!)
+    (set! glgui-wakeup! wakeup!)
+    (glgui-timings-set! frame-period-custom: (lambda (x) #f))
+    guide-default-event-dispatch/toplevel))
+
+(define $guide-frame-period)
+(define %%guide-use-frame-period!
+  (let ((last-frame-sec (time->seconds (current-time)))
+        (frame-period 0.1))
+    (define (wait x) ;; ignoring `x`
+      (let ((next (+ last-frame-sec frame-period)))
+        (set! last-frame-time next)
+        (seconds->time next)))
+    (set!
+     $guide-frame-period
+     (case-lambda
+      (() frame-period)
+      ((x)
+       (unless (and (number? x) (not (negative? x)))
+         (error "illegal argument" 'guide-frame-period x))
+       (set! frame-period x))))
+    (lambda ()
+      (%%guide-timings-set! frame-period-custom: wait))))
 
 (define (guide-event-dispatch-to-payload rect payload event x y)
   ((guide-payload-on-any-event payload) gui payload event x y))

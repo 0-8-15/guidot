@@ -396,7 +396,7 @@
 
 (define make-guide-label-view MATURITY+2:make-guide-label-view)
 
-(define (MATURITY+3:make-guide-button-view)
+(define (MATURITY+1:make-guide-figure-view)
   (define (color-conv color)
     (cond ;; TBD: define consistent conversion here!
      ((integer? color) (make-rect-single-color-array color))
@@ -466,7 +466,7 @@
       (define tp t)
       (when (integer? t)
         (MATURITY -1 "outdated call, replacing texture lookup for now" loc: 'texture-set! t)
-        (set! t (glCore:textures-ref t identity)))
+        (set! t (glCore:textures-ref t t)))
       (unless (glCore:texture? t) (error "invalid argument" 'texture-set! t tp))
       (set! texture t))
     (define (ctrl! key more)
@@ -576,4 +576,4 @@
                (else (error "unexpected" drawing)))))))
        (else (ctrl! key more)))))))
 
-(define make-guide-button-view MATURITY+3:make-guide-button-view)
+(define make-guide-button-view MATURITY+1:make-guide-figure-view)
