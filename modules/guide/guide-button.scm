@@ -164,16 +164,16 @@
             (MATURITY -1 "dynamic update bg+fg" loc: location)
             (let* ((dead #f)
                    (restricted-ctrl!
-                    (lambda (key . more)
+                    (lambda (#!optional (key #f) . more)
                       (cond
                        (dead (error "too late to update" 'make-guide-bg+fg-view key more))
                        (else (ctrl! key more)))))
-                   (ans (update! restricted-ctrl!))
-                   (drawing
-                    (begin
-                      (set! dead #t)
-                      (fixed-draw))))
-              (drawing)))))
+                   (drawing (update! restricted-ctrl!)))
+              (set! dead #t)
+              (cond
+               ((procedure? drawing) (drawing))
+               ((not drawing))
+               (else (error "unexpected" drawing)))))))
        (else (ctrl! key more)))))))
 
 (define (MATURITY+2:make-guide-label-view)
@@ -382,16 +382,16 @@
             (MATURITY -1 "dynamic update in label" loc: location)
             (let* ((dead #f)
                    (restricted-ctrl!
-                    (lambda (key . more)
+                    (lambda (#!optional (key #f) . more)
                       (cond
                        (dead (error "too late to update" 'make-guide-label-view key more))
                        (else (ctrl! key more)))))
-                   (ans (update! restricted-ctrl!))
-                   (drawing
-                    (begin
-                      (set! dead #t)
-                      (fixed-draw))))
-              (drawing)))))
+                   (drawing (update! restricted-ctrl!)))
+              (set! dead #t)
+              (cond
+               ((procedure? drawing) (drawing))
+               ((not drawing))
+               (else (error "unexpected" drawing)))))))
        (else (ctrl! key more)))))))
 
 (define make-guide-label-view MATURITY+2:make-guide-label-view)
@@ -564,16 +564,16 @@
             (MATURITY -1 "dynamic update in button" loc: location)
             (let* ((dead #f)
                    (restricted-ctrl!
-                    (lambda (key . more)
+                    (lambda (#!optional (key #f) . more)
                       (cond
                        (dead (error "too late to update" 'make-guide-button-view key more))
                        (else (ctrl! key more)))))
-                   (ans (update! restricted-ctrl!))
-                   (drawing
-                    (begin
-                      (set! dead #t)
-                      (fixed-draw))))
-              (drawing)))))
+                   (drawing (update! restricted-ctrl!)))
+              (set! dead #t)
+              (cond
+               ((procedure? drawing) (drawing))
+               ((not drawing))
+               (else (error "unexpected" drawing)))))))
        (else (ctrl! key more)))))))
 
 (define make-guide-button-view MATURITY+3:make-guide-button-view)
