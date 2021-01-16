@@ -941,7 +941,8 @@
                     (vector-set! resvec (idx to 2) (ttf:glyph-image glyph))
                     (set! to (fx+ to 1)))))))))))
 
-(define (MATURITY-1:glC:render-target-mdv! targets)
+#|
+(define (GONE:glC:render-target-mdv! targets)
   (MATURITY -4 "outdated" loc: MATURITY-1:glC:render-target-mdv!)
   (let* ((rng (mdvector-range targets))
          (limit (range-size rng 1)))
@@ -953,25 +954,10 @@
             (rot #f))
         (unless texture
           ;; ??? might be a regular case - when?
-          (MATURITY -2 "no texture found after rendering" loc: 'glC:render-target-mdv!))
+          (MATURITY -4 "no texture found after rendering" loc: 'glC:render-target-mdv!))
         ;;; (when texture (MATURITY +1 "texture found after rendering" loc: 'glC:render-target-mdv!))
         (and texture (glC:TextureDrawGlArrays texture vertices scale shift rot))))))
 
-#|
-(define (MATURITY-10:glC:render-target-mdv! targets)
-  (let* ((rng (mdvector-range targets))
-         (limit (range-size rng 1)))
-    (do ((i 0 (fx+ i 1)))
-        ((eqv? i limit))
-      (let ((vertices (mdvector-ref targets i 0))
-            (shift (mdvector-ref targets i 1))
-            (texture (mdvector-ref targets i 2))
-            (rot #f))
-        (unless texture
-          ;; ??? might be a regular case - when?
-          (MATURITY -2 "no texture found after rendering" loc: 'glC:render-target-mdv!))
-        ;;; (when texture (MATURITY +1 "texture found after rendering" loc: 'glC:render-target-mdv!))
-        (and texture (glC:TextureDrawGlArrays texture vertices scale shift rot))))))
 |#
 
 (define (MATURITY+1:glC:render-target-mdv! targets)
@@ -1015,7 +1001,7 @@
     (values below above)))
 
 (define (MATURITY+0:glC:draw-text-left x y w h label fnt color) ;; -> #!void
-  ;; (MATURITY 0 "working, looks correct; mimics behavior" 'glC:draw-text-left)
+  (MATURITY -2 "WASTFUL, working, looks correct; mimics behavior" 'glC:draw-text-left)
   (let* ((font (find-font fnt))
          (glyphs (utf8string->guide-glyphvector label font)))
     (and
@@ -1034,7 +1020,7 @@
 (set! glgui:draw-text-left glC:draw-text-left) ;; !!! BEWARE! appears to be good enough
 
 (define (MATURITY+0:glC:draw-text-right x y w h label fnt color) ;; -> #!void
-  ;; (MATURITY 0 "working, looks correct; mimics behavior" 'glC:draw-text-left)
+  (MATURITY -2 "WASTFUL, working, looks correct; mimics behavior" 'glC:draw-text-right)
   (let* ((font (find-font fnt))
          (glyphs (utf8string->guide-glyphvector label font)))
     (and
@@ -1057,7 +1043,7 @@
 
 (define (MATURITY+0:glC:draw-text-center x y w h label fnt color
                                          #!optional (clipright #f)) ;; -> #!void
-  ;; (MATURITY 0 "working, looks correct; mimics behavior" 'glC:draw-text-left)
+  (MATURITY -2 "WASTFUL, working, looks correct; mimics behavior" 'glC:draw-text-center)
   (let* ((font (find-font fnt))
          (glyphs (utf8string->guide-glyphvector label font)))
     (and
@@ -1080,13 +1066,6 @@
 (set! glgui:draw-text-center glC:draw-text-center) ;; !!! BEWARE! appears to be good enough
 
 ;;;*** Strings 1st draft
-
-(define (%glC:renderglyph1! target idx g img color)
-  ;; TBD: how does "legacy latex" drawing work?
-  (MATURITY 3 "experimental, SHALL factor shift into vertices" loc: %glC:renderglyph1!)
-  (let ((vertices (guide-image-area img))
-        (texcoords (guide-image-texcoord img)))
-    (glC:vertex-set-set! target idx vertices texcoords colors)))
 
 (define glGui:renderstring
   (let ((target glC:legacy-vertex-set-2d)
