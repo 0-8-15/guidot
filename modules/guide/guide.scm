@@ -22,6 +22,55 @@
 
 (include "glc.scm")
 
+;;;** memoize inline (gambit)
+
+(define-macro (macro-absent)
+  ;; gambit specific
+  '(##type-cast -6 (##type #f)))
+
+(define-macro (macro-absent? x)
+  ;; gambit specific
+  `(eq? ,x (macro-absent)))
+
+(define-macro (macro-memoize:1->1 f cmp)
+  (let ((last (gensym 'last))
+        (current (gensym 'current))
+        (value (gensym 'value)))
+    `(let ((,last (macro-absent))
+           (,value (macro-absent)))
+       (lambda (,current)
+         (cond
+          ((and
+            (,cmp ,current ,last)
+            (not (macro-absent? ,value)))
+           ,value)
+          (else
+           (set! ,value (,f ,current))
+           (set! ,last ,current)
+           ,value))))))
+
+(define-macro (macro-memoize:2->1 f cmp1 cmp2)
+  (let ((last-1 (gensym 'last-1))
+        (current-1 (gensym 'current-1))
+        (last-2 (gensym 'last-2))
+        (current-2 (gensym 'current-2))
+        (value (gensym 'value)))
+    `(let ((,last-1 (macro-absent))
+           (,last-2 (macro-absent))
+           (,value (macro-absent)))
+       (lambda (,current-1 ,current-2)
+         (cond
+          ((and
+            (,cmp2 ,current-2 ,last-2)
+            (,cmp1 ,current-1 ,last-1)
+            (not (macro-absent? ,value)))
+           ,value)
+          (else
+           (set! ,value (,f ,current-1  ,current-2))
+           (set! ,last-1 ,current-1)
+           (set! ,last-2 ,current-2)
+           ,value))))))
+
 ;;;** Basic Generic Drawing.
 
 (include "guide-figure.scm")
@@ -30,7 +79,7 @@
 
 (include "../misc-conventions/observable-syntax.sch")
 
-;;; END INSTEAD OF (include "~~tgt/lib/onetierzero/src/observable-notational-conventions.scm")
+;;* ACTUAL CODE
 
 (define-structure guide-widget redraw) ;; temporary helper for type safety
 

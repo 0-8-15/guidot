@@ -13,7 +13,7 @@
   (define foreground-h (lambda () 0.)) ;; example
   (define figure ;; rectangular ??? required at all? ???
     (let* ((formula (lambda (w h) (make-mdvector-rect-vertices/x0y0x1y1 0 0 w h)))
-           (calc (memoize-last formula eqv? eqv?)))
+           (calc (macro-memoize:2->1 formula eqv? eqv?) #;(memoize-last formula eqv? eqv?)))
       (lambda () (calc w h))))
   (let ((background #f) ;; entire area
         (foreground #f) ;; client area
@@ -231,7 +231,7 @@
                  (calculation (memoize-last formula eq? equal? eqv? eq?)))
             (lambda () (calculation font label h vertical-align))))
          (fgcolora
-          (let ((calc (memoize-last color-conv equal?)))
+          (let ((calc (macro-memoize:1->1 color-conv equal?) #;(memoize-last color-conv equal?)))
             (lambda () (calc color))))
          (foreground #f))
     (define fixed-draw
@@ -415,11 +415,11 @@
          (rot #f)
          (visible #t) ;; TBD: deprecated! use fg+bg pair instead!
          (bgcolora
-          (let ((calc (memoize-last color-conv equal?)))
+          (let ((calc (macro-memoize:1->1 color-conv equal?) #;(memoize-last color-conv equal?)))
             (lambda () (calc color))))
          (figure ;; rectangular
           (let* ((formula (lambda (w h) (make-mdvector-rect-vertices/x0y0x1y1 0 0 w h)))
-                 (calc (memoize-last formula eqv? eqv?)))
+                 (calc (macro-memoize:2->1 formula eqv? eqv?) #;(memoize-last formula eqv? eqv?)))
             (lambda () (calc w h))))
          (bgvset
           (let* ((formula
