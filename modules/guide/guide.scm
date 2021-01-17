@@ -107,7 +107,7 @@
   (let ((interval (guide-rectangle-measures obj)))
     (- (mdvector-interval-upper-bound interval 1) (mdvector-interval-lower-bound interval 1))))
 
-(define (guide-default-event-dispatch/fallback-to-glgui rect payload event x y)
+(define (MATURITY-2:guide-default-event-dispatch/fallback-to-glgui rect payload event x y)
   ;; fallback to glgui
   (let ((glgui (guide-rectangle-glgui rect)))
     (cond
@@ -244,6 +244,8 @@
     (lambda ()
       (%%guide-timings-set! frame-period-custom: wait))))
 
+;;;** Payload
+
 (define (guide-event-dispatch-to-payload rect payload event x y)
   ((guide-payload-on-any-event payload) gui payload event x y))
 
@@ -255,35 +257,47 @@
           (let ((wgt (guide-payload-widget payload)))
             (cond
              ((not wgt)) ;; TBD
-             (else (glgui-widget-set! (guide-rectangle-glgui rect) wgt 'hidden #f))))))
+             (else ;; legacy glgui
+              (let ((glgui (guide-rectangle-glgui rect)))
+                (when (table? glgui)
+                  (glgui-widget-set! glgui wgt 'hidden #f))))))))
        (hidden
         (lambda (payload rect)
           (let ((wgt (guide-payload-widget payload)))
             (cond
              ((not wgt)) ;; TBD
-             (else (glgui-widget-set! (guide-rectangle-glgui rect) wgt 'hidden #t))))))
+             (else ;; legacy glgui
+              (let ((glgui (guide-rectangle-glgui rect)))
+                (when (table? glgui) (glgui-widget-set! glgui wgt 'hidden #t))))))))
        (remove
         (lambda (payload rect)
           (let ((wgt (guide-payload-widget payload)))
             (cond
              ((not wgt)) ;; TBD
-             (else (glgui-widget-delete (guide-rectangle-glgui rect) wgt))))))
-       (events guide-default-event-dispatch))
+             (else ;; legacy glgui
+              (let ((glgui (guide-rectangle-glgui rect)))
+                (when (table? glgui) (glgui-widget-delete glgui wgt))))))))
+       (events (lambda (rect payload event x y) #f)))
    (lambda (#!key
             (in #f)
-            (widget (make-gtable))
-            (lifespan #t)
+            (widget (make-gtable)) ;; TBD: change default to new style
+            (lifespan #t) ;; TBD: change default?
             (on-any-event events)
             (gui-before exposed)
             (gui-after hidden))
      (unless (mdvector-interval? in)
        (error "make-guide-payload: 'in:' must be an interval" in))
+     (unless (or (procedure? on-any-event) (not on-any-event))
+       (error "illegal event handler" 'make-guide-payload on-any-event))
      (cond
       ((or (eq? lifespan #f) (eq? lifespan 'ephemeral))
        (make-guide-payload in widget on-any-event gui-before remove))
       (else (make-guide-payload in widget on-any-event gui-before gui-after))))))
 
 (define guide-open-rectangle
+  ;; A procedure of zero or one argument.  Without returns the current
+  ;; payload, if given and a valid payload switch over calling
+  ;; before/after thunks.
   (let ((empty (make-guide-payload
                 in: (make-mdvector-interval 2 0 0 1 1)
                 gui-before: #f
@@ -316,9 +330,41 @@
   (make-mdv-rect-interval 0 0 (glgui-width-get) (glgui-height-get)))
 
 (define (guide-make-gui #!optional (content (make-glgui)))
+  (MATURITY -2 "replaced by: guide-legacy-make-rect" loc: guide-make-gui)
   (make-guide-rectangle content (current-guide-gui-interval)))
 
-(define (guide-make-payload gui #!optional name)
+(define (guide-legacy-make-rect #!optional (interval (current-guide-gui-interval)))
+  (make-guide-rectangle (make-glgui) interval))
+
+(define (guide-default-event-dispatch/fallback-to-glgui rect payload event x y)
+  ;; fallback to glgui
+  (let ((glgui (guide-payload-widget payload)))
+    (cond
+     ((not glgui)) ;; TBD
+     #;((eq? event EVENT_REDRAW)
+      (glgui-event glgui event x y)
+      (guide-meta-menu-draw!))
+     (else (glgui-event glgui event x y)))))
+
+(define (guide-legacy-make-payload #!key (area (guide-legacy-make-rect)))
+  ;; fresh glgui container to hold legacy glgui widgets
+  ;;
+  ;; Note: use for backward compatibility only!  Legacy is rather
+  ;; expensive.
+  (let* ((gui (guide-rectangle-glgui area))
+         (interval (guide-rectangle-measures area))
+         (xsw (mdvector-interval-lower-bound interval 0))
+         (ysw (mdvector-interval-lower-bound interval 1))
+         (xno (mdvector-interval-upper-bound interval 0))
+         (yno (mdvector-interval-upper-bound interval 1))
+         (w (- xno xsw))
+         (h (- yno ysw))
+         (widget (glgui-container gui xsw ysw w h)))
+    (make-guide-payload
+     in: interval widget: widget lifespan: 'ephemeral
+     on-any-event: guide-default-event-dispatch/fallback-to-glgui)))
+
+(define (guide-make-payload gui #!optional name) ;; ???
   (guide-open-rectangle gui name))
 
 (define-values
