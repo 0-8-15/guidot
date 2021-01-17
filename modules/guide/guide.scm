@@ -281,7 +281,7 @@
    (lambda (#!key
             (in #f)
             (widget (make-gtable)) ;; TBD: change default to new style
-            (lifespan #t) ;; TBD: change default?
+            (lifespan #f) ;; BEWARE: default changed 20210117
             (on-any-event events)
             (gui-before exposed)
             (gui-after hidden))
@@ -809,7 +809,7 @@
 
 (define-values
     (guide-main guide-exit)
-  (let ((once main))
+  (let ((once main)) ;; lambdanative `main` called at most once
     (cond-expand
      (linux (define i3hook (delay (guide-floating-window!))))
      (else))
@@ -827,7 +827,7 @@
         (set! once (lambda _ (exit 23)))
         (todo
          ;; initialization
-         (lambda (w h)
+         (lambda (w h) ;; initial width&hight (from lambdanative event loop `ln-main`)
            (with-exception-catcher
             (lambda (exn)
               (handle-replloop-exception exn)
@@ -858,7 +858,9 @@
          resume
          )))
     (define (guide-exit code)
-      (if (eq? once main) (exit code)))
+      (cond
+       ((eq? once main))
+       (else (exit code))))
     (values guide-main guide-exit)))
 
 
