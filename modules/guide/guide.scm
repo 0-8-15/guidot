@@ -521,6 +521,53 @@
 
 (define guide-select-font Xglgui-font)
 
+(define (guide-button
+         #!key
+         (in (current-guide-gui-interval))
+         (font (guide-select-font size: 'medium))
+         (label "exit")
+         ;; TBD: better interface&name
+         (guide-callback (lambda (rect payload event x y) (terminate))))
+  (let* ((view! (make-guide-button-view))
+         (label! (make-guide-label-view))
+        ;;; TBD: inline these!
+         (x (mdvector-interval-lower-bound in 0))
+         (y (mdvector-interval-lower-bound in 1))
+         (w (- (mdvector-interval-upper-bound in 0) x))
+         (h (- (mdvector-interval-upper-bound in 1) y)))
+    (unless (procedure? label) (label! text: label))
+    (label! horizontal-align: 'center)
+    (label! vertical-align: 'center)
+    (label! font: (find-font font))
+    (label! size: w h)
+    (view! size: w h)
+    (cond
+     ((string? label) (view! foreground: (label!)))
+     ((procedure? label)
+      (let* ((cached
+              (macro-memoize:2->1
+               (lambda (update! str)
+                 (update! text: str)
+                 (update!))
+               (macro-alway-true-comparsion) equal?))
+             (check! (lambda (update!) (cached update! (label)))))
+        (new! foreground: (label! check! (list "guide-button" label)))))
+     (else (error "illegal label" guide-button label)))
+    (view! position: x y)
+    (let ((events
+           (let ((armed #f) (redraw! (view!)))
+             (lambda (rect payload event x y)
+               (cond
+                ((eqv? event EVENT_REDRAW) (redraw!))
+                ((eqv? event EVENT_BUTTON1DOWN)
+                 (if (guide-figure-contains? view! x y) (set! armed #t)))
+                ((eqv? event EVENT_BUTTON1UP)
+                 (when (and (guide-figure-contains? view! x y) armed)
+                   (guide-callback rect payload event x y))
+                 (set! armed #f))
+                (else #f))))))
+      (make-guide-payload in: in widget: #f on-any-event: events lifespan: 'ephemeral))))
+
 (define Xglgui-label
   (let ((orig.glgui-label glgui-label)
         (select-font Xglgui-font))
