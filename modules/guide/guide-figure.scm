@@ -235,7 +235,7 @@
                      ((eq? align 'top)
                       (- h (%%ttf:font-height font)))
                      ((eq? align 'center)
-                      (receive (below above) (%%glyphvector-bounds glyphs font)
+                      (receive (below above) (%%glC:glyphvector-bounds glyphs font)
                         (let ((h (if (> h 0) h (- above below))))
                           (+ y (/ h 2) below))))
                      ((eq? align 'bottom) 0)
