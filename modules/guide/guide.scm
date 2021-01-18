@@ -567,6 +567,44 @@
 
 ;; LambdaNative glgui frame -- it's a bit tricky to work around that one.
 
+;#| deprecated dependency `make-window`
+(define (%%MATURITY-2:guide:make-window w h #!optional (force-fullscreen #f)) ;; deprecated
+  (MATURITY -2 "Confused, what's going on here?" loc: %%MATURITY-2:guide:make-window)
+  ;; BEWARE FIXME: LN make-window does NOT AT ALL what one would expect.
+  ;;
+  ;; DEV: starting from literal copy from lambdanative/modules/eventloop/eventloops.scm
+  (set! app:forcefullscreen force-fullscreen) ;; BEWARE: unknown dependencies
+  (let* ((flip? (and force-fullscreen (> app:screenwidth app:screenheight))) ;; enfore portait
+         (xscale (/ (if flip? h w) app:screenwidth))
+         (yscale (/ (if flip? w h) app:screenheight)))
+    (set! app:width (if flip? h w))
+    (set! app:height (if flip? w h))
+    (if (or app:forcefullscreen
+            (string=? (system-platform) "ios")
+            (string=? (system-platform) "bb10")
+            (string=? (system-platform) "playbook")
+            (string=? (system-platform) "android"))
+        (begin
+          (set! app:xscale xscale)
+          (set! app:yscale yscale)
+          (set! app:scale? #t)))))
+
+(define (%%MATURITY+2:guide:make-window w h) ;; deprecated
+  (cond
+   (else (%%MATURITY-2:guide:make-window w h))))
+
+(define %%guide:make-window-initial ;; internal
+  ;; not inlined for easier debugging and called once only
+  (let ((once %%MATURITY+2:guide:make-window))
+    (lambda args
+      (unless once (error "once only call" %%guide:make-window-initial args))
+      (let ((todo once))
+        (set! once #f)
+        (apply todo args)))))
+
+(set! make-window (lambda args (error "guide: NO LONGER SUPPORTED: make-window" args)))
+;;|# end deprecated dependency `make-window`
+
 (define-values
     (guide-toplevel-payload guide-main guide-exit)
   (let ((once main) ;; lambdanative `main` called at most once
@@ -643,7 +681,7 @@
                 (else (NYIE)))
              (let ()
                ;; TBD: replace default operations:
-               (make-window w h)
+               (%%guide:make-window-initial w h)
                (glgui-orientation-set! orientation)
                ;; finally
                (values
