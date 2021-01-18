@@ -861,6 +861,18 @@
         (when glyph
           (set! x (fl+ (ttf:glyph-advancex glyph) x)))))))
 
+;;;** Strings
+
+(define (%%glC:glyphvector-bounds glyphs font)
+  (receive (below above) (guide-glypvector-bounds glyphs)
+    (let ((override (MATURITY+1:ln-ttf:font-ref font (char->integer #\|))))
+      ;; note: this path is usually always taken
+      (when override
+        (let ((goy (ttf:glyph-offsety override)))
+          (set! above (max (max above goy) above))
+          (set! below (min (fx- goy (ttf:glyph-height override)) below)))))
+    (values below above)))
+
 (define (glC:rederglyph/xy x y glyph color) ;; --> (advance-x rendering shift)
   (let ((gh (ttf:glyph-height glyph))
         (gax (ttf:glyph-advancex glyph)))
@@ -976,148 +988,3 @@
           (MATURITY -2 "no texture found after rendering" loc: 'glC:render-target-mdv!))
         ;;; (when texture (MATURITY +1 "texture found after rendering" loc: 'glC:render-target-mdv!))
         (and texture (glC:TextureDrawGlArrays texture vertices scale shift rot))))))
-
-;;;** Strings
-
-(define (%%glyphvector-height glyphs font)
-  (receive (below above) (guide-glypvector-bounds glyphs)
-    (let ((override (MATURITY+1:ln-ttf:font-ref font (char->integer #\|))))
-      ;; note: this path is usually always taken
-      (when override
-        (let ((goy (ttf:glyph-offsety override)))
-          (set! above (max (max above goy) above))
-          (set! below (min (fx- goy (ttf:glyph-height override)) below)))))
-    (+ above below)))
-
-(define (%%glyphvector-bounds glyphs font)
-  (receive (below above) (guide-glypvector-bounds glyphs)
-    (let ((override (MATURITY+1:ln-ttf:font-ref font (char->integer #\|))))
-      ;; note: this path is usually always taken
-      (when override
-        (let ((goy (ttf:glyph-offsety override)))
-          (set! above (max (max above goy) above))
-          (set! below (min (fx- goy (ttf:glyph-height override)) below)))))
-    (values below above)))
-
-(define (MATURITY+0:glC:draw-text-left x y w h label fnt color) ;; -> #!void
-  (MATURITY -2 "WASTEFUL, working, looks correct; mimics behavior" loc: 'glC:draw-text-left)
-  (let* ((font (find-font fnt))
-         (glyphs (utf8string->guide-glyphvector label font)))
-    (and
-     glyphs
-     (receive (below above) (%%glyphvector-bounds glyphs font)
-       (let* ((heff (+ above below))
-              (hspace (- (if (> h 0) h heff) heff))
-              (centery (+ y (/ hspace 2))))
-         (let ((targets (MATURITY+1:glC:glyphvector->render00 x centery w h glyphs color)))
-           (if targets
-               (MATURITY+1:glC:render-target-mdv! targets)
-               (MATURITY -5 "DEV +4: no targets to render" loc: 'draw-text-left))))))))
-
-(define glC:draw-text-left MATURITY+0:glC:draw-text-left)
-
-(set! glgui:draw-text-left glC:draw-text-left) ;; !!! BEWARE! appears to be good enough
-
-(define (MATURITY+0:glC:draw-text-right x y w h label fnt color) ;; -> #!void
-  (MATURITY -2 "WASTEFUL, working, looks correct; mimics behavior" loc: 'glC:draw-text-right)
-  (let* ((font (find-font fnt))
-         (glyphs (utf8string->guide-glyphvector label font)))
-    (and
-     glyphs
-     (receive (below above) (%%glyphvector-bounds glyphs font)
-       (let* ((shx (let* ((strw (MATURITY+0:guide-glypvector-width glyphs))
-                          (txo (- w strw)))
-                     (if (> txo 0) (+ x txo) 0)))
-              (heff (+ below above))
-              (hspace (- (if (> h 0) h heff) heff))
-              (centery (+ (+ y (/ hspace 2)) (* 1/2 below))))
-         (let ((targets (MATURITY+1:glC:glyphvector->render00 shx centery w h glyphs color)))
-           (if targets
-               (MATURITY+1:glC:render-target-mdv! targets)
-               (MATURITY -5 "DEV +4: no targets to render" loc: 'draw-text-right))))))))
-
-(define glC:draw-text-right MATURITY+0:glC:draw-text-right)
-
-(set! glgui:draw-text-right glC:draw-text-right) ;; !!! BEWARE! appears to be good enough
-
-(define (MATURITY+0:glC:draw-text-center x y w h label fnt color
-                                         #!optional (clipright #f)) ;; -> #!void
-  (MATURITY -2 "WASTEFUL, working, looks correct; mimics behavior" loc: 'glC:draw-text-center)
-  (let* ((font (find-font fnt))
-         (glyphs (utf8string->guide-glyphvector label font)))
-    (and
-     glyphs
-     (receive (below above) (%%glyphvector-bounds glyphs font)
-       (let* ((strw (MATURITY+0:guide-glypvector-width glyphs))
-              (shx (let ((txo (- w strw)))
-                     (if (> txo 0) (+ x (/ txo 2)) 0)))
-              (heff (- above below))
-              (hspace (- (if (> h 0) h heff) above))
-              (centery (+ y (/ hspace 2))))
-         (let ((targets (MATURITY+1:glC:glyphvector->render00
-                         shx centery w h glyphs color clipright)))
-           (if targets
-               (MATURITY+1:glC:render-target-mdv! targets)
-               (MATURITY -5 "DEV +4: no targets to render" loc: 'draw-text-center))))))))
-
-(define glC:draw-text-center MATURITY+0:glC:draw-text-center)
-
-(set! glgui:draw-text-center glC:draw-text-center) ;; !!! BEWARE! appears to be good enough
-
-;;;*** Strings 1st draft
-
-(define glGui:renderstring
-  (let ((target glC:legacy-vertex-set-2d)
-        (idx 0))
-    (define (color-conv color)
-      (cond ;; FIXME define & use consistent conversion
-       ((integer? color) (make-rect-single-color-array color))
-       ((not color) guide-color-transparent+black-array)
-       (else color)))
-    (define (renderglyph x y glyph color) ;; NOTE: positions are inexact!
-      ;; => x-delta
-      (receive (gax target shift) (glC:rederglyph/xy x y glyph color)
-        (when target
-          (let ((rot #f))
-            (glC:TextureDrawGlArrays (ttf:glyph-image glyph) target scale shift rot)))
-        gax))
-    (define (renderstring x y txt fnt color)
-      (set! glC:renderstring-is-active #t)
-      (when (exact? y)
-        (MATURITY -1 "exact y unexpected" renderstring)
-        (set! y (exact->inexact y)))
-      (set! color (color-conv color))
-      (let ((fnt (find-font fnt)))
-        (do ((i 0 (fx+ i 1))
-             (x0 (exact->inexact x))
-             (ccv (utf8string->u32vector txt)))
-            ((fx= i (u32vector-length ccv)))
-          (let* ((charcode (u32vector-ref ccv i))
-                 (g (MATURITY+1:ln-ttf:font-ref fnt charcode)))
-            (if g
-                (let ((img (ttf:glyph-image g)))
-                  (if img
-                      (set! x0 (fl+ x0 (renderglyph x0 y g color)))
-                      (log-error "no image for glyph: " charcode g)))
-                (log-error "no glyph for charcode: " charcode))))))
-    renderstring))
-
-(define $glC:overwrite-renderstring
-  (let ((original glgui:renderstring)
-        (compiled glGui:renderstring)
-        (active glgui:renderstring))
-    (case-lambda
-     (()
-      (cond
-       ((eq? active original) #f)
-       ((eq? active compiled) 'compiled)
-       (else active)))
-     ((x)
-      (cond
-       ((procedure? x) (set! active x))
-       ((eq? #t x) (set! active compiled))
-       ((eq? #f x) (set! active original))
-       (else (error "unhandled" x)))
-      (set! glgui:renderstring active)))))
-
-($glC:overwrite-renderstring #t)
