@@ -28,7 +28,7 @@
                     -1))))
            (dd-events
             (lambda (rect payload event x y)
-              (guide-default-event-dispatch rect payload (debug 'DD event) x y)))
+              (guide-default-event-dispatch/fallback-to-glgui rect payload (debug 'DD event) x y)))
            (build-dd
             (lambda ()
               (let ((c1 (guide-select-color-1))

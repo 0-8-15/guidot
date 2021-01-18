@@ -107,18 +107,6 @@
   (let ((interval (guide-rectangle-measures obj)))
     (- (mdvector-interval-upper-bound interval 1) (mdvector-interval-lower-bound interval 1))))
 
-(define (MATURITY-2:guide-default-event-dispatch/fallback-to-glgui rect payload event x y)
-  ;; fallback to glgui
-  (let ((glgui (guide-rectangle-glgui rect)))
-    (cond
-     ((not glgui)) ;; TBD
-     #;((eq? event EVENT_REDRAW)
-      (glgui-event glgui event x y)
-      (guide-meta-menu-draw!))
-     (else (glgui-event glgui event x y)))))
-
-(define guide-default-event-dispatch guide-default-event-dispatch/fallback-to-glgui)
-
 (define guide-terminate-on-key (make-parameter EVENT_KEYESCAPE))
 
 (define guide-meta-menu (make-parameter #f))
@@ -174,7 +162,7 @@
               (let ((moment (if customized-moment
                                 (customized-moment consecutive-redraw-count)
                                 (min frame-period-max-value (* consecutive-redraw-count step)))))
-                (if (and (number? moment) (> moment 0))
+                (if (or (time? moment) (and (number? moment) (> moment 0)))
                     (cond-expand
                      (win32
                       ;; Work around bug in gambit
@@ -191,7 +179,7 @@
               (wait-for-time-or-signal!)
               (if customized-moment
                   (let ((moment (customized-moment 1)))
-                    (when (and (number? moment) (> moment 0))
+                    (when (or (time? moment) (and (number? moment) (> moment 0)))
                       (thread-sleep! moment)))
                   (begin
                     (thread-sleep! step)
@@ -231,7 +219,7 @@
         (frame-period 0.1))
     (define (wait x) ;; ignoring `x`
       (let ((next (+ last-frame-sec frame-period)))
-        (set! last-frame-time next)
+        (set! last-frame-sec next)
         (seconds->time next)))
     (set!
      $guide-frame-period
@@ -347,7 +335,10 @@
      #;((eq? event EVENT_REDRAW)
       (glgui-event glgui event x y)
       (guide-meta-menu-draw!))
-     (else (glgui-event glgui event x y)))))
+     (else
+      (MATURITY -3 "legacy rendering is very expensive"
+                loc: guide-default-event-dispatch/fallback-to-glgui)
+      (glgui-event glgui event x y)))))
 
 (define (guide-legacy-make-payload #!key (area (guide-legacy-make-rect)))
   ;; fresh glgui container to hold legacy glgui widgets

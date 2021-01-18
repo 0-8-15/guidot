@@ -1001,7 +1001,7 @@
     (values below above)))
 
 (define (MATURITY+0:glC:draw-text-left x y w h label fnt color) ;; -> #!void
-  (MATURITY -2 "WASTFUL, working, looks correct; mimics behavior" 'glC:draw-text-left)
+  (MATURITY -2 "WASTEFUL, working, looks correct; mimics behavior" loc: 'glC:draw-text-left)
   (let* ((font (find-font fnt))
          (glyphs (utf8string->guide-glyphvector label font)))
     (and
@@ -1020,7 +1020,7 @@
 (set! glgui:draw-text-left glC:draw-text-left) ;; !!! BEWARE! appears to be good enough
 
 (define (MATURITY+0:glC:draw-text-right x y w h label fnt color) ;; -> #!void
-  (MATURITY -2 "WASTFUL, working, looks correct; mimics behavior" 'glC:draw-text-right)
+  (MATURITY -2 "WASTEFUL, working, looks correct; mimics behavior" loc: 'glC:draw-text-right)
   (let* ((font (find-font fnt))
          (glyphs (utf8string->guide-glyphvector label font)))
     (and
@@ -1043,7 +1043,7 @@
 
 (define (MATURITY+0:glC:draw-text-center x y w h label fnt color
                                          #!optional (clipright #f)) ;; -> #!void
-  (MATURITY -2 "WASTFUL, working, looks correct; mimics behavior" 'glC:draw-text-center)
+  (MATURITY -2 "WASTEFUL, working, looks correct; mimics behavior" loc: 'glC:draw-text-center)
   (let* ((font (find-font fnt))
          (glyphs (utf8string->guide-glyphvector label font)))
     (and

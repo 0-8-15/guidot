@@ -22,7 +22,7 @@
   initial: #f
   name: "Calculator value in display")
 
-(define make-calculator-payload
+(define make-calculator-payload-old
   (let ()
     (define keypad
       `((
@@ -153,7 +153,7 @@
                ((= x (char->integer #\S)) (calculator-sqrt))
                (else (set! skipevent #f)))
               (set! skipevent #f))
-          (if (not skipevent) (guide-default-event-dispatch gui payload event x y))))
+          (if (not skipevent) (guide-default-event-dispatch/fallback-to-glgui gui payload event x y))))
 
       (let* ((xsw (mdvector-interval-lower-bound interval 0))
              (ysw (mdvector-interval-lower-bound interval 1))
@@ -184,7 +184,16 @@
 
 (define (guide-define-payload-calculator! name)
   ;; Wired to globals, MUST be instanciated once only.
-  (guide-define-payload name 'once make-calculator-payload))
+  (guide-define-payload name 'once make-calculator-payload-old))
+
+(define guide-legacy-calculator-payload
+  (let ((result #f))
+    (define (make-calculator-payload #!key (in (current-guide-gui-interval)))
+      (if result result
+          (begin
+            (set! result (make-calculator-payload-old (guide-legacy-make-rect in) in))
+            result)))
+    make-calculator-payload))
 
 #| ;; test
 
