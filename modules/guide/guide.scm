@@ -327,7 +327,10 @@
     guide-open-rectangle))
 
 (define (current-guide-gui-interval)
-  (make-mdv-rect-interval 0 0 (glgui-width-get) (glgui-height-get)))
+  (let ((w (glgui-width-get))
+        (h (glgui-height-get)))
+    (unless (and w h) (error "width/height invalid" current-guide-gui-interval w h))
+    (make-mdv-rect-interval 0 0 w h)))
 
 (define (guide-make-gui #!optional (content (make-glgui)))
   (MATURITY -2 "replaced by: guide-legacy-make-rect" loc: guide-make-gui)
@@ -808,11 +811,19 @@
 ;; LambdaNative glgui frame -- it's a bit tricky to work around that one.
 
 (define-values
-    (guide-main guide-exit)
-  (let ((once main)) ;; lambdanative `main` called at most once
-    (cond-expand
+    (guide-toplevel-payload guide-main guide-exit)
+  (let ((once main) ;; lambdanative `main` called at most once
+        (attributes #f)
+        (payload #f))
+    (cond-expand ;; funny stuff
      (linux (define i3hook (delay (guide-floating-window!))))
      (else))
+    (define guide-toplevel-payload
+      (case-lambda
+       (() payload)
+       ((obj)
+        (unless (guide-payload? obj) (error "illegal payload" 'guide-toplevel-payload obj))
+        (set! payload obj))))
     (define (guide-main
              init #!key
              ;; (events #f)
@@ -822,7 +833,6 @@
                        (glgui-resume)))
              (terminate (lambda () #t)))
       (let ((gui #f)
-            (payload (lambda _ (error "wrong payload")))
             (todo once))
         (set! once (lambda _ (exit 23)))
         (todo
@@ -859,9 +869,36 @@
          )))
     (define (guide-exit code)
       (cond
-       ((eq? once main))
+       ((not (eq? once main))) ;; fall through to `ln-main` - dev compatible
+       (payload ;; experimental: simple payload
+        (guide-main
+         (lambda (w h)
+           ;; error checking callarguments (likely useless)
+           (unless (and (number? w) (positive? w) (number? h) (positive? h))
+             (error "useless arguments to guide-init" w h))
+           (receive (w h orientation)
+               (cond
+                ((not attributes)
+                 (let* ((interval (guide-payload-measures payload))
+                        (w (mdvector-interval-upper-bound interval 0))
+                        (h (mdvector-interval-upper-bound interval 1)))
+                   (values w h GUI_PORTRAIT)))
+                (else (NYIE)))
+             (let ()
+               ;; TBD: replace default operations:
+               (make-window w h)
+               (glgui-orientation-set! orientation)
+               ;; finally
+               (values
+                (make-guide-rectangle
+                 #f
+                 (make-mdv-rect-interval ;; FIXME: get rid of that lowlevel stuff
+                  0 0 w h))
+                payload)))))
+        ;; recurse
+        (guide-exit code))
        (else (exit code))))
-    (values guide-main guide-exit)))
+    (values guide-toplevel-payload guide-main guide-exit)))
 
 
 ;; #eof
