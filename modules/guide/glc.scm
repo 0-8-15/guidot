@@ -845,7 +845,6 @@
             (set! above (max above goy))
             (let ((gh (ttf:glyph-height glyph)))
               ;; FIXME: check/defaults into constructor!
-              (MATURITY -1 "glyph without height" loc: 'glypvectorheight)
               (set! below (min below (fx- goy gh))))))))))
 
 (define guide-glypvector-bounds MATURITY+0:guide-glypvector-bounds)

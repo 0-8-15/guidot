@@ -62,12 +62,13 @@
       (wire! current-colorscheme post: replace-dd)
       (wire! selected-display sequence: switch-selected-tool!)
       (let ((result (make-guide-payload
+                     name: 'legacy-dd
                      on-any-event: events
                      in: selection-interval
                      widget: gui
-                     lifespan: 'ephemeral)))
+                     lifespan: 'once)))
         (if #t
             result ;; return payload
             (case-lambda ;; return payload selector
-             (() result)
+             (() (debug 'PL result))
              ((pl) (debug 'ingnored pl))))))))

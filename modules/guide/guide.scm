@@ -90,6 +90,7 @@
 
 (define-structure guide-rectangle glgui measures)
 (define-structure guide-payload
+  name         ;; identifier for debugging
   measures     ;; interval
   widget       ;; glgui or extended
   on-any-event ;; generic event dispatch (replace by r/w specific versions
@@ -267,6 +268,7 @@
                 (when (table? glgui) (glgui-widget-delete glgui wgt))))))))
        (events (lambda (rect payload event x y) #f)))
    (lambda (#!key
+            (name #f)
             (in #f)
             (widget (make-gtable)) ;; TBD: change default to new style
             (lifespan #f) ;; BEWARE: default changed 20210117
@@ -279,14 +281,15 @@
        (error "illegal event handler" 'make-guide-payload on-any-event))
      (cond
       ((or (eq? lifespan #f) (eq? lifespan 'ephemeral))
-       (make-guide-payload in widget on-any-event gui-before remove))
-      (else (make-guide-payload in widget on-any-event gui-before gui-after))))))
+       (make-guide-payload name in widget on-any-event gui-before remove))
+      (else (make-guide-payload name in widget on-any-event gui-before gui-after))))))
 
 (define guide-open-rectangle
   ;; A procedure of zero or one argument.  Without returns the current
   ;; payload, if given and a valid payload switch over calling
   ;; before/after thunks.
   (let ((empty (make-guide-payload
+                name: 'empty
                 in: (make-mdvector-interval 2 0 0 1 1)
                 gui-before: #f
                 gui-after: #f
