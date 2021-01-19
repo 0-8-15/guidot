@@ -188,6 +188,27 @@
                (else (error "unexpected" drawing)))))))
        (else (ctrl! key more)))))))
 
+(define (%%guide:complete-padding-css location arg . rest)
+  ;; complete and check arguments according to CSS conventions
+  (let ((k
+         (cond
+          ((pair? rest)
+           (apply vector arg rest))
+          ((vector? arg) arg)
+          ((number? arg) (make-vector 4 arg))
+          (else (error "invalid arguments" location (cons arg rest))))))
+    (let ((len (vector-length k)))
+      (do ((i 0 (fx+ i 1))) (eqv? i len)
+        (let ((v (vector-ref k i)))
+          (unless (and (number? v) (>= v 0))
+            (error "invalid argument" location i v))))
+      (case len
+        ((4) k)
+        ((2) ;; y,x
+         (vector (vector-ref k 0) (vector-ref k 1) (vector-ref k 0) (vector-ref k 1)))
+        ((3) ;; top,x,bottom
+         (vector (vector-ref k 0) (vector-ref k 1) (vector-ref k 2) (vector-ref k 1)))))))
+
 (define (MATURITY+2:make-guide-label-view)
   (define %%ttf:font-height glgui:fontheight)
   (define (color-conv color)
@@ -204,6 +225,7 @@
          (y 0)
          (w 100)
          (h 100)
+         (padding #f) ;; '#(0 0 0 0) top,right,bottom,left
          (scale #f)
          (shift #f)
          (rot #f)
@@ -212,12 +234,13 @@
          (glyphs #f)
          (x-offset
           (let* ((formula
-                  (lambda (glyphs w align)
+                  (lambda (glyphs w align padding)
                     (if glyphs
                         (case align
-                          ((left) 0)
+                          ((left) (if padding (vector-ref padding 3) 0))
                           ((right)
                            (let* ((strw (MATURITY+0:guide-glypvector-width glyphs))
+                                  (strwp (if padding (+ strw (vector-ref padding 1)) strw))
                                   (txo (- w strw)))
                              (max 0 txo)))
                           ((center)
@@ -225,23 +248,25 @@
                                   (txo (- w strw)))
                              (max 0 (/ txo 2)))))
                         0)))
-                 (calculation (memoize-last formula eq? eqv? eq?)))
-            (lambda () (calculation glyphs w horizontal-align))))
+                 (calculation (memoize-last formula eq? eqv? eq? eq?)))
+            (lambda () (calculation glyphs w horizontal-align padding))))
          (y-offset
           (let* ((formula
-                  (lambda (font label h align)
+                  (lambda (glyphs h align padding)
                     (cond
-                     ((not font) 0) ;; default
+                     ((not glyphs) 0) ;; default
                      ((eq? align 'top)
-                      (- h (%%ttf:font-height font)))
+                      (let ((s0 (- h (%%ttf:font-height font))))
+                        (if padding (- s0 (vector-ref padding 0)) s0)))
                      ((eq? align 'center)
                       (receive (below above) (%%glC:glyphvector-bounds glyphs font)
                         (let ((h (if (> h 0) h (- above below))))
-                          (+ y (/ h 2) below))))
-                     ((eq? align 'bottom) 0)
+                          (+ y (/ (- h above) 2)))))
+                     ((eq? align 'bottom)
+                      (if padding (vector-ref padding 2) 0))
                      (else (NYIE 'guide-label-view)))))
-                 (calculation (memoize-last formula eq? equal? eqv? eq?)))
-            (lambda () (calculation font label h vertical-align))))
+                 (calculation (memoize-last formula eq? eqv? eq? eq?)))
+            (lambda () (calculation glyphs h vertical-align padding))))
          (fgcolora
           (let ((calc (macro-memoize:1->1 color-conv equal?) #;(memoize-last color-conv equal?)))
             (lambda () (calc color))))
@@ -284,7 +309,10 @@
       (set! label str)
       (set! glyphs (and label font (utf8string->guide-glyphvector label font)))
       (let ((targets
-             (and glyphs (MATURITY+1:glC:glyphvector->render00 0 0 w h glyphs (fgcolora)))))
+             (and glyphs
+                  (let ((w (if padding (- w (+ (vector-ref padding 1) (vector-ref padding 3))) w))
+                        (h (if padding (- h (+ (vector-ref padding 0) (vector-ref padding 2))) h)))
+                    (MATURITY+1:glC:glyphvector->render00 0 0 w h glyphs (fgcolora))))))
         (set! foreground targets))
       #!void)
     (define (ctrl! key more)
@@ -328,6 +356,12 @@
                (set! color (car more))
                (text-set! label))
              color))
+        ((padding:) ;; TBD: currently only effective for textual labels
+         (if (pair? more)
+             (begin
+               (set! padding (and (car more) (apply %%guide:complete-padding-css 'guide-label-view more)))
+               (text-set! label))
+             padding))
         ((size:)
          (if (pair? more)
              (receive (pw ph) (apply values more)
@@ -375,7 +409,7 @@
              ;; otherwise resolve all references
              (fixed-draw)))
         (else (error "unhandled" 'label-control key))))
-    (MATURITY 2 "fresh label created" loc: 'make-guide-button-view)
+    (MATURITY 2 "fresh label created" loc: 'make-guide-label-view)
     (case-lambda
      (() ;; draw thunk without dynamic dependencies
       (if (%%guide-view-default-dynamic)
@@ -587,5 +621,7 @@
                ((not drawing))
                (else (error "unexpected" drawing)))))))
        (else (ctrl! key more)))))))
+
+(define make-guide-figure-view MATURITY+1:make-guide-figure-view)
 
 (define make-guide-button-view MATURITY+1:make-guide-figure-view)

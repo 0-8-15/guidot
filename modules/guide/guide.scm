@@ -118,7 +118,7 @@
      (() c)
      ((n)
       (unless (or (not n) (procedure? n))
-        (error "illegal argument" 'guide-overlay n))
+        (error "invalid argument" 'guide-overlay n))
       ;; swap
       (let ((o c)) (set! c n) o)))))
 (define %%guide-overlay MATURITY+4:%%guide-overlay)
@@ -228,7 +228,7 @@
       (() frame-period)
       ((x)
        (unless (and (number? x) (not (negative? x)))
-         (error "illegal argument" 'guide-frame-period x))
+         (error "invalid argument" 'guide-frame-period x))
        (set! frame-period x))))
     (lambda ()
       (%%guide-timings-set! frame-period-custom: wait))))
@@ -278,7 +278,7 @@
      (unless (mdvector-interval? in)
        (error "make-guide-payload: 'in:' must be an interval" in))
      (unless (or (procedure? on-any-event) (not on-any-event))
-       (error "illegal event handler" 'make-guide-payload on-any-event))
+       (error "invalid event handler" 'make-guide-payload on-any-event))
      (cond
       ((or (eq? lifespan #f) (eq? lifespan 'ephemeral))
        (make-guide-payload name in widget on-any-event gui-before remove))
@@ -313,7 +313,7 @@
           (cond
            ((eq? current new))
            (else
-            (unless (guide-payload? new) (error "illegal payload" new))
+            (unless (guide-payload? new) (error "invalid payload" new))
             (set! current (switch-over rect current new))))))))
     guide-open-rectangle))
 
@@ -521,20 +521,27 @@
          (in (current-guide-gui-interval))
          (font (guide-select-font size: 'medium))
          (label "exit")
+         (padding '#(1 1 1 1))
+         (background #f)
+         (position #f)
+         (horizontal-align 'center)
+         (vertical-align 'center)
          ;; TBD: better interface&name
          (guide-callback (lambda (rect payload event x y) (terminate))))
-  (let* ((view! (make-guide-button-view))
+  (let* ((view! (make-guide-figure-view))
          (label! (make-guide-label-view))
         ;;; TBD: inline these!
          (x (mdvector-interval-lower-bound in 0))
          (y (mdvector-interval-lower-bound in 1))
          (w (- (mdvector-interval-upper-bound in 0) x))
          (h (- (mdvector-interval-upper-bound in 1) y)))
-    (unless (procedure? label) (label! text: label))
-    (label! horizontal-align: 'center)
-    (label! vertical-align: 'center)
+    (label! horizontal-align: horizontal-align)
+    (label! vertical-align: vertical-align)
     (label! font: (find-font font))
     (label! size: w h)
+    (label! padding: padding)
+    ;; finally - in order to ot trigger useless recalculations
+    (unless (procedure? label) (label! text: label))
     (view! size: w h)
     (cond
      ((string? label) (view! foreground: (label!)))
@@ -546,9 +553,12 @@
                  (update!))
                (macro-alway-true-comparsion) equal?))
              (check! (lambda (update!) (cached update! (label)))))
-        (new! foreground: (label! check! (list "guide-button" label)))))
-     (else (error "illegal label" guide-button label)))
-    (view! position: x y)
+        (view! foreground: (label! check! (list "guide-button" label)))))
+     (else (error "invalid label" guide-button label)))
+    (when background (view! texture: background))
+    (if position
+        (view! position: (vector-ref position 0) (vector-ref position 1))
+        (view! position: x y))
     (let ((events
            (let ((armed #f) (redraw! (view!)))
              (lambda (rect payload event x y)
@@ -568,18 +578,15 @@
 ;; LambdaNative glgui frame -- it's a bit tricky to work around that one.
 
 ;#| deprecated dependency `make-window`
-(define (%%MATURITY-2:guide:make-window w h #!optional (force-fullscreen #f)) ;; deprecated
-  (MATURITY -2 "Confused, what's going on here?" loc: %%MATURITY-2:guide:make-window)
-  ;; BEWARE FIXME: LN make-window does NOT AT ALL what one would expect.
-  ;;
-  ;; DEV: starting from literal copy from lambdanative/modules/eventloop/eventloops.scm
-  (set! app:forcefullscreen force-fullscreen) ;; BEWARE: unknown dependencies
-  (let* ((flip? (and force-fullscreen (> app:screenwidth app:screenheight))) ;; enfore portait
-         (xscale (/ (if flip? h w) app:screenwidth))
-         (yscale (/ (if flip? w h) app:screenheight)))
-    (set! app:width (if flip? h w))
-    (set! app:height (if flip? w h))
-    (if (or app:forcefullscreen
+(define (%%MATURITY+2:guide:make-window w h) ;; deprecated
+  (MATURITY 1 "experimental, simplified" loc: %%MATURITY+2:guide:make-window)
+  (let* ((xscale (/ w app:screenwidth))
+         (yscale (/ h app:screenheight)))
+    ;; register width&height to be used after initialization to
+    ;; actually create the window.
+    (set! app:width w)
+    (set! app:height h)
+    (if (or app:forcefullscreen ;; fullscreen unsuded here (broken)
             (string=? (system-platform) "ios")
             (string=? (system-platform) "bb10")
             (string=? (system-platform) "playbook")
@@ -588,10 +595,6 @@
           (set! app:xscale xscale)
           (set! app:yscale yscale)
           (set! app:scale? #t)))))
-
-(define (%%MATURITY+2:guide:make-window w h) ;; deprecated
-  (cond
-   (else (%%MATURITY-2:guide:make-window w h))))
 
 (define %%guide:make-window-initial ;; internal
   ;; not inlined for easier debugging and called once only
@@ -617,7 +620,7 @@
       (case-lambda
        (() payload)
        ((obj)
-        (unless (guide-payload? obj) (error "illegal payload" 'guide-toplevel-payload obj))
+        (unless (guide-payload? obj) (error "invalid payload" 'guide-toplevel-payload obj))
         (set! payload obj))))
     (define (guide-main
              init #!key
