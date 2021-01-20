@@ -137,6 +137,130 @@
 
 ($glC:overwrite-renderstring #t)
 
+;;;* Guide Incubator
+
+(define (make-figure-list-payload
+         in content
+         #!key
+         (font (error "font is required so far" 'make-figure-list-payload))
+         (action #f) (guide-callback #f)
+         ;; non-functional; for debugging:
+         (name make-figure-list-payload))
+  (let* ((content (let ((content (content)))
+                    (if (vector? content) content (apply vector content))))
+         (len (vector-length content))
+         (all (make-vector len #f))
+         (bg (%%glCore:textures-ref (glC:image-t guide-default-background) #f))
+         (sely (mdvector-interval-lower-bound in 1))
+         (selh (- (mdvector-interval-upper-bound in 1) sely))
+         (selcb
+          (lambda (rect payload event x y)
+            (when action (action (floor (/ (- sely y) selh))))
+            (when guide-callback (guide-callback rect payload event x y))))
+         (events
+          (lambda (rect payload event x y)
+            ;; TBD: we can't deliver all events everywhere!!!
+            (and (or (eqv? event EVENT_REDRAW)
+                     (let ((n (floor (/ (- sely y) selh))))
+                       (and (>= n 0) (< n len))))
+                 (do ((i 0 (fx+ i 1)))
+                     ((eqv? i len) #t)
+                   (let ((payload (vector-ref all i)))
+                     (guide-event-dispatch-to-payload rect payload event x y)))))))
+    (do ((i 0 (fx+ i 1)))
+        ((eqv? i len)
+         (make-guide-payload
+          in: in on-any-event: events
+          name: name lifespan: 'ephemeral widget: #f))
+      (let* ((label (vector-ref content i))
+             (payload
+              (guide-button
+               in: in label: label font: font background: bg
+               padding: '#(0 1 0 1)
+               position: (vector 0 (- sely (* (+ i 1) selh)))
+               vertical-align: 'center
+               horizontal-align: 'left
+               guide-callback: selcb)))
+        (vector-set! all i payload)))))
+
+(define (make-tool-switch-payload/dropdown
+         selection options content
+         #!key
+         (in (guide-payload-measures (if (procedure? content) (content) content)))
+         (height 26)
+         (selection-area #|deprecated|# #f)
+         ;; non-functional; for debugging:
+         (name 'tool-switch-payload/dropdown))
+  (define (in-pl? pl x y) ;; TBD: independent, move elsewhere once stable
+    (let ((in (guide-payload-measures pl)))
+      (and (> x (mdvector-interval-lower-bound in 0))
+           (< x (mdvector-interval-upper-bound in 0))
+           (> y (mdvector-interval-lower-bound in 1))
+           (< y (mdvector-interval-upper-bound in 1)))))
+  (let ((selection-area
+         (or selection-area ;; garbage in garbage out
+             (let* ((x0 (mdvector-interval-lower-bound in 0))
+                    (x1 (mdvector-interval-upper-bound in 0))
+                    (y0 (mdvector-interval-upper-bound in 1)))
+               (make-mdv-rect-interval x0 y0 x1 (+ y0 height)))))
+        (selbg (glC:image-t guide-default-background))
+        (selfnt (guide-select-font height: height)))
+    ;; volatile:
+    (let* ((active #f) ;; modal: dropdown
+           (b1c
+            (lambda (rect payload event x y)
+              (cond
+               (active (set! active #f))
+               (else
+                (set!
+                 active
+                 (let ((action (lambda (sel) (set! active #f) (selection sel))))
+                   (make-figure-list-payload selection-area options font: selfnt action: action)))))))
+           (b1 (let ((curla ;; current selected label
+                      (lambda ()
+                        (let ((kind (options)))
+                          (cond
+                           ((vector? kind) (vector-ref kind (selection)))
+                           ((list? kind) (list-ref kind (selection)))
+                           (else "error"))))))
+                 (guide-button
+                  in: selection-area
+                  label: curla
+                  font: selfnt
+                  background: (%%glCore:textures-ref selbg #f) ;;??? are texture volatile
+                  vertical-align: 'center
+                  horizontal-align: 'left
+                  guide-callback: b1c)))
+           (events
+            (let ((d1 (guide-payload-on-any-event b1)))
+              (lambda (rect payload event x y)
+              ;;; TBD: we can't deliver all events everywhere!!!
+                (cond
+                 ((eqv? event EVENT_REDRAW)
+                  (guide-event-dispatch-to-payload rect (content) event x y)
+                  (d1 rect payload event x y)
+                  (when active (guide-event-dispatch-to-payload rect active event x y)))
+                 (else
+                  (cond
+                   (active
+                    (unless ((guide-payload-on-any-event active) rect active event x y)
+                      (d1 rect payload event x y)
+                      (let ((content (content)))
+                        (when (in-pl? content x y)
+                          (set! active #f)
+                          (guide-event-dispatch-to-payload rect content event x y)))))
+                   (else
+                    (d1 rect payload event x y)
+                    (guide-event-dispatch-to-payload rect (content) event x y)))))))))
+      (make-guide-payload
+       in:
+       (make-mdv-rect-interval
+        (mdvector-interval-lower-bound in 0)
+        (mdvector-interval-lower-bound in 1)
+        (mdvector-interval-upper-bound selection-area 0)
+        (mdvector-interval-upper-bound selection-area 1))
+       name: name widget: #f on-any-event: events lifespan: 'ephemeral))))
+
 ;;;* Xglgui
 
 (define Xglgui-font guide-select-font)
@@ -370,8 +494,6 @@
    (else ;; frozen: old version
     (glgui-button-string ctx x y w h label font glgui-callback))))
 
-(include "xglgui-dropdown.scm")
-
-(define make-tl-selection-payload make-selection-payload/dropdown)
+;; (include "xglgui-dropdown.scm")
 
 ;;; END Xglgui

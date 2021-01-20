@@ -1,3 +1,5 @@
+DEPRECATED . . . BASICALY GONE
+
 (define (make-selection-payload/dropdown
          rect current-payload selection-interval content-interval font)
   (define (switch-selected-tool! old new)
@@ -72,3 +74,5 @@
             (case-lambda ;; return payload selector
              (() (debug 'PL result))
              ((pl) (debug 'ingnored pl))))))))
+
+(define make-tl-selection-payload make-selection-payload/dropdown)
