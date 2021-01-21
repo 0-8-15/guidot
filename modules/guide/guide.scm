@@ -504,16 +504,17 @@
         (medium.fnt DejaVuSans_24.fnt)
         (large.fnt DejaVuSans_32.fnt))
     (define (select-font #!key (size 'small) (height #f))
-      (case (cond
+      (find-font
+       (case (cond
               ((eq? height #f) size)
               ((<= height 16) 'small)
               ((<= height 26) 'medium)
               ((<= height 35) 'large)
               (else 'small))
-        ((small small:) small.fnt)
-        ((medium small:) medium.fnt)
-        ((large small:) large.fnt)
-        (else small.fnt)))
+         ((small small:) small.fnt)
+         ((medium small:) medium.fnt)
+         ((large small:) large.fnt)
+         (else small.fnt))))
     select-font))
 
 (define (guide-button
@@ -544,7 +545,7 @@
     (unless (procedure? label) (label! text: label))
     (view! size: w h)
     (cond
-     ((string? label) (view! foreground: (label!)))
+     ((or (string? label) (glC:image? label)) (view! foreground: (label!)))
      ((procedure? label)
       (let* ((cached
               (macro-memoize:2->1

@@ -159,10 +159,9 @@
     (case-lambda
      (() ;; draw thunk without dynamic dependencies
       (if (%%guide-view-default-dynamic)
+          (ctrl! #t '()) ;; full exercise, otherwise optimized:
           (and visible (or background foreground)
-               ;; optimized case, otherwise full exercise
-               (fixed-draw))
-          (ctrl! #t '())))
+               (fixed-draw))))
      ((key . more)
       (cond
        ((procedure? key)
@@ -231,7 +230,7 @@
          (rot #f)
          (visible #t) ;; TBD: deprecated! use fg+bg pair instead!
          ;; derived
-         (glyphs #f)
+         (glyphs #f) ;; rendered array or image
          (x-offset
           (let* ((formula
                   (lambda (glyphs w align padding)
@@ -239,12 +238,18 @@
                         (case align
                           ((left) (if padding (vector-ref padding 3) 0))
                           ((right)
-                           (let* ((strw (MATURITY+0:guide-glypvector-width glyphs))
+                           (let* ((strw
+                                   (cond
+                                    ((glC:image? glyphs) (glC:image-w glyphs))
+                                    (else (MATURITY+0:guide-glypvector-width glyphs))))
                                   (strwp (if padding (+ strw (vector-ref padding 1)) strw))
                                   (txo (- w strw)))
                              (max 0 txo)))
                           ((center)
-                           (let* ((strw (MATURITY+0:guide-glypvector-width glyphs))
+                           (let* ((strw
+                                   (cond
+                                    ((glC:image? glyphs) (glC:image-w glyphs))
+                                    (else (MATURITY+0:guide-glypvector-width glyphs))))
                                   (txo (- w strw)))
                              (max 0 (/ txo 2)))))
                         0)))
@@ -256,10 +261,15 @@
                     (cond
                      ((not glyphs) 0) ;; default
                      ((eq? align 'top)
-                      (let ((s0 (- h (%%ttf:font-height font))))
+                      (let ((s0 (- h (cond
+                                      ((glC:image? glyphs) (glC:image-h glyphs))
+                                      (else (%%ttf:font-height font))))))
                         (if padding (- s0 (vector-ref padding 0)) s0)))
                      ((eq? align 'center)
-                      (receive (below above) (%%glC:glyphvector-bounds glyphs font)
+                      (receive (below above)
+                          (cond
+                           ((glC:image? glyphs) (values 0 (glC:image-h glyphs)))
+                           (else (%%glC:glyphvector-bounds glyphs font)))
                         (let ((h (if (> h 0) h (- above below))))
                           (+ y (/ (- h above) 2)))))
                      ((eq? align 'bottom)
@@ -288,6 +298,7 @@
                (x-offset (exact->inexact (x-offset)))
                (y-offset (exact->inexact (y-offset)))
                (foreground foreground))
+           (when (glC:image? glyphs) y-offset)
            (lambda () ;; result … TBD: specialize up to nothing…
              ;; if not already in shift mode ... simplicity: a toplevel matrix push
              (glPushMatrix)
@@ -298,7 +309,10 @@
              (when rot-0
                (glRotatef//checks rot-0 rot-1 rot-2 rot-3))
              (cond
-              ((procedure? foreground) (foreground))
+              ((procedure? foreground)
+               (unless (and (eqv? x-offset 0) (eqv? y-offset 0))
+                 (glTranslatef//checks x-offset y-offset 0.))
+               (foreground))
               (foreground
                (unless (and (eqv? x-offset 0) (eqv? y-offset 0))
                  (glTranslatef//checks x-offset y-offset 0.))
@@ -307,14 +321,28 @@
              (glPopMatrix))))))
     (define (text-set! str)
       (set! label str)
-      (set! glyphs (and label font (utf8string->guide-glyphvector label font)))
-      (let ((targets
-             (and glyphs
-                  (let ((w (if padding (- w (+ (vector-ref padding 1) (vector-ref padding 3))) w))
-                        (h (if padding (- h (+ (vector-ref padding 0) (vector-ref padding 2))) h)))
-                    (MATURITY+1:glC:glyphvector->render00 0 0 w h glyphs (fgcolora))))))
-        (set! foreground targets))
-      #!void)
+      (cond
+       ((or (string? str) (not str))
+        (set! glyphs (and label font (utf8string->guide-glyphvector label font)))
+        (let ((targets
+               (and glyphs
+                    (let ((w (if padding (- w (+ (vector-ref padding 1) (vector-ref padding 3))) w))
+                          (h (if padding (- h (+ (vector-ref padding 0) (vector-ref padding 2))) h)))
+                      (MATURITY+1:glC:glyphvector->render00 0 0 w h glyphs (fgcolora))))))
+          (set! foreground targets))
+        #!void)
+       ((glC:image? str)
+        (set! glyphs str)
+        (let ((target
+               (make-glC:vertex-set
+                (let ((w (glC:image-w glyphs)) (h (glC:image-h glyphs)))
+                  (mdvector-body (make-mdvector-rect-vertices/x0y0x1y1 0 0 w h)))
+                (mdvector-body (glC:image-legacy-texcoords glyphs))
+                (mdvector-body (fgcolora))
+                2 4))
+              (texture (glC:image-t glyphs)))
+          (set! foreground (lambda () (glC:TextureDrawGlArrays texture target #f #f #f)))))
+       (else (error "invalid label" str))))
     (define (ctrl! key more)
       (case key
         ((visible:) ;; TBD: deprecated!
@@ -324,7 +352,7 @@
          (if (null? more) label
              (let ((thing (car more)))
                (cond
-                ((string? thing) (text-set! thing))
+                ((or (string? thing) (glC:image? thing)) (text-set! thing))
                 ((or (procedure? thing) (not thing))
                  (set! label #f)
                  (set! foreground thing))
@@ -413,8 +441,8 @@
     (case-lambda
      (() ;; draw thunk without dynamic dependencies
       (if (%%guide-view-default-dynamic)
-          (fixed-draw) ;; optimized case, otherwise full exercise
-          (ctrl! #t '())))
+          (ctrl! #t '()) ;; full exercise, otherwise optimized case
+          (fixed-draw)))
      ((key . more)
       (cond
        ((procedure? key)
@@ -595,8 +623,8 @@
     (case-lambda
      (() ;; draw thunk without dynamic dependencies
       (if (%%guide-view-default-dynamic)
-          (fixed-draw) ;; optimized case, otherwise full exercise
-          (ctrl! #t '())))
+          (ctrl! #t '()) ;; full exercise, otherwise optimized:
+          (fixed-draw)))
      ((key . more)
       (cond
        ((procedure? key)
