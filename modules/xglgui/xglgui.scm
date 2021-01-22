@@ -146,6 +146,7 @@
          (action #f) (guide-callback #f)
          ;; non-functional; for debugging:
          (name make-figure-list-payload))
+  ;; TBD: Option to catch/display errors in handling content events.
   (let* ((content (let ((content (content)))
                     (if (vector? content) content (apply vector content))))
          (len (vector-length content))
@@ -188,6 +189,7 @@
          #!key
          (in (guide-payload-measures (if (procedure? content) (content) content)))
          (height 26)
+         (dynamic #f)
          (selection-area #|deprecated|# #f)
          ;; non-functional; for debugging:
          (name 'tool-switch-payload/dropdown))
@@ -216,13 +218,15 @@
                  active
                  (let ((action (lambda (sel) (set! active #f) (selection sel))))
                    (make-figure-list-payload selection-area options font: selfnt action: action)))))))
-           (b1 (let ((curla ;; current selected label
-                      (lambda ()
-                        (let ((kind (options)))
-                          (cond
-                           ((vector? kind) (vector-ref kind (selection)))
-                           ((list? kind) (list-ref kind (selection)))
-                           (else "error"))))))
+           (b1 (let* ((sel
+                       (lambda ()
+                         (let ((kind (options)))
+                           (cond
+                            ((vector? kind) (vector-ref kind (selection)))
+                            ((list? kind) (list-ref kind (selection)))
+                            (else "error")))))
+                       ;; current selected label
+                      (curla (if dynamic sel (sel))))
                  (guide-button
                   in: selection-area
                   label: curla
@@ -234,7 +238,7 @@
            (events
             (let ((d1 (guide-payload-on-any-event b1)))
               (lambda (rect payload event x y)
-              ;;; TBD: we can't deliver all events everywhere!!!
+                ;; TBD: we can't deliver all events everywhere!!!
                 (cond
                  ((eqv? event EVENT_REDRAW)
                   (guide-event-dispatch-to-payload rect (content) event x y)
