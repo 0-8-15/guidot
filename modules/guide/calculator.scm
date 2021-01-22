@@ -22,178 +22,256 @@
   initial: #f
   name: "Calculator value in display")
 
-(define make-calculator-payload-old
-  (let ()
-    (define keypad
-      `((
-         ( (#\A "AC") (#\M "MC") #\C (,delchar ,glgui_keypad_delete.img) )
-         ( (#\m "MR")  (#\p "M+") (#\q "M-") #\/)
-         ( #\7 #\8 #\9 #\* )
-         ( #\4 #\5 #\6 #\- )
-         ( #\1 #\2 #\3 #\+ )
-         ( (#\0 "0" 2.)  #\. (#\= "=" 1. ,DarkOrange))
-         )))
+(define (make-calculator-payload interval)
 
-    ;; suppress floating point inaccuracies
-    (define (number->neatstring n)
-      (if (not (##flonum? n)) (number->string n)
-          (let* ((s (number->string (fl/ (flfloor (fl+ (fl* (flo n) 1.0e10) 0.5)) 1.0e10)))
-                 (sl (string-length s))
-                 (b (substring s 0 1))
-                 (e (substring s (- sl 1) sl)))
-            (string-append (if (string=? b ".") "0" "")
-                           (if (string=? e ".") (substring s 0 (- sl 1)) s)))))
+  (define calculator-color-bgn (lambda _ Gray) #;guide-select-color-1)
+  (define calculator-color-fgn guide-select-color-2)
+  (define calculator-color-bge (lambda _ DarkOrange) #;guide-select-color-3)
+  (define calculator-color-fge guide-select-color-4)
 
-    (define (value->neatstring n)
+  (define (number->neatstring n)
+    ;; TBD: suppress floating point inaccuracies
+    (number->string n))
+
+  (define (value->neatstring n)
+    (cond
+     ((boolean? n) "")
+     ((number? n) (number->neatstring n))
+     (else (object->string n))))
+
+  (define (calculator-evaluate)
+    (let ((input (calculator-main-display)))
+      (calculator-result
+       (let ((input (or input (and (number? (calculator-input)) (calculator-input)))))
+         (and input
+              (if (pair? (calculator-operations))
+                  (let ((top (car (calculator-operations))))
+                    (calculator-operations (cdr (calculator-operations)))
+                    (with-exception-catcher
+                     (lambda (exn) exn)
+                     (lambda () (top input))))
+                  input))))
+      (calculator-input #f)
+      (calculator-main-display (calculator-result))))
+
+  (define (calculator-C)  (begin #;kick (calculator-input #t) (calculator-main-display (calculator-input))))
+  ;;(define (calculator-C) (glgui-widget-set! gui calculator-display 'label ""))
+  (define (calculator-MC) (begin #;kick (calculator-mem1 0)))
+  (define (calculator-AC) (begin #;kick (calculator-result #t) (calculator-C) (calculator-MC) (calculator-operations '())))
+
+  (define (calculator-MR) (begin #;kick (calculator-input (calculator-mem1))))
+
+  (define (calculator-M+)
+    (let ((input (calculator-main-display)))
+      (calculator-input #f)
+      (if (number? input) (begin #;kick (calculator-mem1 (+ (calculator-mem1) input))))))
+
+  (define (take-display-value)
+    (let ((input (calculator-main-display)))
+      (and input
+           (begin #;kick
+             (calculator-main-display #f)
+             input))))
+
+  (define (calculator-M-)
+    (let ((input (take-display-value)))
+      (begin #;kick
+        (calculator-input #f)
+        (if (number? input) (begin #;kick (calculator-mem1 (- (calculator-mem1) input)))))))
+
+  (define (calculator-push-label-to-pin! pin)
+    (let ((input (take-display-value)))
+      (and input (begin #;kick (pin input)))))
+
+  (define (calculator-sqrt)
+    (let ((input (take-display-value)))
+      (begin #;kick
+        (calculator-input input)
+        (calculator-result
+         (cond
+          ((number? (calculator-input)) (sqrt (calculator-input)))
+          ((number? (calculator-result)) (sqrt (calculator-result)))
+          (else #f)))
+        (calculator-main-display (calculator-result)))))
+
+  (define (calculator-push-operation op)
+    (let ((input (take-display-value)))
+      (if input
+          (begin
+            (calculator-result input)
+            (calculator-operations (cons (lambda (x) (op (calculator-result) x)) (calculator-operations)))))))
+
+  (let* ((xsw (mdvector-interval-lower-bound interval 0))
+         (ysw (mdvector-interval-lower-bound interval 1))
+         (xno (mdvector-interval-upper-bound interval 0))
+         (yno (mdvector-interval-upper-bound interval 1))
+         (w (- xno xsw))
+         (h (- yno ysw)))
+    (define calculator-subdisplay
+      (let ((label! (make-guide-label-view))
+            (check!
+             (let ((cached
+                    (memoize-last
+                     (lambda (update! input Ans Mem)
+                       (update!
+                        text:
+                        (string-append
+                         "In=" (value->neatstring input)
+                         "Mem=" (number->neatstring Mem) " Ans=" (value->neatstring Ans)  " "))
+                       (update!))
+                     (lambda (a b) #t) equal? equal? equal?)))
+               (lambda (update!) (cached update! (calculator-input) (calculator-result) (calculator-mem1))))))
+        (label! color: (calculator-color-bgn))
+        (label! size: w 20)
+        (label! vertical-align: 'bottom)
+        (label! horizontal-align: 'right)
+        (label! position: 0 (- h 20))
+        (label! font: (guide-select-font size: 'small))
+        (label! check! "calculator subdisplay")))
+    (define calculator-display
+      (let ((label! (make-guide-label-view))
+            (check!
+             (let ((cached
+                    (memoize-last
+                     (lambda (update! Ans)
+                       (update!
+                        text:
+                        (if (number? Ans) (number->neatstring Ans) (if (boolean? Ans) "" (object->string Ans))))
+                       (update!))
+                     (lambda (a b) #t) equal?)))
+               (lambda (update!) (cached update! (calculator-main-display))))))
+        (label! color: (calculator-color-bgn))
+        (label! size: (- w 10) 60)
+        (label! vertical-align: 'bottom)
+        (label! horizontal-align: 'right)
+        (label! position: 5 (- h 80))
+        (label! font: (guide-select-font size: 'large))
+        (label! check! "calculator main display")))
+    (define delkey-img (apply make-glC:image glgui_keypad_delete.img))
+    (define kpd
+      (let* ((key-columns 4)
+             (key-rows 6)
+             (rng (range (vector key-columns key-rows)))
+             (bgimg ;; TBD: guide-default-background ?
+              (make-glC:image 4 4 (glCoreTextureCreate 4 4 (make-u8vector 16 #xff)) 0.1 0.1 .9 .9))
+             (keys (make-vector (range-volume rng) #f))
+             (desc
+              `#(
+                 (#\A "AC") (#\M "MC") #\C (,delchar ,delkey-img)
+                 (#\m "MR")  (#\p "M+") (#\q "M-") #\/
+                 #\7 #\8 #\9 #\*
+                 #\4 #\5 #\6 #\-
+                 #\1 #\2 #\3 #\+
+                 (#\0 "0" 2) #f  #\. (#\= "=" 1 ,(calculator-color-bge))
+                 ))
+             (top (- h 100))
+             (total-height top)
+             (colw (floor (/ w key-columns)))
+             (border-ratio 1/20)
+             (min-gap (ceiling (* border-ratio colw)))
+             (button-width (- colw (* 2 min-gap)))
+             (used-width (* key-columns (+ button-width (* 2 min-gap))))
+             (gap (* (/ w used-width) min-gap))
+             (left-offset (+ (* 2 gap) (/ (- w used-width) 2)))
+             ;;
+             (rowh (floor (/ total-height key-rows)))
+             (min-vgap (ceiling (* border-ratio rowh)))
+             (button-height (- rowh (* 2 min-vgap)))
+             (used-height (* key-rows (+ button-height (* 2 min-vgap))))
+             (vgap (* (/ total-height used-height) min-vgap))
+             (button-area (make-mdv-rect-interval 0 0 button-width button-height))
+             (font (guide-select-font size: 'large)))
+        (for-range2
+         rng
+         (lambda (row col)
+           (let* ((idx (mdv-idx rng row col))
+                  (pattern (vector-ref desc idx))
+                  (key
+                   (and
+                    pattern
+                    (let ((colspan
+                           (and (pair? pattern)
+                                (> (length pattern) 2)
+                                (list-ref pattern 2)))
+                          (background-color
+                           (or (and (pair? pattern)
+                                    (> (length pattern) 3)
+                                    (list-ref pattern 3))
+                               (calculator-color-bgn))))
+                      (guide-button
+                       in: (if colspan
+                               (make-mdv-rect-interval 0 0 (- (* colspan (+ gap button-width)) gap) button-height)
+                               button-area)
+                       font: font
+                       label: (if (pair? pattern) (cadr pattern) (string pattern))
+                       ;; padding: '#(1 1 1 1)
+                       background: (glC:image-t bgimg)
+                       background-color: background-color
+                       position:
+                       (vector
+                        (+ left-offset (* col (+ button-width gap)))
+                        (- top vgap (* (+ 1 row) (+ button-height vgap))))
+                       horizontal-align: 'center
+                       vertical-align: 'center
+                       guide-callback:
+                       (lambda (rect payload event x y)
+                         (calculator-on-event
+                          rect payload EVENT_KEYRELEASE
+                          (char->integer (if (pair? pattern) (car pattern) pattern)) 0)
+                         #t))))))
+             (vector-set! keys idx key))))
+        (lambda (rect payload event x y)
+          (do ((i (fx- (vector-length keys) 1) (fx- i 1))
+               (hit #f))
+              ((or hit (eqv? i -1)) hit)
+            (let ((payload (vector-ref keys i)))
+              (and
+               payload
+               (cond
+                ((eqv? event EVENT_REDRAW) ;; paint all
+                 (guide-event-dispatch-to-payload rect payload event x y))
+                (else (set! hit (guide-event-dispatch-to-payload rect payload event x y))))))))))
+    (define (calculator-on-event rect payload event x y)
       (cond
-       ((boolean? n) "")
-       ((number? n) (number->neatstring n))
-       (else (object->string n))))
+       ((eqv? event EVENT_REDRAW)
+        (calculator-subdisplay) (calculator-display) (kpd rect payload event x y))
+       ((eqv? event EVENT_KEYRELEASE)
+        (cond
+         ((eqv? x EVENT_KEYESCAPE)     (terminate))
+         ((eqv? x (char->integer #\=)) (calculator-evaluate))
+         ((eqv? x (char->integer #\+)) (calculator-push-operation +))
+         ((eqv? x (char->integer #\-)) (calculator-push-operation -))
+         ((eqv? x (char->integer #\*)) (calculator-push-operation *))
+         ((eqv? x (char->integer #\/)) (calculator-push-operation /))
+         ((eqv? x (char->integer #\A)) (calculator-AC))
+         ((eqv? x (char->integer #\C)) (calculator-C))
+         ((eqv? x (char->integer #\M)) (calculator-MC))
+         ((eqv? x (char->integer #\p)) (calculator-M+))
+         ((eqv? x (char->integer #\q)) (calculator-M-))
+         ((eqv? x (char->integer #\m)) (calculator-MR))
+         ((eqv? x (char->integer #\S)) (calculator-sqrt))
+         ((eqv? x (char->integer delchar))
+          (let ((x (calculator-main-display)))
+            (when (number? x)
+              (let ((str (number->string x)))
+                (calculator-main-display
+                 (and (> (string-length str) 1)
+                      (string->number (substring str 0 (- (string-length str) 1))))))))
+          #t)
+         (else
+          (and (memq (integer->char x) '(#\0 #\1 #\2 #\3 #\4 #\5 #\6 #\7 #\8 #\9 #\.))
+               (let* ((d (calculator-main-display))
+                      (n (or (and (number? d) (number->string d)) "")))
+                 (calculator-main-display
+                  (string->number (string-append n (string (integer->char x)))))
+                 #t)))))
+       (else (kpd rect payload event x y))))
 
-    (define (make-calculator-payload ingui interval)
-      (define gui #f)
-      (define calculator-subdisplay #f)
-      (define calculator-display #f)
-
-      (define (calculator-updatesub)
-        (let ((Ans (calculator-result))
-              (Mem (calculator-mem1)))
-          (glgui-widget-set!
-           gui calculator-subdisplay 'label
-           (string-append "In=" (value->neatstring (calculator-input)) "Mem=" (number->neatstring Mem) " Ans=" (value->neatstring Ans)  " "))
-          (glgui-wakeup!)))
-
-      (define (calculator-update-main-display)
-        (glgui-wakeup!)
-        (let ((Ans (calculator-main-display)))
-          (glgui-widget-set! gui calculator-display 'label (if (number? Ans) (number->neatstring Ans) (if (boolean? Ans) "" (object->string Ans))))
-          (glgui-widget-set! gui calculator-display 'bgcolor (if Ans #f Red))))
-
-      (define (calculator-evaluate)
-        (let ((input (string->number (glgui-widget-get gui calculator-display 'label))))
-          (kick
-           (calculator-result
-            (let ((input (or input (and (number? (calculator-input)) (calculator-input)))))
-              (and input
-                   (if (pair? (calculator-operations))
-                       (let ((top (car (calculator-operations))))
-                         (calculator-operations (cdr (calculator-operations)))
-                         (with-exception-catcher
-                          (lambda (exn) exn)
-                          (lambda () (top input))))
-                       input))))
-           (calculator-input #f)
-           (calculator-main-display (calculator-result)))))
-
-      (define (calculator-C)  (kick (calculator-input #t) (calculator-main-display (calculator-input))))
-      ;;(define (calculator-C) (glgui-widget-set! gui calculator-display 'label ""))
-      (define (calculator-MC) (kick (calculator-mem1 0)))
-      (define (calculator-AC) (kick (calculator-result #t) (calculator-C) (calculator-MC) (calculator-operations '())))
-
-      (define (calculator-MR) (kick (calculator-input (calculator-mem1))))
-
-      (define (calculator-M+)
-        (let ((input (take-display-value)))
-          (kick
-           (calculator-input #f)
-           (if (number? input) (kick (calculator-mem1 (+ (calculator-mem1) input)))))))
-      (define (calculator-M-)
-        (let ((input (take-display-value)))
-          (kick
-           (calculator-input #f)
-           (if (number? input) (kick (calculator-mem1 (- (calculator-mem1) input)))))))
-
-      (define (take-display-value)
-        (let ((input (string->number (glgui-widget-get gui calculator-display 'label))))
-          (and input
-               (begin
-                 (glgui-widget-set! gui calculator-display 'label "")
-                 input))))
-
-      (define (calculator-push-label-to-pin! pin)
-        (let ((input (take-display-value)))
-          (and input (kick (pin input)))))
-
-      (define (calculator-sqrt)
-        (let ((input (take-display-value)))
-          (kick
-           (calculator-input input)
-           (calculator-result
-            (cond
-             ((number? (calculator-input)) (sqrt (calculator-input)))
-             ((number? (calculator-result)) (sqrt (calculator-result)))
-             (else #f)))
-           (calculator-main-display (calculator-result)))))
-
-      (define (calculator-push-operation op)
-        (let ((input (string->number (glgui-widget-get gui calculator-display 'label))))
-          (if input
-              (begin
-                (glgui-widget-set! gui calculator-display 'label "")
-                (kick
-                 (calculator-result input)
-                 (calculator-operations (cons (lambda (x) (op (calculator-result) x)) (calculator-operations))))))))
-
-      (define (calculator-on-event gui payload event x y)
-        (let ((skipevent #t))
-          (if (= event EVENT_KEYRELEASE)
-              (cond
-               ((= x EVENT_KEYESCAPE)     (terminate))
-               ((= x (char->integer #\=)) (calculator-evaluate))
-               ((= x (char->integer #\+)) (calculator-push-operation +))
-               ((= x (char->integer #\-)) (calculator-push-operation -))
-               ((= x (char->integer #\*)) (calculator-push-operation *))
-               ((= x (char->integer #\/)) (calculator-push-operation /))
-               ((= x (char->integer #\A)) (calculator-AC))
-               ((= x (char->integer #\C)) (calculator-C))
-               ((= x (char->integer #\M)) (calculator-MC))
-               ((= x (char->integer #\p)) (calculator-M+))
-               ((= x (char->integer #\q)) (calculator-M-))
-               ((= x (char->integer #\m)) (calculator-MR))
-               ((= x (char->integer #\S)) (calculator-sqrt))
-               (else (set! skipevent #f)))
-              (set! skipevent #f))
-          (if (not skipevent) (guide-default-event-dispatch/fallback-to-glgui gui payload event x y))))
-
-      (let* ((xsw (mdvector-interval-lower-bound interval 0))
-             (ysw (mdvector-interval-lower-bound interval 1))
-             (xno (mdvector-interval-upper-bound interval 0))
-             (yno (mdvector-interval-upper-bound interval 1))
-             (w (- xno xsw))
-             (h (- yno ysw)))
-        (set! gui (glgui-container (guide-rectangle-glgui ingui) xsw ysw w h))
-        (set! calculator-subdisplay (glgui-label gui 0 (- h 20) w 20 "" (guide-select-font size: 'small) White))
-        (glgui-widget-set! gui calculator-subdisplay 'align GUI_ALIGNRIGHT)
-        (set! calculator-display (glgui-label gui 5 (- h 80) (- w 10) 60 "" (guide-select-font size: 'large) White))
-        (glgui-widget-set! gui calculator-display 'align GUI_ALIGNRIGHT)
-        (glgui-widget-set! gui calculator-display 'focus #t)
-        (let ((wgt (glgui-keypad gui 5 5 (- w 10) (- h 80 5) (guide-select-font size: 'medium) keypad)))
-          (glgui-widget-set! gui wgt 'rounded #f)
-          (glgui-widget-set! gui wgt 'floatinghighlight #f))
-        (calculator-updatesub)
-
-        (wire! calculator-mem1 post: calculator-updatesub)
-        (wire! calculator-result post: calculator-updatesub)
-        (wire! calculator-input post: calculator-updatesub)
-        (wire! calculator-main-display post: calculator-update-main-display)
-        ;; Wired to globals, MUST be instanciated once only.
-        (make-guide-payload
-         in: interval widget: gui lifespan: 'once
-         on-any-event: calculator-on-event)))
-    make-calculator-payload))
+    (make-guide-payload in: interval widget: #f on-any-event: calculator-on-event)))
 
 (define (guide-define-payload-calculator! name)
   ;; Wired to globals, MUST be instanciated once only.
-  (guide-define-payload name 'once make-calculator-payload-old))
-
-(define guide-legacy-calculator-payload
-  (let ((result #f))
-    (define (make-calculator-payload #!key (in (current-guide-gui-interval)))
-      (if result result
-          (begin
-            (set! result (make-calculator-payload-old (guide-legacy-make-rect in) in))
-            result)))
-    make-calculator-payload))
+  (guide-define-payload name 'once make-calculator-payload))
 
 #| ;; test
 
