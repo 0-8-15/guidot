@@ -673,3 +673,14 @@
     (apply NYI 'for-range! range ranges) (apply error 'for-range! range ranges))))
 
 (define for-range! MATURITY+2:for-range!)
+
+(define (for-range2 rng proc)
+  (let* ((limitr (range-size rng 1))
+         (limitc (range-size rng 0))
+         ;; optimizations
+         (idx (mdv-indexer #|TBD: skip checks!|# rng)))
+    (do ((r 0 (fx+ r 1)))
+        ((eqv? r limitr))
+      (do ((c 0 (fx+ c 1)))
+          ((eqv? c limitc))
+        (proc r c)))))
