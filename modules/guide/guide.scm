@@ -236,7 +236,7 @@
 ;;;** Payload
 
 (define (guide-event-dispatch-to-payload rect payload event x y)
-  ((guide-payload-on-any-event payload) gui payload event x y))
+  ((guide-payload-on-any-event payload) rect payload event x y))
 
 (set!
  make-guide-payload
@@ -524,6 +524,7 @@
          (label "exit")
          (padding '#(1 1 1 1))
          (background #f)
+         (background-color #f)
          (position #f)
          (horizontal-align 'center)
          (vertical-align 'center)
@@ -557,6 +558,7 @@
         (view! foreground: (label! check! (list "guide-button" label)))))
      (else (error "invalid label" guide-button label)))
     (when background (view! texture: background))
+    (when background-color (view! color: background-color))
     (if position
         (view! position: (vector-ref position 0) (vector-ref position 1))
         (view! position: x y))
@@ -566,12 +568,16 @@
                (cond
                 ((eqv? event EVENT_REDRAW) (redraw!))
                 ((eqv? event EVENT_BUTTON1DOWN)
-                 (if (guide-figure-contains? view! x y) (set! armed #t)))
+                 (if (guide-figure-contains? view! x y) (begin (set! armed #t) #t) #f))
                 ((eqv? event EVENT_BUTTON1UP)
-                 (when (and (guide-figure-contains? view! x y) armed)
-                   (guide-callback rect payload event x y))
-                 (set! armed #f))
-                (else #f))))))
+                 (if (and (guide-figure-contains? view! x y) armed)
+                     (begin
+                       (set! armed #f)
+                       (guide-callback rect payload event x y))
+                     (begin
+                       (set! armed #f)
+                       #f)))
+                (else (guide-figure-contains? view! x y)))))))
       (make-guide-payload in: in widget: #f on-any-event: events lifespan: 'ephemeral))))
 
 (include "calculator.scm")

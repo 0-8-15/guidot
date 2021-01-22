@@ -552,7 +552,7 @@
          (if (null? more) foreground
              (let ((thing (car more)))
                (cond
-                ((procedure? thing)
+                ((or (procedure? thing) (not thing))
                  (set! foreground thing))
                 (else (error "not a valid foreground" thing))))))
         ((color:)
