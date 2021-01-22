@@ -574,6 +574,14 @@
                (unless (glCore:texture? v) (error "not a texture" v))
                (set! texture v))
              texture))
+        ((background:)
+         (if (null? more) background
+             (let ((thing (car more)))
+               (cond
+                ((glC:image? thing)
+                 (set! texture (glC:image-t thing))
+                 (set! texcoords (glC:image-legacy-texcoords thing)))
+                (else (error "not a valid background" thing))))))
         ((size:)
          (if (pair? more)
              (receive (pw ph) (apply values more)

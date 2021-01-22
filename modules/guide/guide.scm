@@ -528,6 +528,7 @@
          (position #f)
          (horizontal-align 'center)
          (vertical-align 'center)
+         (location guide-button)
          ;; TBD: better interface&name
          (guide-callback (lambda (rect payload event x y) (terminate))))
   (let* ((view! (make-guide-figure-view))
@@ -557,7 +558,14 @@
              (check! (lambda (update!) (cached update! (label)))))
         (view! foreground: (label! check! (list "guide-button" label)))))
      (else (error "invalid label" guide-button label)))
-    (when background (view! texture: background))
+    (when background
+      (view!
+       texture:
+       (if (fixnum? background)
+           (begin
+             (MATURITY -1 "background: converting fixnum to texture" loc: location)
+             (%%glCore:textures-ref background #f))
+           background)))
     (when background-color (view! color: background-color))
     (if position
         (view! position: (vector-ref position 0) (vector-ref position 1))
