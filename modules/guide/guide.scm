@@ -103,10 +103,11 @@
 (define (guide-payload-contains/xy? obj x y)
   (unless (guide-payload? obj) (error "invalid payload" guide-payload-contains/xy? obj))
   (let ((measures (guide-payload-measures obj)))
-    (and (>= x (mdvector-ref measures 0 0))
-         (< x (mdvector-ref measures 1 0))
-         (>= y (mdvector-ref measures 0 1))
-         (< y (mdvector-ref measures 1 1)))))
+    (and ;; chicking vertial first, as this is more likely to be off
+     (>= y (mdvector-ref measures 0 1))
+     (< y (mdvector-ref measures 1 1))
+     (>= x (mdvector-ref measures 0 0))
+     (< x (mdvector-ref measures 1 0)))))
 
 (define (guide-rectangle-width obj)
   ;; FIXME: OVERHEAD

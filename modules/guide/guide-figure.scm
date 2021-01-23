@@ -11,11 +11,11 @@
     (receive (w h) (figure size:)
       (let ((x1 (if pos (- x (vector-ref pos 0)) x))
             (y1 (if pos (- y (vector-ref pos 1)) y)))
-        (and
-         (positive? x1)
+        (and ;; checking y first; likelier off in GUIs
          (positive? y1)
-         (< x1 (if scale (* (vector-ref scale 0) w) w))
-         (< y1 (if scale (* (vector-ref scale 1) h) h)))))))
+         (< y1 (if scale (* (vector-ref scale 1) h) h))
+         (positive? x1)
+         (< x1 (if scale (* (vector-ref scale 0) w) w)))))))
 
 (define (MATURITY+2:make-guide-bg+fg-view) ;; a PAIR (BG . FG)
   ;; DEV: derivations; maybe useless
