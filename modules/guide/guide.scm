@@ -589,6 +589,11 @@
 
 ;;** GUI Widgets (payloads)
 
+(define %%guide-default-background
+  (make-glC:image 4 4 (glCoreTextureCreate 4 4 (make-u8vector 16 #xff)) 0.1 0.1 .9 .9))
+
+(define-macro (macro-guide-default-background) `((lambda () %%guide-default-background)))
+
 (define (guide-button
          #!key
          (in (current-guide-gui-interval))

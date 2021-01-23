@@ -152,8 +152,7 @@
       (let* ((key-columns 4)
              (key-rows 6)
              (rng (range (vector key-columns key-rows)))
-             (bgimg ;; TBD: guide-default-background ?
-              (make-glC:image 4 4 (glCoreTextureCreate 4 4 (make-u8vector 16 #xff)) 0.1 0.1 .9 .9))
+             (bgimg (macro-guide-default-background))
              (keys (make-vector (range-volume rng) #f))
              (desc
               `#(
@@ -168,11 +167,11 @@
              (total-height top)
              (colw (floor (/ w key-columns)))
              (border-ratio 1/20)
-             (min-gap (ceiling (* border-ratio colw)))
-             (button-width (- colw (* 2 min-gap)))
-             (used-width (* key-columns (+ button-width (* 2 min-gap))))
-             (gap (* (/ w used-width) min-gap))
-             (left-offset (+ (* 2 gap) (/ (- w used-width) 2)))
+             (min-hgap (ceiling (* border-ratio colw)))
+             (button-width (- colw (* 2 min-hgap)))
+             (used-width (* key-columns (+ button-width (* 2 min-hgap))))
+             (hgap (* (/ w used-width) min-hgap))
+             (left-offset (+ (* 2 hgap) (/ (- w used-width) 2)))
              ;;
              (rowh (floor (/ total-height key-rows)))
              (min-vgap (ceiling (* border-ratio rowh)))
@@ -193,6 +192,7 @@
                            (and (pair? pattern)
                                 (> (length pattern) 2)
                                 (list-ref pattern 2)))
+                          (rowspan 1)
                           (background-color
                            (or (and (pair? pattern)
                                     (> (length pattern) 3)
@@ -200,7 +200,10 @@
                                (calculator-color-bgn))))
                       (guide-button
                        in: (if colspan
-                               (make-mdv-rect-interval 0 0 (- (* colspan (+ gap button-width)) gap) button-height)
+                               (make-mdv-rect-interval
+                                0 0
+                                (- (* colspan (+ hgap button-width)) hgap)
+                                (- (* rowspan (+ vgap button-height)) vgap))
                                button-area)
                        font: font
                        label: (if (pair? pattern) (cadr pattern) (string pattern))
@@ -209,7 +212,7 @@
                        background-color: background-color
                        position:
                        (vector
-                        (+ left-offset (* col (+ button-width gap)))
+                        (+ left-offset (* col (+ button-width hgap)))
                         (- top vgap (* (+ 1 row) (+ button-height vgap))))
                        horizontal-align: 'center
                        vertical-align: 'center

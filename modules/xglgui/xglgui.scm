@@ -151,7 +151,7 @@
                     (if (vector? content) content (apply vector content))))
          (len (vector-length content))
          (all (make-vector len #f))
-         (bg (%%glCore:textures-ref (glC:image-t guide-default-background) #f))
+         (bg (%%glCore:textures-ref (glC:image-t %%guide-default-background) #f))
          (sely (mdvector-interval-lower-bound in 1))
          (selh (- (mdvector-interval-upper-bound in 1) sely))
          (selcb
@@ -212,7 +212,7 @@
                     (x1 (mdvector-interval-upper-bound in 0))
                     (y0 (mdvector-interval-upper-bound in 1)))
                (make-mdv-rect-interval x0 y0 x1 (+ y0 height)))))
-        (selbg (glC:image-t guide-default-background))
+        (selbg (glC:image-t %%guide-default-background))
         (selfnt (guide-select-font height: height)))
     ;; volatile:
     (let* ((active #f) ;; modal: dropdown
