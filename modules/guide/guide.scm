@@ -659,6 +659,102 @@
                 (else (guide-figure-contains? view! x y)))))))
       (make-guide-payload in: in widget: #f on-redraw: (view!) on-any-event: events lifespan: 'ephemeral))))
 
+(define (make-guide-table
+         ;; CONTRUCTOR (lambda (contructor INTERVAL COL ROW . rest) . rest)
+         ;; CONTRUCTOR+ARGS: (or CONTRUCTOR (CONTRUCTOR . ARGS))
+         contructors ;; mdvector of CONTRUCTOR+ARGS
+         #!key
+         (in (current-guide-gui-interval))
+         (font #f)
+         (border-ratio 1/20)
+         (background-image (macro-guide-default-background)))
+  (let* ((error-location (lambda (col row) (list 'make-guide-table-payload col row)))
+         (rng (mdvector-range contructors))
+         (idx (mdv-indexer rng))
+         (content (make-vector (range-volume rng) #f))
+         (columns (range-size rng 0))
+         (rows (range-size rng 1))
+         (yu (mdvector-interval-upper-bound in 1))
+         (yl (mdvector-interval-lower-bound in 1))
+         (total-height (- yu yl))
+         (xu (mdvector-interval-upper-bound in 0))
+         (xl (mdvector-interval-lower-bound in 0))
+         (total-width (- xu xl))
+         (colw (floor (/ total-width columns)))
+         (min-hgap (ceiling (* border-ratio colw)))
+         (cell-width (- colw (* 2 min-hgap)))
+         (used-width (* columns (+ cell-width (* 2 min-hgap))))
+         (hgap (* (/ total-width used-width) min-hgap))
+         (left-offset (+ (* 2 hgap) (/ (- total-width used-width) 2)))
+         ;;
+         (rowh (floor (/ total-height rows)))
+         (min-vgap (ceiling (* border-ratio rowh)))
+         (cell-height (- rowh (* 2 min-vgap)))
+         (used-height (* rows (+ cell-height (* 2 min-vgap))))
+         (vgap (* (/ total-height used-height) min-vgap))
+         (vertical-offset (- yu (/ (- total-height used-height) 2) (* 2 vgap)))
+         (font (or font (guide-select-font height: cell-height))))
+    (for-range2
+     rng
+     (lambda (row col)
+       (let* ((idx (idx row col))
+              (pattern-vector (mdvector-body contructors))
+              (pattern (vector-ref pattern-vector idx))
+              (payload
+               (and
+                pattern
+                (let* ((colspan (do ((i (fx+ col 1) (fx+ i 1))
+                                     (span 0 (fx+ span 1)))
+                                    ((or (eqv? i columns)
+                                         (mdvector-ref contructors row i))
+                                     span)))
+                       (rowspan (do ((i (fx+ row 1) (fx+ i 1))
+                                     (span 0 (fx+ span 1)))
+                                    ((or (eqv? i rows)
+                                         (mdvector-ref contructors i col))
+                                     span)))
+                       (x0 (+ left-offset (* col (+ hgap cell-width))))
+                       (y0 (- vertical-offset
+                              (+ cell-height (* (+ row rowspan) (+ vgap cell-height)))))
+                       (x1 (+ x0 cell-width (* colspan (+ hgap cell-width))))
+                       (y1 (+ cell-height y0 (* rowspan (+ vgap cell-height))))
+                       (area (make-mdv-rect-interval x0 y0 x1 y1)))
+                  (cond
+                   ((procedure? pattern) (pattern area col row))
+                   ((pair? pattern) (apply (car pattern) area col row (cdr pattern)))
+                   (else (error "invalid constructor spec" (error-location col row) pattern)))))))
+         (when payload
+           (unless (or (guide-payload? payload))
+             (error "invalid payload from constructor" (error-location col row) pattern payload))
+         (vector-set! content idx payload)))))
+    ;; TBD: maybe reduce event handlers to those actually having a payload.
+    (make-guide-payload
+     in: in
+     on-redraw:
+     (lambda () ;; better return customized vector; draw sequence does not matter
+       (do ((i (fx- (vector-length content) 1) (fx- i 1)))
+           ((eqv? i -1))
+         (let ((payload (vector-ref content i)))
+           (and
+            payload
+            (let ((draw (guide-payload-on-redraw payload)))
+              (and draw (draw)))))))
+     on-any-event:
+     (lambda (rect payload event x y)
+       (and
+        (guide-payload-contains/xy? payload x y)
+        (do ((i (fx- (vector-length content) 1) (fx- i 1))
+             (hit #f))
+            ((or hit (eqv? i -1)) #|signal event handled in any case:|# #t)
+          (let ((payload (vector-ref content i)))
+            (and payload
+                 (and
+                  (guide-payload-contains/xy? payload x y)
+                  (begin (set! hit #t) #t))
+                 (guide-event-dispatch-to-payload rect payload event x y))))))
+     ;; backward compatibility
+     widget: #f lifespan: 'ephemeral)))
+
 (define (guide-valuelabel
          #!key
          (in (current-guide-gui-interval))
