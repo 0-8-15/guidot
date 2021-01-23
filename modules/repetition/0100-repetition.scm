@@ -351,7 +351,7 @@
       (else (NYI "generic case" %%MATURITY+4:call-in-range range))))
   (define (%%range-rank obj)
     (cond
-     ((%%range-structure? obj) (abs (range-dim obj)))
+     ((%%range-structure? obj) (let ((x (range-dim obj))) (if (fx>= x 0) x (fx- 0 x))))
      ((%%fixnum-range/assert? obj) 1)
      (else (error "not a range" 'range-rank obj))))
   (define (%%range-row obj n)
@@ -590,30 +590,35 @@
        body
        (cond
         ((null? more) (idx i1))
+        ((null? (cdr more)) (idx i1 (car more)))
         (else (apply idx i1 more)))))
      ((f32vector? body)
       (f32vector-ref
        body
        (cond
         ((null? more) (idx i1))
+        ((null? (cdr more)) (idx i1 (car more)))
         (else (apply idx i1 more)))))
      ((u8vector? body)
       (u8vector-ref
        body
        (cond
         ((null? more) (idx i1))
+        ((null? (cdr more)) (idx i1 (car more)))
         (else (apply idx i1 more)))))
      ((string? body)
       (string-ref
        body
        (cond
         ((null? more) (idx i1))
+        ((null? (cdr more)) (idx i1 (car more)))
         (else (apply idx i1 more)))))
      ((u16vector? body)
       (u16vector-ref
        body
        (cond
         ((null? more) (idx i1))
+        ((null? (cdr more)) (idx i1 (car more)))
         (else (apply idx i1 more)))))
      (else (error "unhandled mdvector kind" mdvector-ref)))))
 
