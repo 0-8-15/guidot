@@ -244,16 +244,55 @@
 
 ;;;** Payload
 
+(define (guide-event-dispatch-to-payload/redraw payload)
+  (let ((redraw (guide-payload-on-redraw payload)))
+    (cond
+     ;; TBD: check that payload is visible before
+     (redraw
+      (cond
+       ((procedure? redraw) (redraw))
+       ((vector? redraw)
+        (do ((i 0 (fx+ i 1))) ;; draw background first
+            ((eqv? i (##vector-length redraw)))
+          ((##vector-ref redraw i)))))))))
+
 (define (guide-event-dispatch-to-payload rect payload event x y)
+  (define (otherwise rect payload event x y)
+    (let ((handler (guide-payload-on-any-event payload)))
+      (cond
+       ((procedure? handler) (handler rect payload event x y))
+       ((vector? handler) ;; try handling in foreground first
+        (do ((i (fx- (##vector-length handler) 1) (fx- i 1))
+             (hit #f (and hit ((##vector-ref handler i) rect payload event x y))))
+            ((or hit (eqv? i -1)) hit))))))
   (cond
    ((eqv? event EVENT_REDRAW)
     (let ((redraw (guide-payload-on-redraw payload)))
       (cond
-       (redraw (redraw)) ;; TBD: check that payload is visible before
-       (else ((guide-payload-on-any-event payload) rect payload event x y)))))
+       ;; TBD: check that payload is visible before
+       (redraw
+        (cond
+         ((procedure? redraw) (redraw))
+         ((vector? redraw)
+          (do ((i 0 (fx+ i 1))) ;; draw background first
+              ((eqv? i (##vector-length redraw)))
+            ((##vector-ref redraw i))))))
+       (else
+        (let ((handler (guide-payload-on-any-event payload)))
+          (cond
+           ((procedure? handler) (handler rect payload event x y))
+           ((vector? handler)
+            (do ((i 0 (fx+ i 1))) ;; draw background first
+                ((eqv? i (##vector-length redraw)))
+              ((##vector-ref handler i) rect payload event x y)))))))))
    (else
     (let ((handler (guide-payload-on-any-event payload)))
-      (and handler (handler rect payload event x y))))))
+      (cond
+       ((procedure? handler) (handler rect payload event x y))
+       ((vector? handler) ;; try handling in foreground first
+        (do ((i (fx- (##vector-length handler) 1) (fx- i 1))
+             (hit #f (and hit ((##vector-ref handler i) rect payload event x y))))
+            ((or hit (eqv? i -1)) hit))))))))
 
 (set!
  make-guide-payload
@@ -295,9 +334,19 @@
             (gui-after hidden))
      (unless (mdvector-interval? in)
        (error "make-guide-payload: 'in:' must be an interval" in))
-     (unless (or (procedure? on-redraw) (not on-redraw))
+     (unless (or (procedure? on-redraw) (not on-redraw)
+                 (and (vector? on-redraw)
+                      (do ((i (fx- (vector-length on-redraw) 1) (fx- i 1)))
+                          ((or (eqv? i -1)
+                               (not (procedure? (vector-ref on-redraw i))))
+                           (eqv? i -1)))))
        (error "invalid drawing handler" 'make-guide-payload on-redraw))
-     (unless (or (procedure? on-any-event) (not on-any-event))
+     (unless (or (procedure? on-any-event) (not on-any-event)
+                 (and (vector? on-any-event)
+                      (do ((i (fx- (vector-length on-any-event) -1) (fx- i 1)))
+                          ((or (eqv? i -1)
+                               (not (procedure? (vector-ref any-event i))))
+                           (eqv? i -1)))))
        (error "invalid event handler" 'make-guide-payload on-any-event))
      (cond
       ((or (eq? lifespan #f) (eq? lifespan 'ephemeral))

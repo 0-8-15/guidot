@@ -244,10 +244,9 @@
                   guide-callback: b1c)))
            (redraw
             (lambda ()
-              (let ((draw (guide-payload-on-redraw (content))))
-                (and draw (draw)))
-              ((guide-payload-on-redraw b1))
-              (when active ((guide-payload-on-redraw active)))))
+              (guide-event-dispatch-to-payload/redraw (content))
+              (guide-event-dispatch-to-payload/redraw b1)
+              (when active (guide-event-dispatch-to-payload/redraw active))))
            (events
             (let ((d1 (guide-payload-on-any-event b1)))
               (lambda (rect payload event x y)
