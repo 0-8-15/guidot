@@ -220,21 +220,29 @@
                           (char->integer (if (pair? pattern) (car pattern) pattern)) 0)
                          #t))))))
              (vector-set! keys idx key))))
-        (lambda (rect payload event x y)
-          (do ((i (fx- (vector-length keys) 1) (fx- i 1))
-               (hit #f))
-              ((or hit (eqv? i -1)) hit)
-            (let ((payload (vector-ref keys i)))
-              (and
-               payload
-               (cond
-                ((eqv? event EVENT_REDRAW) ;; paint all
-                 (guide-event-dispatch-to-payload rect payload event x y))
-                (else (set! hit (guide-event-dispatch-to-payload rect payload event x y))))))))))
+        (vector
+         (lambda ()
+           (calculator-subdisplay) (calculator-display)
+           (do ((i (fx- (vector-length keys) 1) (fx- i 1)))
+               ((eqv? i -1))
+             (let ((payload (vector-ref keys i)))
+               (and
+                payload
+                (let ((draw (guide-payload-on-redraw payload)))
+                  (and draw (draw)))))))
+         (lambda (rect payload event x y)
+           (do ((i (fx- (vector-length keys) 1) (fx- i 1))
+                (hit #f))
+               ((or hit (eqv? i -1)) hit)
+             (let ((payload (vector-ref keys i)))
+               (and
+                payload
+                (cond
+                 ((eqv? event EVENT_REDRAW) ;; paint all
+                  (guide-event-dispatch-to-payload rect payload event x y))
+                 (else (set! hit (guide-event-dispatch-to-payload rect payload event x y)))))))))))
     (define (calculator-on-event rect payload event x y)
       (cond
-       ((eqv? event EVENT_REDRAW)
-        (calculator-subdisplay) (calculator-display) (kpd rect payload event x y))
        ((eqv? event EVENT_KEYRELEASE)
         (cond
          ((eqv? x EVENT_KEYESCAPE)     (terminate))
@@ -265,9 +273,9 @@
                  (calculator-main-display
                   (string->number (string-append n (string (integer->char x)))))
                  #t)))))
-       (else (kpd rect payload event x y))))
+       (else ((vector-ref kpd 1) rect payload event x y))))
 
-    (make-guide-payload in: interval widget: #f on-any-event: calculator-on-event)))
+    (make-guide-payload in: interval widget: #f on-redraw: (vector-ref kpd 0) on-any-event: calculator-on-event)))
 
 (define (guide-define-payload-calculator! name)
   ;; Wired to globals, MUST be instanciated once only.

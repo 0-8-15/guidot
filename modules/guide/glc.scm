@@ -136,6 +136,14 @@
          (else
           (make-mdvector (mdvector-range left) intersection (mdvector-special left))))))))
 
+(define (mdvector-rect-interval-contains/xy? interval x y)
+  (unless (mdvector-interval? interval)
+    (error "illegal argument" mdvector-rect-interval-contains/xy? interval))
+  (and (>= x (mdvector-ref interval 0 0))
+       (< x (mdvector-ref interval 1 0))
+       (>= y (mdvector-ref interval 0 1))
+       (< y (mdvector-ref interval 1 1))))
+
 ;;;**
 
 (define (for-range-index! fixnum-range proc!) ;; FIXME: belongs to repetition! (tests)

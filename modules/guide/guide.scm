@@ -93,10 +93,20 @@
   name         ;; identifier for debugging
   measures     ;; interval
   widget       ;; glgui or extended
+  on-redraw    ;; redraw event handler
   on-any-event ;; generic event dispatch (replace by r/w specific versions
   gui-before   ;; when exposed
   gui-after    ;; when hidden
   )
+
+
+(define (guide-payload-contains/xy? obj x y)
+  (unless (guide-payload? obj) (error "invalid payload" guide-payload-contains/xy? obj))
+  (let ((measures (guide-payload-measures obj)))
+    (and (>= x (mdvector-ref measures 0 0))
+         (< x (mdvector-ref measures 1 0))
+         (>= y (mdvector-ref measures 0 1))
+         (< y (mdvector-ref measures 1 1)))))
 
 (define (guide-rectangle-width obj)
   ;; FIXME: OVERHEAD
@@ -173,41 +183,40 @@
           (reset-wait!)
           (set! consecutive-redraw-count (fx+ consecutive-redraw-count 1))))
     (define (guide-default-event-dispatch/toplevel rect payload event x y)
-      (let ((event-handler (guide-payload-on-any-event payload)))
-        (cond
-         ((not (and glgui:active app:width app:height))
-          (if (fx= t EVENT_REDRAW)
-              (wait-for-time-or-signal!)
-              (if customized-moment
-                  (let ((moment (customized-moment 1)))
-                    (when (or (time? moment) (and (number? moment) (> moment 0)))
-                      (thread-sleep! moment)))
-                  (begin
-                    (thread-sleep! step)
-                    (reset-wait!)))))
-         ((eq? event EVENT_REDRAW)
-          ;; (log-status "REDRAW")
-          (if (mutex-lock! wait-mutex 0)
-              (begin
-                (set! wakeup-seen #f)
-                (glCoreInit)
-                (event-handler rect payload event x y)
-                (guide-meta-menu-draw!)
-                (wait-for-time-or-signal!))
-              (begin
-                (log-warning "ignoring EVENT_REDRAW while handling EVENT_REDRAW")
-                (set! wakeup-seen #t))))
-         ((eq? event EVENT_IDLE)
-          (thread-yield!)
-          #t)
-         ;; (check-magic-keys gui t x y)
-         ((and (fx= event EVENT_KEYPRESS)
-               (let ((termkey (guide-terminate-on-key)))
-                 (and termkey (fx= x termkey))))
-          (terminate))
-         (else
-          (reset-wait!)
-          (kick! (lambda () (event-handler rect payload event x y)))))))
+      (cond
+       ((not (and glgui:active app:width app:height))
+        (if (fx= t EVENT_REDRAW)
+            (wait-for-time-or-signal!)
+            (if customized-moment
+                (let ((moment (customized-moment 1)))
+                  (when (or (time? moment) (and (number? moment) (> moment 0)))
+                    (thread-sleep! moment)))
+                (begin
+                  (thread-sleep! step)
+                  (reset-wait!)))))
+       ((eq? event EVENT_REDRAW)
+        ;; (log-status "REDRAW")
+        (if (mutex-lock! wait-mutex 0)
+            (begin
+              (set! wakeup-seen #f)
+              (glCoreInit)
+              (guide-event-dispatch-to-payload rect payload event x y)
+              (guide-meta-menu-draw!)
+              (wait-for-time-or-signal!))
+            (begin
+              (log-warning "ignoring EVENT_REDRAW while handling EVENT_REDRAW")
+              (set! wakeup-seen #t))))
+       ((eq? event EVENT_IDLE)
+        (thread-yield!)
+        #t)
+       ;; (check-magic-keys gui t x y)
+       ((and (fx= event EVENT_KEYPRESS)
+             (let ((termkey (guide-terminate-on-key)))
+               (and termkey (fx= x termkey))))
+        (terminate))
+       (else
+        (reset-wait!)
+        (kick! (lambda () (guide-event-dispatch-to-payload rect payload event x y))))))
     (set! guide-wakeup! wakeup!)
     (set! %%guide-timings-set! timings-set!)
     (set! glgui-wakeup! wakeup!)
@@ -236,7 +245,15 @@
 ;;;** Payload
 
 (define (guide-event-dispatch-to-payload rect payload event x y)
-  ((guide-payload-on-any-event payload) rect payload event x y))
+  (cond
+   ((eqv? event EVENT_REDRAW)
+    (let ((redraw (guide-payload-on-redraw payload)))
+      (cond
+       (redraw (redraw)) ;; TBD: check that payload is visible before
+       (else ((guide-payload-on-any-event payload) rect payload event x y)))))
+   (else
+    (let ((handler (guide-payload-on-any-event payload)))
+      (and handler (handler rect payload event x y))))))
 
 (set!
  make-guide-payload
@@ -272,17 +289,20 @@
             (in #f)
             (widget (make-gtable)) ;; TBD: change default to new style
             (lifespan #f) ;; BEWARE: default changed 20210117
+            (on-redraw #f)
             (on-any-event events)
             (gui-before exposed)
             (gui-after hidden))
      (unless (mdvector-interval? in)
        (error "make-guide-payload: 'in:' must be an interval" in))
+     (unless (or (procedure? on-redraw) (not on-redraw))
+       (error "invalid drawing handler" 'make-guide-payload on-redraw))
      (unless (or (procedure? on-any-event) (not on-any-event))
        (error "invalid event handler" 'make-guide-payload on-any-event))
      (cond
       ((or (eq? lifespan #f) (eq? lifespan 'ephemeral))
-       (make-guide-payload name in widget on-any-event gui-before remove))
-      (else (make-guide-payload name in widget on-any-event gui-before gui-after))))))
+       (make-guide-payload name in widget on-redraw on-any-event gui-before remove))
+      (else (make-guide-payload name in widget on-redraw on-any-event gui-before gui-after))))))
 
 (define guide-open-rectangle
   ;; A procedure of zero or one argument.  Without returns the current
@@ -517,6 +537,8 @@
          (else small.fnt))))
     select-font))
 
+;;** GUI Widgets (payloads)
+
 (define (guide-button
          #!key
          (in (current-guide-gui-interval))
@@ -571,10 +593,9 @@
         (view! position: (vector-ref position 0) (vector-ref position 1))
         (view! position: x y))
     (let ((events
-           (let ((armed #f) (redraw! (view!)))
+           (let ((armed #f))
              (lambda (rect payload event x y)
                (cond
-                ((eqv? event EVENT_REDRAW) (redraw!))
                 ((eqv? event EVENT_BUTTON1DOWN)
                  (if (guide-figure-contains? view! x y) (begin (set! armed #t) #t) #f))
                 ((eqv? event EVENT_BUTTON1UP)
@@ -586,7 +607,77 @@
                        (set! armed #f)
                        #f)))
                 (else (guide-figure-contains? view! x y)))))))
-      (make-guide-payload in: in widget: #f on-any-event: events lifespan: 'ephemeral))))
+      (make-guide-payload in: in widget: #f on-redraw: (view!) on-any-event: events lifespan: 'ephemeral))))
+
+(define (guide-valuelabel
+         #!key
+         (in (current-guide-gui-interval))
+         (label "") (label-width 1/2)
+         (value #f) (input #f)
+         (size 'small) (color (guide-select-color-4)))
+  (unless (or (string? value) (procedure? value))
+    (error "invalid value argument" 'guide-valuelabel value))
+  (let* ((x (mdvector-interval-lower-bound in 0))
+         (y (mdvector-interval-lower-bound in 1))
+         (xno (mdvector-interval-upper-bound in 0))
+         (yno (mdvector-interval-upper-bound in 1))
+         (w (- xno x))
+         (h (- yno y))
+         (tag! (make-guide-label-view))
+         (label! (make-guide-label-view))
+         (box! (MATURITY+2:make-guide-bg+fg-view))
+         (check!
+          (and
+           (procedure? value)
+           (let ((src value)
+                 (cached
+                  (macro-memoize:2->1 ;;memoize-last
+                   (lambda (update! str)
+                     (update! text: str)
+                     (update!))
+                   (lambda (a b) #t) equal?)))
+             (lambda (update!) (cached update! (src)))))))
+    (let ((lw (* w (- 1 label-width)))
+          (gap (/ h 5))
+          (font (guide-select-font size: size)))
+      (tag! size: (- (* w label-width) gap) h)
+      (label! size: lw h)
+      (tag! font: font)
+      (label! font: font)
+      (tag! vertical-align: 'center)
+      (label! vertical-align: 'center)
+      (tag! horizontal-align: 'right)
+      (label! horizontal-align: 'left)
+      (tag! color: color)
+      (label! color: color))
+    (tag! text: label)
+    (label! text: (if (procedure? value) (value) value))
+    (label! position: (* w (- 1 label-width)) 0)
+    (box! size: w h)
+    (box! background: (tag!))
+    (box! foreground: (label! check! label))
+    (box! position: x y)
+    (let ((interval (make-mdv-rect-interval x y (+ x w) (+ y h)))
+          (events
+           (lambda (rect payload event x y)
+             (cond
+              ((guide-figure-contains? box! x y)
+               (or (not input) (input rect payload event x y)))
+              (else #f)))))
+      (let ((payload (make-guide-payload in: interval widget: #f on-redraw: (box!) on-any-event: events)))
+        (if (procedure? value)
+            payload
+            (values
+             payload
+             (case-lambda
+              (() value)
+              ((x)
+               (unless (string? x)
+                 (set! x (call-with-output-string (lambda (p) (display x)))))
+               (set! value x)
+               (label! text: x)
+               (box! foreground: (label!))
+               #!void))))))))
 
 (include "calculator.scm")
 

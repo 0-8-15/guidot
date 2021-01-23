@@ -158,12 +158,19 @@
           (lambda (rect payload event x y)
             (when action (action (floor (/ (- sely y) selh))))
             (when guide-callback (guide-callback rect payload event x y))))
+         (redraw
+          (lambda ()
+            (do ((i 0 (fx+ i 1)))
+                ((eqv? i len) #t)
+              (let ((payload (vector-ref all i)))
+                (and payload
+                     (let ((draw (guide-payload-on-redraw payload)))
+                       (and draw (draw))))))))
          (events
           (lambda (rect payload event x y)
             ;; TBD: we can't deliver all events everywhere!!!
-            (and (or (eqv? event EVENT_REDRAW)
-                     (let ((n (floor (/ (- sely y) selh))))
-                       (and (>= n 0) (< n len))))
+            (and (let ((n (floor (/ (- sely y) selh))))
+                   (and (>= n 0) (< n len)))
                  (do ((i 0 (fx+ i 1)))
                      ((eqv? i len) #t)
                    (let ((payload (vector-ref all i)))
@@ -171,7 +178,7 @@
     (do ((i 0 (fx+ i 1)))
         ((eqv? i len)
          (make-guide-payload
-          in: in on-any-event: events
+          in: in on-redraw: redraw on-any-event: events
           name: name lifespan: 'ephemeral widget: #f))
       (let* ((label (vector-ref content i))
              (payload
@@ -235,27 +242,27 @@
                   vertical-align: 'center
                   horizontal-align: 'left
                   guide-callback: b1c)))
+           (redraw
+            (lambda ()
+              (let ((draw (guide-payload-on-redraw (content))))
+                (and draw (draw)))
+              ((guide-payload-on-redraw b1))
+              (when active ((guide-payload-on-redraw active)))))
            (events
             (let ((d1 (guide-payload-on-any-event b1)))
               (lambda (rect payload event x y)
                 ;; TBD: we can't deliver all events everywhere!!!
                 (cond
-                 ((eqv? event EVENT_REDRAW)
-                  (guide-event-dispatch-to-payload rect (content) event x y)
-                  (d1 rect payload event x y)
-                  (when active (guide-event-dispatch-to-payload rect active event x y)))
-                 (else
-                  (cond
-                   (active
-                    (unless ((guide-payload-on-any-event active) rect active event x y)
-                      (d1 rect payload event x y)
-                      (let ((content (content)))
-                        (when (in-pl? content x y)
-                          (set! active #f)
-                          (guide-event-dispatch-to-payload rect content event x y)))))
-                   (else
+                 (active
+                  (unless ((guide-payload-on-any-event active) rect active event x y)
                     (d1 rect payload event x y)
-                    (guide-event-dispatch-to-payload rect (content) event x y)))))))))
+                    (let ((content (content)))
+                      (when (in-pl? content x y)
+                        (set! active #f)
+                        (guide-event-dispatch-to-payload rect content event x y)))))
+                 (else
+                  (d1 rect payload event x y)
+                  (guide-event-dispatch-to-payload rect (content) event x y)))))))
       (make-guide-payload
        in:
        (make-mdv-rect-interval
@@ -263,7 +270,7 @@
         (mdvector-interval-lower-bound in 1)
         (mdvector-interval-upper-bound selection-area 0)
         (mdvector-interval-upper-bound selection-area 1))
-       name: name widget: #f on-any-event: events lifespan: 'ephemeral))))
+       name: name widget: #f on-redraw: redraw on-any-event: events lifespan: 'ephemeral))))
 
 ;;;* Xglgui
 
