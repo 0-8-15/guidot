@@ -675,7 +675,7 @@
 
   (kick
    (visible-tl-options '#("calculator" "chat" "about"))
-   (PIN:toplevel-selection 1))
+   (PIN:toplevel-selection 0))
   (guide-toplevel-payload
    (let ((area (make-mdv-rect-interval 0 0 320 474))
          (conversion beaverchat-payload-sel)

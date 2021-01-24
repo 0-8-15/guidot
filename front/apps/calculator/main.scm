@@ -9,6 +9,23 @@
     (force-output p)
     v))
 
+(set!
+ ##exit
+ (let ((old ##exit))
+   (lambda args
+     (##print-maturity-warnings!)
+     (apply old args))))
+
+(current-maturity-level -2) ;; enable legacy rendering (-3) for legacy chat, which is very expensive
+
+($maturity-tolerance!
+ ;;
+ 1
+ ;; FIXME: (##print-maturity-warnings!) not yet seen upon exit, why?
+ 0
+ ;; Any chance +2 code came here?
+ 1)
+
 (cond-expand
  ((or #;android debug)
   ($debug-trace-triggers #t)
@@ -53,7 +70,12 @@ NULL;
   (let ((ot terminate)) (set! terminate (lambda () (log-error "No terminate on Android!") #f)))
   )
  (else
-  ))
+  (set! ;; FIXME: make this the default case!
+   terminate
+   (let ((old terminate))
+     (lambda args
+       (##print-maturity-warnings!)
+       (apply old args))))))
 
 (define origin-pluto
   '#u8(1 0 0 0 0 0 2 12 196 0 0 1 114 132 86 202 149 41 135 178 127 21 12 185 196 179 100 108 19 209
