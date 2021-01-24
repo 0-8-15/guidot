@@ -10,6 +10,26 @@
 
 (include "../misc-conventions/observable-syntax.sch")
 
+;; Mode/Tool Switch (TBD: move!)
+
+(define-pin visible-tl-options
+  initial: '#("")
+  pred:
+  (lambda (vec)
+    (define predicate? string?)
+    (and (vector? vec) ;; check all elements for `predicate?`
+         (do ((i (fx- (vector-length vec) 1) (fx- i 1))
+              (result #t (and result (predicate? (vector-ref vec i)))))
+             ((eqv? i -1) result))))
+  name: "Active Toplevel Switch Options")
+
+(define-pin PIN:toplevel-selection
+  initial: 0
+  pred: (lambda (n) (and (number? n) (< -1 n (vector-length (visible-tl-options)))))
+  name: "guide toplevel selection")
+
+;;** Init (TBD: move!)
+
 (define (init-beaverchat! dir #!key (use-origin #f))
   (unless (file-exists? dir)
     (ot0-init-context! dir)
@@ -109,6 +129,7 @@
                     (else in))))
            (socks-forward-addr (and (pair? nw) n)))))
 
+;;** Beaver Chat
 
 (define glgui-chat-messages-are-valid?
   ;; pre-check messages before they break the glgui widget
@@ -122,34 +143,10 @@
         (let loop ((lst lst))
           (or (null? lst) (and (each (car lst)) (loop (cdr lst))))))))))
 
-;; Mode/Tool Switch (TBD: move)
-
-(define-pin visible-tl-options
-  initial: '()
-  pred: (lambda (lst) (every string? lst))
-  name: "Active Toplevel Switch Options")
-
-(define-pin selected-display
-  initial: "about"
-  filter: (lambda (o n) (if (member n (visible-tl-options)) n o))
-  name: "Toplevel Display (a registered option)")
-
-;; Modes
-
-(define (cb-tool-selection-change gui wgt type x y)
-  (kick (selected-display (list-ref (visible-tl-options) (glgui-widget-get gui wgt 'current)))))
-
-(define (tool-selection-draw-choice font)
-  (lambda (str)
-    (lambda (lg lw x y w h s)
-      (if s (glgui:draw-box x y w h Black))
-      (glgui:draw-text-left (+ x 5) y (- w 10) h str font White))))
-
 (define-pin chat-messages
   initial: '()
   pred: glgui-chat-messages-are-valid?
   name: "Chat messages")
-
 
 (define-pin chat-messages-limit 30)
 
@@ -232,11 +229,6 @@
   (pin-filter! chat-inbox-senders (lambda (x) (not (equal? (chat-address) x)))))
 
 (wire! chat-address post: remove-chat-address-from-inbox-senders)
-
-(define-pin selected-display
-  initial: "about"
-  filter: (lambda (o n) (if (member n (visible-tl-options)) n o))
-  name: "Toplevel Display (a registered option)")
 
 (define chat-own-address beaver-local-unit-id)
 
@@ -365,7 +357,7 @@
 
 (wire! chat-address post: chat-set-current-partner!)
 
-(define (beaverchat-payload-config launch-url)
+(define (beaverchat-payload-config launch-url beaver-domain)
   (define (make-beaverchat-payload rect interval)
     (let* ((xsw (mdvector-interval-lower-bound interval 0))
            (ysw (mdvector-interval-lower-bound interval 1))
@@ -394,7 +386,7 @@
       (define (update-keypad)
         (glgui-widget-set! bag keypad 'keypad (if (number? (chat-address)) text-keypad dial-keypad)))
       (update-keypad)
-      (glgui-widget-set! gui bag 'hidden #t)
+      ;;(glgui-widget-set! gui bag 'hidden #t)
       (let* ((illy (- clly line-height))
              (illx cllx)
              (iw w)
@@ -466,10 +458,10 @@
         (define (close-chat!)
           (when ponebook-dialog (ponebook-dialog 'close) (set! ponebook-dialog #f))
           (kick (chat-address #f)
-                (selected-display (list-ref (visible-tl-options) 0))))
+                (PIN:toplevel-selection 2)))
         (define (on-event rect pl event x y)
           (define skip #f)
-          (define gui (guide-rectangle-glgui rect))
+          ;;(define gui (guide-rectangle-glgui rect))
           (cond
            ((= event EVENT_KEYRELEASE)
             (cond
@@ -508,7 +500,7 @@
                       (glgui-widget-set! bag input 'label msg))))))
                 #f))))
            ((and (= event EVENT_KEYPRESS) (= x EVENT_KEYESCAPE)) (set! skip #t)))
-          (or skip (guide-default-event-dispatch rect pl event x y)))
+          (or skip (guide-default-event-dispatch/fallback-to-glgui rect pl event x y)))
         (glgui-widget-set! gui input 'focus #t)
         (glgui-widget-set! gui input 'enableinput #t)
         ;;        (glgui-widget-set! gui input 'draw-handle Xglgui:label-draw2)
@@ -517,185 +509,176 @@
         (wire! chat-address post: follow-to)
         ;; Wired to globals, MUST be instanciated once only.
         (make-guide-payload
-         in: interval widget: bag lifespan: 'once
+         name: 'beaverchat
+         in: interval widget: gui lifespan: 'once
+         gui-before: #f gui-after: #f
          on-any-event: on-event))))
   make-beaverchat-payload)
 
-(define (define-payload-beaverchat! name launch-url)
-  ;; Wired to globals, MUST be instanciated once only.
-  (guide-define-payload name 'once (beaverchat-payload-config launch-url)))
-
-(define (glgui-beaverchat launch-url beaver-domain) ;; Note: this is currently a once-at-most call!
+(define (init-beaverchat-gui! launch-url beaver-domain) ;; Note: this is an once-at-most call!
 
 ;;;  (define field_gradient (list (color:shuffle #xe8e9eaff) (color:shuffle #xe8e9eaff) (color:shuffle #xfefefeff) (color:shuffle #xfefefeff)))
 
-  (define make-about-payload
-    (let ((lifespan 'once)) ;; wired to globals - once only!
-      (define (make-about-payload rect interval)
-        (let* ((xsw (mdvector-interval-lower-bound interval 0))
-               (ysw (mdvector-interval-lower-bound interval 1))
-               (xno (mdvector-interval-upper-bound interval 0))
-               (yno (mdvector-interval-upper-bound interval 1))
-               (w (- xno xsw))
-               (h (- yno ysw))
-               (gui (guide-rectangle-glgui rect))
-               (bag (glgui-container gui 0 0 w h))
-               (str "(C) JFW")
-               (fnt (select-font size: 'small))
-               (line-height 16)
-               (line-height-selectable 28))
-          (define (callback gui wgt type x y)
-            (glgui-widget-delete gui wgt)
-            #f)
-          (define (pin-display-chat-number n tag pin)
-            (define (conv v)
-              (case v
-                ((#f) "no")
-                ((#t) "yes")
-                (else
-                 (cond
-                  ((and (number? v) (exact? v)) (chat-number->neatstring v))
-                  (else v)))))
-            (let ((setter (Xglgui-valuelabel
-                           bag 10 (- h 10 (* n line-height)) (- w 10) line-height
-                           label: tag
-                           value: (conv (pin))
-                           ;; input: #f
-                           )))
-              (wire! pin post: (lambda () (setter (conv (pin)))))))
-          (define (pin-display n tag pin)
-            (define (conv v)
-              (case v
-                ((#f) "no")
-                ((#t) "yes")
-                (else
-                 (cond
-                  ((and (number? v) (exact? v)) (number->string v))
-                  (else v)))))
-            (let ((setter (Xglgui-valuelabel
-                           bag 10 (- h 10 (* n line-height)) (- w 10) line-height
-                           label: tag
-                           value: (conv (pin))
-                           ;; input: #f
-                           )))
-              (wire! pin post: (lambda () (setter (conv (pin)))))))
-          (define (pin-edit base n tag pin kbd value-string)
-            (Xglgui-pin-editable
-             bag  10 (- h base (* n line-height-selectable)) (- w 10) line-height-selectable
-             tag pin kbd value-string: value-string))
-          (pin-display 1 "kick-style" kick-style)
-          (pin-display 2 "vpn" ot0cli-server)
-          (pin-display-chat-number 3 "Address" chat-own-address)
-          (let ((base (* 4 line-height)))
-            (pin-edit base 1 "proxy port" beaver-proxy-port-number keypad:numeric #f)
-            (pin-edit base 2 "socks port" beaver-socks-port-number keypad:numeric #f)
-            (pin-edit base 3 "forward" beaver-socks-forward-addr keypad:hexnum
-                      (lambda (x) (if (not x) "" x)))
-            )
-          (Xglgui-button
-           bag (/ w 10) 100 (* w 8/10) line-height-selectable
-           label: "Browse Homepage (needs proxy)" font: (select-font size: 'small) glgui-callback:
-           (lambda (gui wgt type x y)
-             (if (positive? (beaver-proxy-port-number))
-                 (launch-url
-                  (string-append "http://127.0.0.1:" (number->string (beaver-proxy-port-number)))
-                  via: (if (< x (/ w 2)) 'webview 'extern)))))
-          (let* ((w2 (/ w 2))
-                 (border 10)
-                 (w2w (- w2 border))
-                 (y (* 4 line-height))
-                 (fnt (select-font size: 'small)))
-            (Xglgui-label bag border y w2w line-height text: "Pending" size: 'small)
-            (let ((wgt (Xglgui-button
-                        bag w2 y w2w line-height label: "" font: fnt glgui-callback:
-                        (lambda (gui wgt type x y)
-                          (kick (chat-pending-messages '()))))))
-              (define (setter)
-                (glgui-widget-set! bag wgt 'image (list (number->string (length (chat-pending-messages))))))
-              (setter)
-              (wire! chat-pending-messages post: setter)))
-          (let* ((border (/ line-height 2))
-                 (line-height-selectable 28)
-                 (content (chat-inbox-senders))
-                 (ctrl
-                  ((Xglgui-select
-                    bag border border (- w (* 2 border)) (- h (* 2 border))
-                    line-height: line-height-selectable color: White)
-                   '()
-                   (lambda (sel x)
-                     (if (>= sel 0)
-                         (let ((sel2 (list-ref content sel)))
-                           (kick
-                            (chat-address sel2)
-                            (selected-display "chat")))))
-                   permanent: #t)))
-            (define (new-content)
-              (set! content (chat-inbox-senders))
-              (let ((new (map chat-partner->neatstring content)))
-                (ctrl set: new)
-                (ctrl hidden: (null? new))))
-            (new-content)
-            (wire! chat-inbox-senders post: new-content))
-          (Xglgui-button bag (/ w 4) (/ h 4) (/ w 2) (/ h 2) label: str font: fnt glgui-callback: callback)
-          #|
-          (let* ((ctx bag)
-                 (wb (/ w 5))
-                 (x 0 #;(- w wb))
-                 (y (* h 0))
-                 (h (/ h 15))
-                 (fnt fnt)
-                 (label "exit")
-                 (callback (lambda (gui wgt type x y) (force-terminate))))
-            (Xglgui-button ctx x y wb h font: fnt label: label glgui-callback: callback))
-          |#
-          (make-guide-payload in: interval widget: bag lifespan: lifespan)))
-      (guide-define-payload "about" lifespan make-about-payload)
-      make-about-payload))
+  (define (make-about-payload dummy interval)
+    (let*
+        ((xsw (mdvector-interval-lower-bound interval 0))
+         (ysw (mdvector-interval-lower-bound interval 1))
+         (xno (mdvector-interval-upper-bound interval 0))
+         (yno (mdvector-interval-upper-bound interval 1))
+         (w (- xno xsw))
+         (h (- yno ysw))
+         (line-height 16)
+         (line-height-selectable 60)
+         (b1active #t)
+         (b1
+          (let* ((x (/ w 4))
+                 (y (/ h 4)))
+            (guide-button
+             in: (make-x0y0x1y1-interval/coerce x y (+ x (/ w 2)) (+ y (/ h 2)))
+             label: "(C) JFW"
+             guide-callback: (lambda (rect payload event x y) (set! b1active #f)))))
+         (b2 (let* ((wb (/ w 5))
+                    (x (- w wb))
+                    (y (* h 0))
+                    (h (/ h 15)))
+               (guide-button
+                in: (make-x0y0x1y1-interval/coerce x y (+ x wb) (+ y h))
+                label: "exit"
+                guide-callback: (lambda (rect payload event x y) (terminate)))))
+         (conv (lambda (v)
+                 (case v
+                   ((#f) "no")
+                   ((#t) "yes")
+                   (else
+                    (cond
+                     ((and (number? v) (exact? v)) (chat-number->neatstring v))
+                     ((string? v) v)
+                     (else (object->string v)))))))
+         (info
+          (let* ((rng (range '#(1 3)))
+                 (yoff 60)
+                 (border-ratio 1/10)
+                 (area (make-x0y0x1y1-interval/coerce
+                        xsw (- h yoff (* 4 (+ 1 border-ratio) line-height))
+                        xno (- h yoff)))
+                 (constructors
+                  (let ((val1 (lambda (p a) p)))
+                    (vector
+                     (lambda (in col row)
+                       (let* ((last (memoize-last conv eqv?))
+                              (check (lambda () (last (chat-own-address)))))
+                         (guide-valuelabel in: in label: "Address" value: check success: val1)))
+                     (lambda (in col row)
+                       (let* ((last (memoize-last conv eqv?))
+                              (check (lambda () (last (kick-style)))))
+                         (guide-valuelabel in: in label: "kick-style" value: check success: val1)))
+                     (lambda (in col row)
+                       (let* ((last (memoize-last conv eq?))
+                              (check (lambda () (last (ot0cli-server)))))
+                         (guide-valuelabel in: in label: "vpn" value: check success: val1)))
+                     ))))
+            (make-guide-table (make-mdvector rng constructors) in: area border-ratio: border-ratio)))
+         (edits
+          (let* ((base (mdvector-interval-lower-bound (guide-payload-measures info) 1))
+                 (border-ratio 1/10)
+                 (rng (range '#(1 5)))
+                 (area (make-x0y0x1y1-interval/coerce xsw (- base (* 3 line-height-selectable)) xno base))
+                 (constructors
+                  (let ((val1 (lambda (p a) p)))
+                    (vector
+                     (lambda (in col row)
+                       (let* ((last (memoize-last object->string eqv?))
+                              (check (lambda () (last (beaver-proxy-port-number)))))
+                         (guide-valuelabel
+                          in: in size: 'medium label: "proxy port" value: check success: val1
+                          input: (lambda (rect payload event x y) (debug 'CALL 'keypad:numeric) #t))))
+                     (lambda (in col row)
+                       (let* ((last (memoize-last object->string eqv?))
+                              (check (lambda () (last (beaver-socks-port-number)))))
+                         (guide-valuelabel
+                          in: in size: 'medium label: "socks port" value: check success: val1
+                          input: (lambda (rect payload event x y) (debug 'CALL 'keypad:numeric) #t))))
+                     (lambda (in col row)
+                       (let* ((last (memoize-last
+                                     (lambda (v)
+                                       (cond
+                                        ((string? v) v)
+                                        (else (object->string v))))
+                                     eqv?))
+                              (check (lambda () (last (beaver-socks-forward-addr)))))
+                         (guide-valuelabel
+                          in: in size: 'medium label: "forward" value: check success: val1
+                          input: (lambda (rect payload event x y) (debug 'CALL 'keypad:hexnum) #t))))
+                     (lambda (in col row)
+                       (guide-button
+                        in: in
+                        label: "Browse Homepage (needs proxy)"
+                        font: (guide-select-font size: 'small)
+                        guide-callback:
+                        (lambda (rect payload event x y)
+                          (if (positive? (beaver-proxy-port-number))
+                              (launch-url
+                               (string-append "http://127.0.0.1:" (number->string (beaver-proxy-port-number)))
+                               via: (if (< x (/ w 2)) 'webview 'extern))))))
+                     (lambda (in col row)
+                       (let* ((last (memoize-last (lambda (v) (number->string (length v))) eq?))
+                              (check (lambda () (last (chat-pending-messages)))))
+                         (guide-valuelabel
+                          in: in size: 'medium label: "Pending" value: check success: val1
+                        input: (lambda (rect payload event x y)
+                                 (chat-pending-messages '())
+                                 #t))))
+                     ))))
+            (make-guide-table (make-mdvector rng constructors) in: area border-ratio: border-ratio)))
+         (redraw! (vector
+                   (guide-payload-on-redraw info)
+                   (guide-payload-on-redraw edits)
+                   (let ((d (guide-payload-on-redraw b1))) (lambda () (and b1active (d))))
+                   (guide-payload-on-redraw b2)))
+         (events
+          (lambda (rect payload event x y)
+            (cond
+             ((eqv? event EVENT_BUTTON1DOWN)
+              (cond
+               ((and b1active (guide-payload-contains/xy? b1 x y))
+                (guide-event-dispatch-to-payload rect b1 event x y))
+               ((guide-payload-contains/xy? edits x y) (guide-event-dispatch-to-payload rect edits event x y))
+               ((guide-payload-contains/xy? b2 x y) (guide-event-dispatch-to-payload rect b2 event x y))))
+             ((eqv? event EVENT_BUTTON1UP)
+              (cond
+               ((and b1active (guide-payload-contains/xy? b1 x y))
+                (guide-event-dispatch-to-payload rect b1 event x y))
+               ((guide-payload-contains/xy? b2 x y) (guide-event-dispatch-to-payload rect b2 event x y))))
+             (else (mdvector-rect-interval-contains/xy? interval x y))))))
+      (make-guide-payload in: interval widget: #f on-redraw: redraw! on-any-event: events lifespan: 'ephemeral)))
 
-  (define (guide-start!)
+  (define (beaverchat-payload-sel number #!optional (area (make-mdv-rect-interval 0 0 320 474)))
+    (foreground-service! #t)
+    (case number
+      ((2 about) (make-about-payload #f area))
+      ((0 calculator) (make-calculator-payload area))
+      ((1) ((guide-payload-ref "chat") (guide-legacy-make-rect area) area))
+      (else (guide-button in: (make-mdv-rect-interval 0 0 100 100)))))
 
-    (define (init! w h)
-      (make-window 320 502 #;480)
-      (glgui-orientation-set! GUI_PORTRAIT)
-      (foreground-service! #t)
-      (let* ((rect (guide-make-gui))
-             (payload (guide-make-payload rect "guide"))
-             (selector #f)
-             (w (guide-rectangle-width rect))
-             (h (guide-rectangle-height rect))
-             (gui (guide-rectangle-glgui rect))
-             (mh 28)
-             (menu-area (make-mdv-rect-interval 0 (- h mh) w h))
-             (payload-area (make-mdv-rect-interval 0 0 w (- h mh)))
-             (menu-font (select-font size: 'medium))
-             (k 'dd))
-        (when (> mh 0)
-          (case k
-            ((men)
-             (glgui-menubar gui 0 (- h (* mh 2)) w (* mh 2))
-             (glgui-label gui 0 (- h mh) #;(- h (/ mh 2)) 80 mh "Menu" menu-font White))
-            ((dd)
-             (set!
-              selector
-              ((make-tl-selection-payload
-                rect payload menu-area payload-area menu-font)
-               selected-display visible-tl-options guide-current-colorscheme)))))
-        (kick
-         (visible-tl-options '("calculator" "chat" "about"))
-         (selected-display "calculator"))
-        (values rect payload)))
+  ;; Wired to globals, MUST be instanciated only once.
+  (guide-define-payload "chat" 'once (beaverchat-payload-config launch-url beaver-domain))
 
-    (guide-define-payload-calculator! "calculator")
-    (define-payload-beaverchat! "chat" launch-url)
-    (guide-main
-     ;; initialization
-     init!
-     ;; events: event-dispatcher
-     ;; suspend: terminate
-     terminate: (lambda () (foreground-service! #f))
-     )
-    )
-  (guide-start!))
+  (kick
+   (visible-tl-options '#("calculator" "chat" "about"))
+   (PIN:toplevel-selection 1))
+  (guide-toplevel-payload
+   (let ((area (make-mdv-rect-interval 0 0 320 474))
+         (conversion beaverchat-payload-sel)
+         (options visible-tl-options)
+         (selection PIN:toplevel-selection))
+     ;; content as parameter???
+     (let ((rebuild
+            (lambda ()
+              (guide-toplevel-payload
+               (make-tool-switch-payload/dropdown selection options (conversion (selection) area))))))
+       (wire! selection post: rebuild)
+       (rebuild)
+       (guide-toplevel-payload)))))
 
 (log-status "initializing chat completed")
 ;; eof

@@ -136,7 +136,7 @@ NULL;
            (thread-yield!))))
   (define %%Xredraw #f)
   (define (Xtrigger-redraw!)
-    (glgui-wakeup!)
+    (guide-wakeup!)
     (set! %%Xredraw #t))
   (define (Xconditional-redraw)
     (if %%Xredraw
@@ -149,40 +149,11 @@ NULL;
   )
  (else
   (define-macro (please-do-me-the-favor-and-make-progress! n) '#!void)
-  (define Xtrigger-redraw! glgui-wakeup!)
+  (define Xtrigger-redraw! guide-wakeup!)
   (define (Xconditional-redraw) #f)
   ))
 
-(define glgui-dispatch-event
-  (let ((check-magic-keys
-	 (lambda (gui t x y)
-	   ;; (debug 'event t)
-	   (when (= t EVENT_KEYPRESS)
-		 (if (= x EVENT_KEYESCAPE)
-		     (terminate))))))
-    (cond
-     #;(app:android? ;;(member (system-platform) '("android"))
-      (lambda (gui op t x y)
-        (##thread-heartbeat!)
-        (thread-yield!)
-	(cond
-         ((eq? t EVENT_IDLE)
-          ;; (log-debug "idle" 1)
-          #t)
-         (else
-          ;; (check-magic-keys gui op t x y)
-          (glgui-event gui t x y)))))
-     (else
-      (lambda (gui t x y)
-        (thread-yield!)
-	(check-magic-keys gui t x y)
-	(cond
-         ((eq? t EVENT_REDRAW)
-          ;; (log-status "REDRAW")
-          (glgui-event gui t x y))
-         ((eq? t EVENT_IDLE)
-          #t)
-	 (else (kick! (lambda () (glgui-event gui t x y))))))))))
+(%%guide-timings-set! frame-period-min: 1/30 frame-period-max: 1/4)
 
 (define (handle-replloop-exception e)
   (let ((port (current-error-port)))
@@ -358,6 +329,8 @@ NULL;
         (unit-id-string->unit-id (substring str 1 e))
         (unit-id-string->unit-id (if (fx= e (string-length str)) str (substring str 0 e))))))
 
+;; Calculator
+
 (define (calculator dir)
   (define control-port
     (cond-expand
@@ -376,12 +349,13 @@ NULL;
       -wait
       ))
   (define (capdom) "bvr")
-  (log-status "Starting from " dir (object->string (args)))
-  (init-beaverchat! dir use-origin: use-origin) ;; MUST be first
-  (glgui-beaverchat webview-launch! capdom)
-  (kick (audible-beep audible-beep!))
   (httpproxy-atphone-set! at-phone-decoder)
   (httpproxy-connect-set! ot0cli-connect)
+  (init-beaverchat-gui! webview-launch! capdom)
+  (kick (audible-beep audible-beep!))
+  ;; end of invocation independent initializations
+  (log-status "Starting from " dir (object->string (args)))
+  (init-beaverchat! dir use-origin: use-origin) ;; MUST be first
   (capture-domain! (capdom) handler: fossils-directory-handler)
   (lwip-tcp-service-register! 80 fossils-directory-service)
   (log-status "beaver.dam done")
