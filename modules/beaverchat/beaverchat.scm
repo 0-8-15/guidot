@@ -630,11 +630,21 @@
                                  #t))))
                      ))))
             (make-guide-table (make-mdvector rng constructors) in: area border-ratio: border-ratio)))
+         (inbox ;; TBD: Re-add selection
+          (let* ((wb (* w 2/3))
+                 (x (+ xsw 15))
+                 (y (* h 0))
+                 (h (/ h 15))
+                 (in (make-x0y0x1y1-interval/coerce x y (+ x wb) (+ y h)))
+                 (last (memoize-last (lambda (v) (number->string (length v))) eq?))
+                 (check (lambda () (last (chat-inbox-senders)))))
+            (guide-valuelabel in: in label: "Ungesehen:" value: check)))
          (redraw! (vector
                    (guide-payload-on-redraw info)
                    (guide-payload-on-redraw edits)
                    (let ((d (guide-payload-on-redraw b1))) (lambda () (and b1active (d))))
-                   (guide-payload-on-redraw b2)))
+                   (guide-payload-on-redraw b2)
+                   (guide-payload-on-redraw inbox)))
          (events
           (lambda (rect payload event x y)
             (cond
