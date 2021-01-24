@@ -255,17 +255,19 @@
        ((vector? redraw)
         (do ((i 0 (fx+ i 1))) ;; draw background first
             ((eqv? i (##vector-length redraw)))
-          ((##vector-ref redraw i)))))))))
+          ((##vector-ref redraw i))))))
+     (else
+      (let ((handler (guide-payload-on-any-event payload)))
+        (cond
+         ((procedure? handler) (handler 'rect payload EVENT_REDRAW 0 0))
+         ((vector? handler)
+          (do ((i 0 (fx+ i 1))) ;; draw background first
+              ((eqv? i (##vector-length redraw)))
+            ((##vector-ref handler i) 'rect payload EVENT_REDRAW 0 0)))
+         ((not handler) (MATURITY -1 "no event handler for redraw" loc: guide-event-dispatch-to-payload/redraw))
+         (else (MATURITY -10 "invalid event handler" loc: guide-event-dispatch-to-payload/redraw))))))))
 
 (define (guide-event-dispatch-to-payload rect payload event x y)
-  (define (otherwise rect payload event x y)
-    (let ((handler (guide-payload-on-any-event payload)))
-      (cond
-       ((procedure? handler) (handler rect payload event x y))
-       ((vector? handler) ;; try handling in foreground first
-        (do ((i (fx- (##vector-length handler) 1) (fx- i 1))
-             (hit #f (and hit ((##vector-ref handler i) rect payload event x y))))
-            ((or hit (eqv? i -1)) hit))))))
   (cond
    ((eqv? event EVENT_REDRAW)
     (let ((redraw (guide-payload-on-redraw payload)))
@@ -277,7 +279,8 @@
          ((vector? redraw)
           (do ((i 0 (fx+ i 1))) ;; draw background first
               ((eqv? i (##vector-length redraw)))
-            ((##vector-ref redraw i))))))
+            ((##vector-ref redraw i))))
+         (else (MATURITY -10 "invalid redraw" loc: guide-event-dispatch-to-payload))))
        (else
         (let ((handler (guide-payload-on-any-event payload)))
           (cond
@@ -285,7 +288,9 @@
            ((vector? handler)
             (do ((i 0 (fx+ i 1))) ;; draw background first
                 ((eqv? i (##vector-length redraw)))
-              ((##vector-ref handler i) rect payload event x y)))))))))
+              ((##vector-ref handler i) rect payload event x y)))
+           ((not handler) (MATURITY -1 "no event handler for redraw" loc: guide-event-dispatch-to-payload))
+           (else (MATURITY -10 "invalid event handler" loc: guide-event-dispatch-to-payload))))))))
    (else
     (let ((handler (guide-payload-on-any-event payload)))
       (cond
@@ -293,7 +298,9 @@
        ((vector? handler) ;; try handling in foreground first
         (do ((i (fx- (##vector-length handler) 1) (fx- i 1))
              (hit #f (and hit ((##vector-ref handler i) rect payload event x y))))
-            ((or hit (eqv? i -1)) hit))))))))
+            ((or hit (eqv? i -1)) hit)))
+       ((not handler) (MATURITY -1 "no event handler " loc: guide-event-dispatch-to-payload))
+       (else (MATURITY -10 "invalid event handler" loc: guide-event-dispatch-to-payload)))))))
 
 (set!
  make-guide-payload
@@ -323,7 +330,9 @@
              (else ;; legacy glgui
               (let ((glgui (guide-rectangle-glgui rect)))
                 (when (table? glgui) (glgui-widget-delete glgui wgt))))))))
-       (events (lambda (rect payload event x y) #f)))
+       (events (lambda (rect payload event x y)
+                 (MATURITY -1 "default event hander not handling anything" loc: make-guid-payload)
+                 #f)))
    (lambda (#!key
             (name #f)
             (in #f)
@@ -690,7 +699,7 @@
          (cell-width (- colw (* 2 min-hgap)))
          (used-width (* columns (+ cell-width (* 2 min-hgap))))
          (hgap (* (/ total-width used-width) min-hgap))
-         (left-offset (+ (* 2 hgap) (/ (- total-width used-width) 2)))
+         (left-offset (* 1/2 (+ (* 2 hgap) (/ (- total-width used-width) 2))))
          ;;
          (rowh (floor (/ total-height rows)))
          (min-vgap (ceiling (* border-ratio rowh)))
@@ -723,7 +732,7 @@
                               (+ cell-height (* (+ row rowspan) (+ vgap cell-height)))))
                        (x1 (+ x0 cell-width (* colspan (+ hgap cell-width))))
                        (y1 (+ cell-height y0 (* rowspan (+ vgap cell-height))))
-                       (area (make-mdv-rect-interval x0 y0 x1 y1)))
+                       (area (make-x0y0x1y1-interval/coerce x0 y0 x1 y1)))
                   (cond
                    ((procedure? pattern) (pattern area col row))
                    ((pair? pattern) (apply (car pattern) area col row (cdr pattern)))
@@ -765,7 +774,8 @@
          (in (current-guide-gui-interval))
          (label "") (label-width 1/2)
          (value #f) (input #f)
-         (size 'small) (color (guide-select-color-4)))
+         (size 'small) (color (guide-select-color-4))
+         (success values))
   (unless (or (string? value) (procedure? value))
     (error "invalid value argument" 'guide-valuelabel value))
   (let* ((x (mdvector-interval-lower-bound in 0))
@@ -816,19 +826,20 @@
                (or (not input) (input rect payload event x y)))
               (else #f)))))
       (let ((payload (make-guide-payload in: interval widget: #f on-redraw: (box!) on-any-event: events)))
-        (if (procedure? value)
-            payload
-            (values
-             payload
-             (case-lambda
-              (() value)
-              ((x)
-               (unless (string? x)
-                 (set! x (call-with-output-string (lambda (p) (display x)))))
-               (set! value x)
-               (label! text: x)
-               (box! foreground: (label!))
-               #!void))))))))
+        (cond
+         ((procedure? value) payload)
+         (else
+          (success
+           payload
+           (case-lambda
+            (() value)
+            ((x)
+             (unless (string? x)
+               (set! x (call-with-output-string (lambda (p) (display x)))))
+             (set! value x)
+             (label! text: x)
+             (box! foreground: (label!))
+             #!void)))))))))
 
 (include "calculator.scm")
 
