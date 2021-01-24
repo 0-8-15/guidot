@@ -88,11 +88,15 @@
        tag))))
 
 (define (make-x0y0x1y1-interval/coerce x0 y0 x1 y1)
-  (define (conv x)
+  (define (convl x)
     (cond
      ((integer? x) x)
      (else (inexact->exact (floor x)))))
-  (make-mdv-rect-interval (conv x0) (conv y0) (conv x1) (conv y1)))
+  (define (convu x)
+    (cond
+     ((integer? x) x)
+     (else (inexact->exact (ceiling x)))))
+  (make-mdv-rect-interval (convl x0) (convl y0) (convu x1) (convu y1)))
 
 (define (mdvector-interval-lower-bound interval dim)
   (unless (mdvector-interval? interval)
