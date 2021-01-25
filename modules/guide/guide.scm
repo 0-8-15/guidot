@@ -608,6 +608,7 @@
          (in (current-guide-gui-interval))
          (font (guide-select-font size: 'medium))
          (label "exit")
+         (color #f)
          (padding '#(1 1 1 1))
          (background #f)
          (background-color #f)
@@ -627,6 +628,7 @@
     (label! horizontal-align: horizontal-align)
     (label! vertical-align: vertical-align)
     (label! font: (find-font font))
+    (when color (label! color: color))
     (label! size: w h)
     (label! padding: padding)
     ;; finally - in order to ot trigger useless recalculations
@@ -840,6 +842,40 @@
              (label! text: x)
              (box! foreground: (label!))
              #!void)))))))))
+
+(define (guide-make-keypad
+         area spec
+         #!key
+         (font (guide-select-font size: 'medium))
+         (color (guide-select-color-2))
+         (background-color (guide-select-color-1))
+         (on-key #f))
+  (define (%%guide-post-key-event key)
+    (cond
+     ((fixnum? key)
+      (if (procedure? on-key) (on-key key) (event-push EVENT_KEYRELEASE key 0)))
+     ((char? key)
+      (if (procedure? on-key) (on-key key) (event-push EVENT_KEYRELEASE (char->integer key) 0)))
+     (else (error "invalid key" %%guide-post-key-event key))))
+  (define (post-key pat)
+    (lambda (rect payload event x y)
+      (%%guide-post-key-event pat)))
+  (define (keybutton in c #!key (label (string c)) (color color) (background-color background-color))
+    (guide-button
+     in: in label: label color: color font: font
+     background-color: background-color guide-callback: (post-key c)))
+  (let* ((rng (mdvector-range spec))
+         (constructors
+          (make-vector
+           (range-volume rng)
+           (lambda (in col row)
+             (let ((pat (mdvector-ref spec row col)))
+               (cond
+                ((char? pat) (keybutton in pat))
+                ((and (fixnum? pat) (positive? pat)) (keybutton in (integer->char pat)))
+                ((pair? pat) (apply keybutton in pat))
+                (else (error "invalid key spec" guide-make-keypad pat))))))))
+    (make-guide-table (make-mdvector rng constructors) in: area)))
 
 (include "calculator.scm")
 
