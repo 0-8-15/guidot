@@ -155,7 +155,7 @@
              (fixed-draw)))
         (else (error "unhandled" 'drawing-pair-control key))))
     (MATURITY +2 "fresh drawing pair created"
-              loc: '(make-guide-container-view make-guide-bg+fg-view))
+              loc: "(make-guide-container-view make-guide-bg+fg-view)")
     (case-lambda
      (() ;; draw thunk without dynamic dependencies
       (if (%%guide-view-default-dynamic)

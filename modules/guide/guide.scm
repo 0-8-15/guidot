@@ -766,8 +766,9 @@
             (and payload
                  (and
                   (guide-payload-contains/xy? payload x y)
-                  (begin (set! hit #t) #t))
-                 (guide-event-dispatch-to-payload rect payload event x y))))))
+                  (begin
+                    (set! hit #t)
+                    (guide-event-dispatch-to-payload rect payload event x y))))))))
      ;; backward compatibility
      widget: #f lifespan: 'ephemeral)))
 
