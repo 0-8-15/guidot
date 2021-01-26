@@ -198,6 +198,9 @@
   #f)
 
 (define-structure range ;; a.k.a. fixnum iota
+  opaque:
+  macros:
+  prefix: macro-
   ;; data cases: a) inline b) at offset in 3vector
   dim ;; (experimental: negative? => backwards) a: number of elements
   ;; b: rank
@@ -208,10 +211,15 @@
 
 (define dev#make-range make-range)
 
-(define debug#range-in range-in)
+(define (%%range? obj) (macro-range? obj))
+(define (range-dim rng) (macro-range-dim rng))
+(define (range-volume rng) (macro-range-volume rng))
+(define (debug#offset rng) (macro-range-offset rng))
+(define (debug#range-in rng) (macro-range-in rng))
 
 (define vector->rangemask)
 
+(define range?)
 (define range) ;; short for make-range (like vector etc.)
 (define call-in-range) ;; call proc with iota-style arguments (to be inlined in target code)
 (define range-rank)
@@ -227,7 +235,7 @@
 
 (define-macro (macro-%%range-start//checks obj dim)
   (let ((step (gensym 'step)))
-    `(let ((,step (%%range-in ,obj)))
+    `(let ((,step (macro-range-in ,obj)))
        (cond
         ((vector? ,step)
          (##vector-ref ,step (fx+ (fx* ,dim 3) 1)))
@@ -235,17 +243,17 @@
 
 (define-macro (macro-%%range-size//checks obj dim)
   (let ((step (gensym 'step)))
-    `(let ((,step (%%range-in ,obj)))
+    `(let ((,step (macro-range-in ,obj)))
        (cond
         ((vector? ,step) (##vector-ref ,step (fx* ,dim 3)))
         (else ,step)))))
 
 (let () ;; --- range refinement ---  DEFINE-VALUES style block
   ;;; comment this block out for debugging/profiling, required for production
-  (define allocate-range make-range)
-  (define %%range-structure? range?)
-  (define %%structure-range-volume range-volume)
-  (define %%range-in range-in)
+  (define-macro (allocate-range a b c d) `(macro-make-range ,a ,b ,c ,d))
+  (define-macro (%%range-structure? obj) `(macro-range? obj))
+  (define-macro (%%structure-range-volume rng) `(macro-range-volume ,rng))
+  (define-macro (%%range-in rng) `(macro-range-in ,rng))
   (define (%%raise-range-exception arg-num proc val . more)
     (##raise-range-exception arg-num proc (cons val more)))
   (define (%%vector->rangemask vec)
@@ -296,7 +304,7 @@
           (##vector-ref pat (fx- rank 1)))
          0 interned)))
      ((number? pat) (%%make-range (apply vector (reverse! (cons pat more)))))
-     (else (error "%%make-range: invalid arguments" pat more))))
+     (else (error "make-range: invalid arguments" pat more))))
   (define (%%MATURITY+4:call-in-range range proc i1 . more)
     (unless (and (%%range-structure? range) (procedure? proc))
       (error "invalid arguments" 'call-in-range range proc))
@@ -351,7 +359,7 @@
       (else (NYI "generic case" %%MATURITY+4:call-in-range range))))
   (define (%%range-rank obj)
     (cond
-     ((%%range-structure? obj) (let ((x (range-dim obj))) (if (fx>= x 0) x (fx- 0 x))))
+     ((%%range-structure? obj) (let ((x (macro-range-dim obj))) (if (fx>= x 0) x (fx- 0 x))))
      ((%%fixnum-range/assert? obj) 1)
      (else (error "not a range" 'range-rank obj))))
   (define (%%range-row obj n)
@@ -360,16 +368,16 @@
       (error "not a multidimensional range" 'range-row obj))
      ((not (and (number? n) (integer? n)))
       (error "invalid index" 'range-row n)))
-    (let* ((d0 (range-dim obj))
+    (let* ((d0 (macro-range-dim obj))
            (d0a (abs d0))
            (na (abs n))
-           (z (range-offset obj))
+           (z (macro-range-offset obj))
            (d1i (- d0a 1)))
       (when (or (< na 0) (> na d0a))
         (%%raise-range-exception 1 'range-row d0 n))
       (let* ((d1 (%%range-size obj d1i))
              (step (%%range-step obj (- d1i 1)))
-             (vol (/ (%%range-volume obj) d0a))
+             (vol (/ (%%structure-range-volume obj) d0a))
              (z (+ z (%%range-start obj na))))
         (allocate-range (if (< d0 0) (- d1i) d1i) vol z (range-in obj)))))
   (define (%%range-volume obj)
@@ -378,8 +386,8 @@
      ((%%fixnum-range/assert? obj) (abs obj))
      (else (error "not a range" 'range-volume obj))))
   (define (dimension rng step d vzs) ;; FIXME: runs too often in tight loops
-    (let (;; (z0 0 #;(range-offset rng)) ;; usually zero
-          (dn (abs (range-dim rng))))
+    (let (;; (z0 0 #;(macro-range-offset rng)) ;; usually zero
+          (dn (abs (macro-range-dim rng))))
       (when (or (< d 0) (>= d dn))
         (%%raise-range-exception 3 'range-dimension d dn rng))
       ;; (vector-ref step (fx+ (fx+ (fx* d 3) vzs) z0))
@@ -417,7 +425,7 @@
      (else (error "argument error" 'range-step obj))))
   (define (%%range-ascending? obj)
     (cond
-     ((%%range-structure? obj) (positive? (range-dim obj)))
+     ((%%range-structure? obj) (positive? (macro-range-dim obj)))
      ((%%fixnum-range/assert? obj) (positive? obj))
      (else (error "argument error" 'range-ascending? obj))))
 
