@@ -20,6 +20,10 @@
 ;; elements of SEQUENCE starting at point and move point.  Supported
 ;; sequences (so far): vector? string?
 
+;; (ggb-delete! GGB COUNT) -> boolean -- delete (up to) CONT elements
+;; forward, if count is positive, backward if negative.  If this would
+;; delete more than avail, return #f.
+
 ;; (ggb-goto! GGB INDEX) -> #!void -- move point to INDEX
 
 ;; (ggb-for-each GGB PROC) -> #!void -- call 2ari PROC with consecutive
@@ -126,6 +130,29 @@
       (do ((i 0 (fx+ i 1)) (point point (fx+ point 1)))
           ((eqv? i length) (macro-ggb-point-set! ggb point))
         (vector-set! buffer point (vector-ref val i))))))
+
+(define (ggb-delete! ggb n)
+  (unless (macro-ggb? ggb) (error "invalid gap buffer" ggb-delete! ggb))
+  (unless (integer? n) (exact? n) (error "invalid count" ggb-delete! n))
+  (cond
+   ((fx> n 0)
+    (let* ((rest (macro-ggb-rest ggb))
+           (buffer (macro-ggb-buffer ggb))
+           (limit (vector-length buffer))
+           (to (fx+ rest n))
+           (new-rest (if (fx> to limit) limit to)))
+      (subvector-fill! buffer rest new-rest #f)
+      (macro-ggb-rest-set! ggb new-rest)
+      (eqv? to new-rest)))
+   ((fx< n 0)
+    (let* ((point (macro-ggb-point ggb))
+           (to (fx+ point n))
+           (new-point (if (fx>= to 0) to 0))
+           (buffer (macro-ggb-buffer ggb)))
+      (subvector-fill! buffer new-point point #f)
+      (macro-ggb-point-set! ggb new-point)
+      (eqv? to new-point)))
+   (else #t)))
 
 (define (ggb-goto! ggb i)
   (if (not (and (macro-ggb? ggb) (integer? i) (exact? i) (fx>= i 0)))
