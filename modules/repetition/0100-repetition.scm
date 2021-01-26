@@ -271,7 +271,7 @@
             (vector-set! result j sum)
             (set! sum (fx+ sum vol)))))))
   (define (%%fixnum-range? obj)
-    (and (number? obj) (integer? obj) (not (fx= obj 0))))
+    (and (integer? obj) (exact? obj) (not (fx= obj 0))))
   (define (%%fixnum-range/assert? obj)
     ;; for argument checking/dispatching: error out on illegal numeric ranges
     (or (%%fixnum-range? obj)
