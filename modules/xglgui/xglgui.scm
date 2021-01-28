@@ -318,23 +318,35 @@
             (glgui-wakeup!)))))
     label+value))
 
-(define keypad:hexnum
-  `(#;(
-     (#\0 #\1 #\2 #\3)
-     (#\4 #\5 #\6 #\7)
-     (#\8 #\9 #\a #\b)
-     (#\c #\d #\e #\f)
-     ( (,delchar ,glgui_keypad_delete.img) #\[ #\: #\] (,retchar ,glgui_keypad_return.img))
-     )
-    (
-     (#\1 #\2 #\3 #\[)
-     (#\4 #\5 #\6 #\])
-     (#\7 #\8 #\9 #\:)
-     (#\a #\b #\c #\.)
-     (#\d #\e #\f #\space)
-     ( (,delchar ,glgui_keypad_delete.img) #\0 (,retchar ,glgui_keypad_return.img))
-     )
-    ))
+(define (guide-keypad/numeric #!key (in (current-guide-gui-interval)) (action #f))
+  (let ((rng (range '#(3 4)))
+        (spec
+         (vector
+          #\1 #\2 #\3
+          #\4 #\5 #\6
+          #\7 #\8 #\9
+          (list EVENT_KEYBACKSPACE label: (apply make-glC:image glgui_keypad_delete.img))
+          #\0
+          (list EVENT_KEYENTER label: (apply make-glC:image glgui_keypad_return.img)))))
+    (guide-make-keypad in (make-mdvector rng spec) on-key: action)))
+
+(define (guide-keypad/ipv6 #!key (in (current-guide-gui-interval)) (action #f))
+  (let ((rng (range '#(5 5)))
+        (spec
+         (vector
+          #\0 #\1 #\2 #\3 #\[
+          #\4 #\5 #\6 #\7 #\]
+          #\8 #\9 #\a #\b #\:
+          #\c #\d #\e #\f (list EVENT_KEYBACK #|FIXME: EVENT_KEYBACK is a bad choice|#
+                                label: "^G")
+          ;; last line
+          (list EVENT_KEYLEFT label: "<-")
+          (list EVENT_KEYRIGHT label: "->")
+          (list EVENT_KEYBACKSPACE label: (apply make-glC:image glgui_keypad_delete.img))
+          (list EVENT_KEYENTER label: (apply make-glC:image glgui_keypad_return.img))
+          #f
+          )))
+    (guide-make-keypad in (make-mdvector rng spec) on-key: action)))
 
 (define Xglgui-value-edit-dialog
   (let ((orig.glgui-label glgui-label)
