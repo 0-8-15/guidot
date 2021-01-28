@@ -596,6 +596,27 @@
          (else small.fnt))))
     select-font))
 
+;;** Keys
+
+(define (%%guide:legacy-special-key? x) ;; special keys
+  (or
+   (eqv? x EVENT_KEYENTER)
+   (eqv? x EVENT_KEYTAB)
+   (eqv? x EVENT_KEYBACKSPACE)
+   (eqv? x EVENT_KEYRIGHT)
+   (eqv? x EVENT_KEYLEFT)
+   (eqv? x EVENT_KEYUP)
+   (eqv? x EVENT_KEYDOWN)
+   (eqv? x EVENT_KEYESCAPE)
+   (eqv? x EVENT_KEYMENU)
+   (eqv? x EVENT_KEYBACK)
+   (eqv? x EVENT_KEYDELETE)
+   (eqv? x EVENT_KEYHOME)
+   (eqv? x EVENT_KEYEND)))
+
+(define (%%guide:legacy-keycode->guide-keycode x)
+  (if (%%guide:legacy-special-key? x) x (integer->char x)))
+
 ;;** GUI Widgets (payloads)
 
 (define %%guide-default-background
@@ -683,7 +704,9 @@
          (in (current-guide-gui-interval))
          (font #f)
          (border-ratio 1/20)
-         (background-image (macro-guide-default-background)))
+         (background-image (macro-guide-default-background))
+         (on-key #f)
+         )
   (let* ((error-location (lambda (col row) (list 'make-guide-table-payload col row)))
          (rng (mdvector-range contructors))
          (idx (mdv-indexer rng))
@@ -757,18 +780,23 @@
               (and draw (draw)))))))
      on-any-event:
      (lambda (rect payload event x y)
-       (and
-        (guide-payload-contains/xy? payload x y)
-        (do ((i (fx- (vector-length content) 1) (fx- i 1))
-             (hit #f))
-            ((or hit (eqv? i -1)) #|signal event handled in any case:|# #t)
-          (let ((payload (vector-ref content i)))
-            (and payload
-                 (and
-                  (guide-payload-contains/xy? payload x y)
-                  (begin
-                    (set! hit #t)
-                    (guide-event-dispatch-to-payload rect payload event x y))))))))
+       (cond
+        ((eqv? event EVENT_KEYPRESS)
+         (and on-key (on-key press: (%%guide:legacy-keycode->guide-keycode x))))
+        ((eqv? event EVENT_KEYRELEASE)
+         (and on-key (on-key release: (%%guide:legacy-keycode->guide-keycode x))))
+        ((guide-payload-contains/xy? payload x y)
+         (do ((i (fx- (vector-length content) 1) (fx- i 1))
+              (hit #f))
+             ((or hit (eqv? i -1)) #|signal event handled in any case:|# #t)
+           (let ((payload (vector-ref content i)))
+             (and payload
+                  (and
+                   (guide-payload-contains/xy? payload x y)
+                   (begin
+                     (set! hit #t)
+                     (guide-event-dispatch-to-payload rect payload event x y)))))))
+        (else (debug 'guide-table:ignored-event event))))
      ;; backward compatibility
      widget: #f lifespan: 'ephemeral)))
 
@@ -854,9 +882,9 @@
   (define (%%guide-post-key-event key)
     (cond
      ((fixnum? key)
-      (if (procedure? on-key) (on-key key) (event-push EVENT_KEYRELEASE key 0)))
+      (if (procedure? on-key) (on-key release: key) (event-push EVENT_KEYRELEASE key 0)))
      ((char? key)
-      (if (procedure? on-key) (on-key key) (event-push EVENT_KEYRELEASE (char->integer key) 0)))
+      (if (procedure? on-key) (on-key release: key) (event-push EVENT_KEYRELEASE (char->integer key) 0)))
      (else (error "invalid key" %%guide-post-key-event key)))
     #t)
   (define (post-key pat)
@@ -876,6 +904,11 @@
                 ((char? pat) (keybutton in pat))
                 ((and (fixnum? pat) (positive? pat)) (keybutton in (integer->char pat)))
                 ((pair? pat) (apply keybutton in pat))
+                ((not pat)
+                 (MATURITY -2 "FIXME: something is broken wrt. span i keypads" loc: 'guide-keypad)
+                 (guide-button
+                  in: in label: "#f" color: Red font: font
+                  background-color: background-color guide-callback: (lambda _ #t)))
                 (else (error "invalid key spec" guide-make-keypad pat))))))))
     (make-guide-table (make-mdvector rng constructors) in: area)))
 
