@@ -669,7 +669,7 @@
      (else (error "invalid label" guide-button label)))
     (when background
       (view!
-       texture:
+       background:
        (if (fixnum? background)
            (begin
              (MATURITY -1 "background: converting fixnum to texture" loc: location)
@@ -893,10 +893,10 @@
   (define (post-key pat)
     (lambda (rect payload event x y)
       (%%guide-post-key-event pat)))
-  (define (keybutton in c #!key (label (string c)) (color color) (background-color background-color))
+  (define (keybutton in c #!key (label (string c)) (color color) (background #f) (background-color background-color) (vertical-align 'center))
     (guide-button
      in: in label: label color: color font: font
-     background-color: background-color guide-callback: (post-key c)))
+     background: background background-color: background-color guide-callback: (post-key c)))
   (let* ((rng (mdvector-range spec))
          (len (range-volume rng))
          (constructors (make-vector len #f)))
@@ -904,7 +904,7 @@
       (do ((i 0 (fx+ i 1)))
           ((eqv? i len))
         (let ((pat (vector-ref spec-vector i)))
-          (when pat
+          (when (not (boolean? pat))
             (vector-set!
              constructors i
              (lambda (in col row)

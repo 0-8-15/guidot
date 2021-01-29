@@ -581,6 +581,7 @@
                 ((glC:image? thing)
                  (set! texture (glC:image-t thing))
                  (set! texcoords (glC:image-legacy-texcoords thing)))
+                ((glCore:texture? thing) (set! texture thing))
                 (else (error "not a valid background" thing))))))
         ((size:)
          (if (pair? more)
