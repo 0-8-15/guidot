@@ -895,21 +895,21 @@
      in: in label: label color: color font: font
      background-color: background-color guide-callback: (post-key c)))
   (let* ((rng (mdvector-range spec))
-         (constructors
-          (make-vector
-           (range-volume rng)
-           (lambda (in col row)
-             (let ((pat (mdvector-ref spec row col)))
+         (len (range-volume rng))
+         (constructors (make-vector len #f)))
+    (let ((spec-vector (mdvector-body spec)))
+      (do ((i 0 (fx+ i 1)))
+          ((eqv? i len))
+        (let ((pat (vector-ref spec-vector i)))
+          (when pat
+            (vector-set!
+             constructors i
+             (lambda (in col row)
                (cond
                 ((char? pat) (keybutton in pat))
                 ((and (fixnum? pat) (positive? pat)) (keybutton in (integer->char pat)))
                 ((pair? pat) (apply keybutton in pat))
-                ((not pat)
-                 (MATURITY -2 "FIXME: something is broken wrt. span i keypads" loc: 'guide-keypad)
-                 (guide-button
-                  in: in label: "#f" color: Red font: font
-                  background-color: background-color guide-callback: (lambda _ #t)))
-                (else (error "invalid key spec" guide-make-keypad pat))))))))
+                (else (error "invalid key spec" guide-make-keypad pat)))))))))
     (make-guide-table (make-mdvector rng constructors) in: area)))
 
 (define (guide-line-input
