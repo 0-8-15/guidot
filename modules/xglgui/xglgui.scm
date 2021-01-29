@@ -348,79 +348,113 @@
           )))
     (guide-make-keypad in (make-mdvector rng spec) on-key: action)))
 
-(define Xglgui-value-edit-dialog
-  (let ((orig.glgui-label glgui-label)
-        (select-font Xglgui-font)
-        (glgui-label Xglgui-label)
-        (label-string (lambda (value) (if (string? value) value (object->string value)))))
-    (define (change! gui wgt #!key (value #f))
-      (if value (glgui-widget-set! gui wgt 'label (label-string value))))
-    (define (value-edit-dialog
-             gui x0 y0 w0 h0 #!key
-             (label "") (label-height 20)
-             (value "") (value-string #f)
-             (input (lambda (val) #f)) (keypad keypad:numeric)
-             (size 'small) (color (guide-select-color-4)) (bgcolor (guide-select-color-1)))
-      (let* ((x (glgui-get gui 'xofs))
-             (y (glgui-get gui 'yofs))
-             (w (glgui-get gui 'w) #;(glgui-width-get))
-             (h (glgui-get gui 'h) #;(glgui-height-get))
-             (dlg (glgui-container gui x y w h))
-             (bg (glgui-box dlg 0 0 w h bgcolor))
-             (lbl (glgui-label
-                   dlg 0 (- h (* 3/2 label-height)) w label-height
-                   text: (label-string label) size: size color: color bgcolor: bgcolor))
-             (wgt (glgui-label
-                   dlg x (- h (* 32/10 label-height)) w label-height
-                   text: ((or value-string label-string) value) size: size color: color bgcolor: bgcolor))
-             (kbd (glgui-keypad dlg 0 0 w (/ h 2) (select-font size: 'medium) keypad)))
-        (define (edit-cb cb-gui cb-wgt type x y)
-          (let ((val (glgui-get wgt 'label)))
-            (glgui-widget-delete gui dlg)
-            (input val)))
-        (glgui-widget-set! dlg lbl 'align GUI_ALIGNCENTER)
-        (glgui-widget-set! dlg wgt 'align GUI_ALIGNCENTER)
-        (when (procedure? input)
-          (glgui-widget-set! dlg wgt 'enableinput #t)
-          (glgui-widget-set! dlg wgt 'callback edit-cb)
-          (glgui-widget-set! dlg wgt 'focus #t))
-        (lambda args
-          (match
-           args
-           ((value) (glgui-widget-set! dlg wgt 'label (label-string value)))
-           ((arg1 arg2 . more) (apply change! dlg wgt arg1 arg2 more))
-           (X (debug 'Komisch X)))
-          (glgui-wakeup!))))
-    value-edit-dialog))
+(define (guide-keypad/simplified #!key (in (current-guide-gui-interval)) (action #f))
+  (let ((rng (range '#(10 4)))
+        (spec
+         (vector
+          #\q #\w #\e #\r #\t #\y #\u #\i #\o #\p
+          #\a #\s #\d #\f #\g #\h #\j #\k #\l #\#
+          (list 'shift label: (apply make-glC:image glgui_keypad_shift.img))
+          #f
+          #\z #\x #\c #\v #\b #\n #\m
+          (list delchar label: (apply make-glC:image glgui_keypad_delete.img) 1.5)
+          ;;
+          (list 'toggle label: (apply make-glC:image glgui_keypad_toggle.img)) #f
+          #\, #\space #f #f #f #f #\. (list retchar label: (apply glgui_keypad_return.img)) #f
+          )))
+    (guide-make-keypad in (make-mdvector rng spec) on-key: action)))
 
-(define (Xglgui-pin-editable bag x y w h tag pin kbd #!key (value-string #f))
-  (define (conv v)
-    (case v
-      ((#f) "no")
-      ((#t) "yes")
-      (else
-       (cond
-        ((and (number? v) (exact? v)) (number->string v))
-        (else v)))))
-  (define (set-pin! val)
-    (pin val))
-  (define (pin-edit gui wgt type x1 y1)
-    (Xglgui-value-edit-dialog
-     bag x y w h
-     label: tag
-     value: (pin) value-string: value-string input: set-pin! keypad: kbd))
-  (let ((setter (Xglgui-valuelabel
-                 bag x y w h
-                 label: tag label-width: 3/4
-                 value: (conv (pin))
-                 ;; TBD: on input create modal dialog with appropriate
-                 ;; (for now numeric) keyboard
-                 ;;
-                 ;; input: #f
-                 ;;
-                 input: pin-edit
-                 )))
-    (wire! pin post: (lambda () (setter (conv (pin)))))))
+(define (guide-value-edit-dialog
+         #!key
+         (in (current-guide-gui-interval))
+         (font (guide-select-font size: 'medium))
+         (label "") (label-string (lambda (value) (if (string? value) value (object->string value))))
+         (line-height 20)
+         (keypad guide-keypad/numeric)
+         (on-key
+          (lambda (p/r key) ;; fit's to numeric keyboard
+            (if (eq? press: p/r)
+                #f ;; ignore press - maybe more
+                (case key
+                  ((#\0 #\1 #\2 #\3 #\4 #\5 #\6 #\7 #\8 #\9) key)
+                  (else
+                   (cond
+                    ((eqv? key EVENT_KEYRIGHT) EVENT_KEYRIGHT)
+                    ((eqv? key EVENT_KEYLEFT) EVENT_KEYLEFT)
+                    ((eqv? key EVENT_KEYBACKSPACE) EVENT_KEYBACKSPACE)
+                    ((eqv? key EVENT_KEYENTER) EVENT_KEYENTER)
+                    (else (debug 'ignored key) #f)))))))
+         (data (let ((state "n/a")) (case-lambda (() state) ((val) (set! state val)))))
+         (size 'small)
+         (horizontal-align 'center)
+         (vertical-align 'center)
+         (background %%guide-default-background)
+         (background-color
+          (let* ((color (guide-select-color-1))
+                 (r (color-red color))
+                 (g (color-green color))
+                 (b (color-blue color))
+                 (a 210))
+            (color-rgba r g b a)))
+         (color (guide-select-color-2))
+         (hightlight-color (guide-select-color-4)))
+  (let*
+      ((xsw (mdvector-interval-lower-bound in 0))
+       (ysw (mdvector-interval-lower-bound in 1))
+       (xno (mdvector-interval-upper-bound in 0))
+       (yno (mdvector-interval-upper-bound in 1))
+       (w (- xno xsw))
+       (h (- yno ysw))
+       (border-width (* h 1/20))
+       (line-height+border (+ border-width line-height))
+       (background-view
+        (let ((bg! (make-guide-figure-view)))
+          (bg! background: background)
+          (bg! color: background-color)
+          (bg! size: w h)
+          (bg! position: xsw ysw)
+          (bg!)))
+       (title
+        (let ((label! (make-guide-label-view)))
+          (label! horizontal-align: horizontal-align)
+          (label! vertical-align: vertical-align)
+          (label! font: font)
+          (label! color: color)
+          (label! size: w line-height)
+          (label! position: xsw (- yno line-height+border))
+          (label! text: (label-string label))
+          (label!)))
+       (line (guide-line-input
+              in: (make-mdv-rect-interval
+                   xsw
+                   (round (- yno (* 2 line-height+border))) xno yno)
+              horizontal-align: horizontal-align vertical-align: vertical-align
+              font: font size: size line-height: line-height
+              color: color hightlight-color: hightlight-color
+              data: data))
+       (kpd (keypad
+             in: (make-x0y0x1y1-interval/coerce xsw ysw xno (- yno (* 2 line-height+border)))))
+       (redraw! ;; FIXME: nested vector drawind handlers should be supported too
+        (vector-append
+         (vector background-view title)
+         (guide-payload-on-redraw line)
+         (vector (guide-payload-on-redraw kpd))))
+       (events
+        (lambda (rect payload event x y)
+          (cond
+           ((or (eqv? event EVENT_BUTTON1DOWN) (eqv? event EVENT_BUTTON1UP))
+            (cond
+             ((guide-payload-contains/xy? kpd x y) (guide-event-dispatch-to-payload rect kpd event x y))))
+           ((eqv? event EVENT_KEYPRESS)
+            (let ((v (on-key press: (%%guide:legacy-keycode->guide-keycode x))))
+              (if v (guide-event-dispatch-to-payload rect line event x y))))
+           ((eqv? event EVENT_KEYRELEASE)
+            (let ((v (on-key release: (%%guide:legacy-keycode->guide-keycode x))))
+              (if v (guide-event-dispatch-to-payload rect line event x y))))
+           (else (mdvector-rect-interval-contains/xy? in x y))))))
+    (make-guide-payload
+     name: 'guide-value-edit-dialog in: in widget: #f
+     on-redraw: redraw! on-any-event: events lifespan: 'ephemeral)))
 
 (define (Xglgui-select gui x y w h #!key (line-height 20) (color (guide-select-color-1)))
   (let ((font (guide-select-font height: line-height)))
