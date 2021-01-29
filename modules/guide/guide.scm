@@ -912,6 +912,125 @@
                 (else (error "invalid key spec" guide-make-keypad pat))))))))
     (make-guide-table (make-mdvector rng constructors) in: area)))
 
+(define (guide-line-input
+         #!key
+         (in (current-guide-gui-interval))
+         (font (guide-select-font size: 'medium))
+         (horizontal-align 'center)
+         (vertical-align 'center)
+         (line-height 20)
+         (data (let ((state "n/a")) (case-lambda (() state) ((val) (set! state val)))))
+         (size 'small)
+         (color (guide-select-color-2))
+         (hightlight-color (guide-select-color-4)))
+  (define (%%value-buffer->string ggb #!optional (start 0) (end (ggb-length ggb)))
+    (let ((result (make-string (- end start))))
+      (ggb-for-each ggb (lambda (i v) (string-set! result i (integer->char v))) start end)
+      result))
+  (define (input->buffer data)
+    (let* ((initial (utf8string->u32vector (data)))
+           (buffer (make-ggb size: (u32vector-length initial))))
+      (do ((i 0 (fx+ i 1)))
+          ((eqv? i (u32vector-length initial)) buffer)
+        (ggb-insert! buffer (u32vector-ref initial i)))))
+  (let*
+      ((xsw (mdvector-interval-lower-bound in 0))
+       (ysw (mdvector-interval-lower-bound in 1))
+       (xno (mdvector-interval-upper-bound in 0))
+       (yno (mdvector-interval-upper-bound in 1))
+       (w (- xno xsw))
+       (h (- yno ysw))
+       (border-width (* h 1/20))
+       (line-height+border (+ border-width line-height))
+       (value-buffer (input->buffer data))
+       (value!
+        (let ((label! (make-guide-label-view)))
+          (label! horizontal-align: horizontal-align)
+          (label! vertical-align: vertical-align)
+          (label! font: font)
+          (label! color: color)
+          (label! size: w line-height)
+          (label! position: xsw (round (+ ysw border-width)))
+          (label! text: (%%value-buffer->string value-buffer))
+          label!))
+       (value-draw (value!))
+
+       (cursor-draw #f)
+       (update-cursor!
+        ;; TBD: this is a bit overly simple and needlessly expensive
+        ;; at runtime
+        (lambda ()
+          (let* ((total (%%value-buffer->string value-buffer))
+                 (before (%%value-buffer->string value-buffer 0 (ggb-point value-buffer)))
+                 (glv-before (MATURITY+0:utf8string->guide-glyphvector before font))
+                 (glv-total (MATURITY+0:utf8string->guide-glyphvector total font))
+                 (width-before (if glv-before (MATURITY+0:guide-glypvector-width glv-before) 0))
+                 (width-total (if glv-total (MATURITY+0:guide-glypvector-width glv-total) 0))
+                 (label! (make-guide-label-view)))
+            (label! horizontal-align: horizontal-align)
+            (label! vertical-align: vertical-align)
+            (label! font: font)
+            (label! color: hightlight-color)
+            (label! size: w line-height)
+            (label!
+             position:
+             (round (+ xsw
+                       (case horizontal-align
+                         ((left) width-total)
+                         ((center) (* 1/2 width-total))
+                         (else 0))
+                       (- width-before width-total)))
+             (round (+ ysw border-width)))
+            (label! text: "|")
+            (let ((draw
+                   (if #t ;; blink
+                       (let ((on (label!)))
+                         (lambda ()
+                           (let* ((n0 ##now)
+                                  (n0f (floor n0)))
+                             (when (< (- n0 n0f) 1/2) (on)))))
+                       (label!))))
+              (set! cursor-draw draw)))))
+
+       (on-key
+        (lambda (p/r key)
+          (or
+           (eq? press: p/r) ;; ignore press - maybe more
+           (cond
+            ((eqv? key EVENT_KEYRIGHT) (ggb-goto-right! value-buffer) (update-cursor!))
+            ((eqv? key EVENT_KEYLEFT) (ggb-goto-left! value-buffer) (update-cursor!))
+            ((eqv? key EVENT_KEYBACKSPACE)
+             (ggb-delete! value-buffer -1)
+             (value! text: (%%value-buffer->string value-buffer))
+             (set! value-draw (value!))
+             (update-cursor!))
+            ((eqv? key EVENT_KEYENTER)
+             (data (%%value-buffer->string value-buffer))
+             (set! value-buffer (input->buffer data))
+             (value! text: (%%value-buffer->string value-buffer))
+             (set! value-draw (value!))
+             (update-cursor!))
+            (else
+             (ggb-insert! value-buffer (char->integer key))
+             (value! text: (%%value-buffer->string value-buffer))
+             (set! value-draw (value!))
+             (update-cursor!))))))
+       (redraw! (vector
+                 (lambda () (and value-draw (value-draw)))
+                 (lambda () (cursor-draw))))
+       (events
+        (lambda (rect payload event x y)
+          (cond
+           ((eqv? event EVENT_KEYPRESS)
+            (on-key press: (%%guide:legacy-keycode->guide-keycode x)))
+           ((eqv? event EVENT_KEYRELEASE)
+            (on-key release: (%%guide:legacy-keycode->guide-keycode x)))
+           (else (mdvector-rect-interval-contains/xy? in x y))))))
+    (update-cursor!)
+    (make-guide-payload
+     name: 'guide-line-input in: in widget: #f
+     on-redraw: redraw! on-any-event: events lifespan: 'ephemeral)))
+
 (include "calculator.scm")
 
 ;; LambdaNative glgui frame -- it's a bit tricky to work around that one.
