@@ -357,10 +357,13 @@
           (list 'shift label: (apply make-glC:image glgui_keypad_shift.img))
           #f
           #\z #\x #\c #\v #\b #\n #\m
-          (list delchar label: (apply make-glC:image glgui_keypad_delete.img) 1.5)
+          (list delchar label: (apply make-glC:image glgui_keypad_delete.img))
           ;;
           (list 'toggle label: (apply make-glC:image glgui_keypad_toggle.img)) #f
-          #\, #\space #f #f #f #f #\. (list retchar label: (apply glgui_keypad_return.img)) #f
+          #\,
+          (list #\space background: %%guide-default-background background-color: (guide-select-color-2))
+          #f #f #f #f
+          #\. (list retchar label: (apply make-glC:image glgui_keypad_return.img)) #f
           )))
     (guide-make-keypad in (make-mdvector rng spec) on-key: action)))
 
