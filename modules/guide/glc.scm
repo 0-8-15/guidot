@@ -871,7 +871,9 @@
         ((eqv? i -1) x)
       (let ((glyph (mdvector-ref vec row-glyph i)))
         (when glyph
-          (set! x (fl+ (ttf:glyph-advancex glyph) x)))))))
+          ;; Note: can't use fl+ here since `ttf:glyph-advancex`
+          ;; rarely, but sometimes returns fixnums.
+          (set! x (+ (ttf:glyph-advancex glyph) x)))))))
 
 ;;;** Strings
 
