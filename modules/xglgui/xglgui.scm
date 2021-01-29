@@ -331,41 +331,45 @@
     (guide-make-keypad in (make-mdvector rng spec) on-key: action)))
 
 (define (guide-keypad/ipv6 #!key (in (current-guide-gui-interval)) (action #f))
-  (let ((rng (range '#(5 5)))
-        (spec
-         (vector
-          #\0 #\1 #\2 #\3 #\[
-          #\4 #\5 #\6 #\7 #\]
-          #\8 #\9 #\a #\b #\:
-          #\c #\d #\e #\f (list EVENT_KEYBACK #|FIXME: EVENT_KEYBACK is a bad choice|#
-                                label: "^G")
-          ;; last line
-          (list EVENT_KEYLEFT label: "<-")
-          (list EVENT_KEYRIGHT label: "->")
-          (list EVENT_KEYBACKSPACE label: (apply make-glC:image glgui_keypad_delete.img))
-          (list EVENT_KEYENTER label: (apply make-glC:image glgui_keypad_return.img))
-          #f
-          )))
-    (guide-make-keypad in (make-mdvector rng spec) on-key: action)))
+  (guide-make-keypad
+   in
+   (make-mdvector
+    (range '#(5 5))
+    (vector
+     #\0 #\1 #\2 #\3 #\[
+     #\4 #\5 #\6 #\7 #\]
+     #\8 #\9 #\a #\b #\:
+     #\c #\d #\e #\f (list EVENT_KEYBACK #|FIXME: EVENT_KEYBACK is a bad choice|#
+                           label: "^G")
+     ;; last line
+     (list EVENT_KEYLEFT label: "<-")
+     (list EVENT_KEYRIGHT label: "->")
+     (list EVENT_KEYBACKSPACE label: (apply make-glC:image glgui_keypad_delete.img))
+     (list EVENT_KEYENTER label: (apply make-glC:image glgui_keypad_return.img))
+     #f
+     ))
+   on-key: action))
 
 (define (guide-keypad/simplified #!key (in (current-guide-gui-interval)) (action #f))
-  (let ((rng (range '#(10 4)))
-        (spec
-         (vector
-          #\q #\w #\e #\r #\t #\y #\u #\i #\o #\p
-          #\a #\s #\d #\f #\g #\h #\j #\k #\l #\#
-          (list 'shift label: (apply make-glC:image glgui_keypad_shift.img))
-          #f
-          #\z #\x #\c #\v #\b #\n #\m
-          (list delchar label: (apply make-glC:image glgui_keypad_delete.img))
-          ;;
-          (list 'toggle label: (apply make-glC:image glgui_keypad_toggle.img)) #f
-          #\,
-          (list #\space background: %%guide-default-background background-color: (guide-select-color-2))
-          #f #f #f #f
-          #\. (list retchar label: (apply make-glC:image glgui_keypad_return.img)) #f
-          )))
-    (guide-make-keypad in (make-mdvector rng spec) on-key: action)))
+  (guide-make-keypad
+   in
+   (make-mdvector
+    (range '#(10 4))
+    (vector
+     #\q #\w #\e #\r #\t #\y #\u #\i #\o #\p
+     #\a #\s #\d #\f #\g #\h #\j #\k #\l #\#
+     (list 'shift label: (apply make-glC:image glgui_keypad_shift.img))
+     #f
+     #\z #\x #\c #\v #\b #\n #\m
+     (list delchar label: (apply make-glC:image glgui_keypad_delete.img))
+     ;;
+     (list 'toggle label: (apply make-glC:image glgui_keypad_toggle.img)) #f
+     #\,
+     (list #\space background: %%guide-default-background background-color: (guide-select-color-2))
+     #f #f #f #f
+     #\. (list retchar label: (apply make-glC:image glgui_keypad_return.img)) #f
+     ))
+   on-key: action))
 
 (define (guide-value-edit-dialog
          #!key
