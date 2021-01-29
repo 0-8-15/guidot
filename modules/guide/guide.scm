@@ -741,17 +741,20 @@
               (pattern (vector-ref pattern-vector idx))
               (payload
                (and
-                pattern
-                (let* ((colspan (do ((i (fx+ col 1) (fx+ i 1))
-                                     (span 0 (fx+ span 1)))
-                                    ((or (eqv? i columns)
-                                         (mdvector-ref contructors row i))
-                                     span)))
-                       (rowspan (do ((i (fx+ row 1) (fx+ i 1))
-                                     (span 0 (fx+ span 1)))
-                                    ((or (eqv? i rows)
-                                         (mdvector-ref contructors i col))
-                                     span)))
+                (not (boolean? pattern)) ;; booleans -> col/row span
+                (let* ((colspan ;; columns spec #f
+                        (do ((i (fx+ col 1) (fx+ i 1))
+                             (span 0 (fx+ span 1)))
+                            ((or (eqv? i columns)
+                                 (let ((next (mdvector-ref contructors row i)))
+                                   (or (not (eq? next #f)) next)))
+                             span)))
+                       (rowspan ;; following row is #t
+                        (do ((i (fx+ row 1) (fx+ i 1))
+                             (span 0 (fx+ span 1)))
+                            ((or (eqv? i rows)
+                                 (not (eq? #t (mdvector-ref contructors i col))))
+                             span)))
                        (x0 (+ left-offset (* col (+ hgap cell-width))))
                        (y0 (- vertical-offset
                               (+ cell-height (* (+ row rowspan) (+ vgap cell-height)))))
