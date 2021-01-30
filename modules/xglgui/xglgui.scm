@@ -354,22 +354,76 @@
   (guide-make-keypad
    in
    (make-mdvector
-    (range '#(10 4))
-    (vector
-     #\q #\w #\e #\r #\t #\y #\u #\i #\o #\p
-     #\a #\s #\d #\f #\g #\h #\j #\k #\l #\#
-     (list 'shift label: (apply make-glC:image glgui_keypad_shift.img))
-     #f
-     #\z #\x #\c #\v #\b #\n #\m
-     (list delchar label: (apply make-glC:image glgui_keypad_delete.img))
-     ;;
-     (list 'toggle label: (apply make-glC:image glgui_keypad_toggle.img)) #f
-     #\,
-     (list #\space background: %%guide-default-background background-color: (guide-select-color-2))
-     #f #f #f #f
-     #\. (list retchar label: (apply make-glC:image glgui_keypad_return.img)) #f
-     ))
+    (range '#(10 4 4))
+    (let ((k-shift (list 'shift label: (apply make-glC:image glgui_keypad_shift.img)))
+          (k-shift-on (list 'shift label: (apply make-glC:image glgui_keypad_shift_on.img)))
+          (k-shift-3 (list 'shift label: "*-+"))
+          (k-shift-4 (list 'shift label: "@#$"))
+          (k-del (list delchar label: (apply make-glC:image glgui_keypad_delete.img)))
+          (k-toggle (list 'toggle label: (apply make-glC:image glgui_keypad_toggle.img)))
+          (k-toggle-3 (list 'toggle label: (apply make-glC:image glgui_keypad_toggleChar.img)))
+          (k-space (list #\space background: %%guide-default-background background-color: (guide-select-color-2)))
+          (k-ret (list retchar label: (apply make-glC:image glgui_keypad_return.img))))
+      (vector
+       ;; Pane I
+       #\q #\w #\e #\r #\t #\y #\u #\i #\o #\p
+       #\a #\s #\d #\f #\g #\h #\j #\k #\l #\#
+       k-shift #f #\z #\x #\c #\v #\b #\n #\m k-del
+       k-toggle #f #\,  k-space #f #f #f  #\. k-ret #f
+       ;; Pane II
+       #\Q #\W #\E #\R #\T #\Y #\U #\I #\O #\P
+       #f #\A #\S #\D #\F #\G #\H #\J #\K #\L
+       k-shift-on #f  #\Z #\X #\C #\V #\B #\N #\M k-del
+       k-toggle #f #\, k-space #f #f #f  #\. k-ret #f
+       ;; Pane III
+       #\1 #\2 #\3 #\4 #\5 #\6 #\7 #\8 #\9 #\0
+       #\@ #\# #\$ #\% #\& #\( #\) #\- #\\       k-del
+       k-shift-3 #f #\! #\; #\: #\' #\" #\? #\/  #t
+       k-toggle-3 #f  #\, k-space #f #f #f #\. k-ret #f
+       ;; Pane IV
+       #\1 #\2 #\3 #\4 #\5 #\6 #\7 #\8 #\9 #\0
+       #f #f #f #\^ #\[ #\] #\{ #\} #\< #\>
+       k-shift-4 #f  #\* #\- #\+ #\= #\_ #\~ #\| k-del
+       k-toggle-3 #f #\, k-space #f #f #f  #\. k-ret #t
+       )))
    on-key: action))
+
+(define (guide-keypad/default #!key (in (current-guide-gui-interval)) (action #f))
+  (guide-make-keypad
+   in
+   (make-mdvector
+    (range '#(10 4 4))
+    (let ((k-shift (list 'shift label: (apply make-glC:image glgui_keypad_shift.img)))
+          (k-shift-on (list 'shift label: (apply make-glC:image glgui_keypad_shift_on.img)))
+          (k-shift-3 (list 'shift label: "*-+"))
+          (k-shift-4 (list 'shift label: "@#$"))
+          (k-del (list delchar label: (apply make-glC:image glgui_keypad_delete.img)))
+          (k-toggle (list 'toggle label: (apply make-glC:image glgui_keypad_toggle.img)))
+          (k-toggle-3 (list 'toggle label: (apply make-glC:image glgui_keypad_toggleChar.img)))
+          (k-space (list #\space background: %%guide-default-background background-color: (guide-select-color-2)))
+          (k-ret (list retchar label: (apply make-glC:image glgui_keypad_return.img))))
+      (vector
+       ;; I
+       #\q #\w #\e #\r #\t #\y #\u #\i #\o #\p
+       #\a #\s #\d #\f #\g #\h #\j #\k #\l     k-del
+       k-shift #f #\z #\x #\c #\v #\b #\n #\m  #t
+       k-toggle #f  #\, k-space #f #f #f #\. k-ret #f
+       ;; II
+       #\Q #\W #\E #\R #\T #\Y #\U #\I #\O #\P
+       #\A #\S #\D #\F #\G #\H #\J #\K #\L       k-del
+       k-shift-on #f #\Z #\X #\C #\V #\B #\N #\M #t
+       k-toggle #f  #\, k-space #f #f #f #\. k-ret #f
+       ;; III
+       #\1 #\2 #\3 #\4 #\5 #\6 #\7 #\8 #\9 #\0
+       #\@ #\# #\$ #\% #\& #\( #\) #\- #\\      k-del
+       k-shift-3 #f #\! #\; #\: #\' #\" #\? #\/ #t
+       k-toggle-3 #f  #\, k-space #f #f #f #\. k-ret #f
+       ;; IV
+       #\1 #\2 #\3 #\4 #\5 #\6 #\7 #\8 #\9 #\0
+       #\' #\" #\^ #\[ #\] #\{ #\} #\< #\>         k-del
+       k-shift-4 #f  #\* #\- #\+ #\= #\_ #\~ #\| #t
+       k-toggle-3 #f  #\, k-space #f #f #f #\. k-ret #f
+       )))))
 
 (define (guide-value-edit-dialog
          #!key
