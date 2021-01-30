@@ -881,6 +881,7 @@
          (font (guide-select-font size: 'medium))
          (color (guide-select-color-2))
          (background-color (guide-select-color-1))
+         (background #f)
          (on-key #f))
   (define (%%guide-post-key-event key)
     (cond
@@ -897,13 +898,14 @@
     (guide-button
      in: in label: label color: color font: font
      background: background background-color: background-color guide-callback: (post-key c)))
-  (let* ((rng (mdvector-range spec))
-         (len (range-volume rng))
-         (constructors (make-vector len #f)))
-    (let ((spec-vector (mdvector-body spec)))
+  (define (keypane rng spec-vector switch)
+    (let* ((len (range-volume rng))
+           (start ((mdv-indexer rng) 0 0))
+           (spec-vector (mdvector-body spec))
+           (constructors (make-vector len #f)))
       (do ((i 0 (fx+ i 1)))
           ((eqv? i len))
-        (let ((pat (vector-ref spec-vector i)))
+        (let ((pat (vector-ref spec-vector (+ i start))))
           (when (not (boolean? pat))
             (vector-set!
              constructors i
@@ -911,9 +913,52 @@
                (cond
                 ((char? pat) (keybutton in pat))
                 ((and (fixnum? pat) (positive? pat)) (keybutton in (integer->char pat)))
-                ((pair? pat) (apply keybutton in pat))
-                (else (error "invalid key spec" guide-make-keypad pat)))))))))
-    (make-guide-table (make-mdvector rng constructors) in: area)))
+                ((pair? pat)
+                 (cond
+                  ((symbol? (car pat))
+                   (and switch
+                        (apply
+                         guide-button in: in
+                         guide-callback: (let ((key (car pat))) (lambda (rect payload event x y) (switch key)))
+                         color: color font: font
+                         background: background background-color: background-color
+                         (cdr pat))))
+                  (else (apply keybutton in pat))))
+                (else (error "invalid key spec" guide-make-keypad pat))))))))
+      (make-guide-table
+       (make-mdvector (range (vector (range-size rng 0) (range-size rng 1))) constructors)
+       in: area)))
+  (let ((rng (mdvector-range spec)))
+    (case (range-rank rng)
+      ((2) (keypane rng (mdvector-body spec) #f))
+      ((3)
+       (let* ((len (range-size rng 2))
+              (panes (make-vector len #f)))
+         (let* ((shift 0)
+                (toggle 0)
+                (current-pane 0)
+                (switch
+                 (lambda (key)
+                   (case key
+                     ((shift)
+                      (set! shift (if (eqv? shift 1) 0 1))
+                      (set! current-pane (+ shift toggle)))
+                     ((toggle)
+                      (set! toggle (if (eqv? toggle 2) 0 2))
+                      (set! current-pane (+ shift toggle)))
+                     (else (set! current-pane 0))))))
+           (do ((i 0 (fx+ i 1)))
+               ((eqv? i len)
+                (make-guide-payload
+                 in: area widget: #f
+                 on-redraw:
+                 (lambda ()
+                   (guide-event-dispatch-to-payload/redraw (vector-ref panes current-pane)))
+                 on-any-event:
+                 (lambda (rect payload event x y)
+                   (guide-event-dispatch-to-payload rect (vector-ref panes current-pane) event x y))))
+             (vector-set! panes i (keypane (range-row rng i) (mdvector-body spec) switch))))))
+     (else "unsupported rank for keypad" rng))))
 
 (define (guide-line-input
          #!key
