@@ -983,9 +983,7 @@
         ;;; (when texture (MATURITY +1 "texture found after rendering" loc: 'glC:render-target-mdv!))
         (and texture (glC:TextureDrawGlArrays texture vertices scale shift rot))))))
 
-|#
-
-(define (MATURITY+1:glC:render-target-mdv! targets)
+(define (MATURITY-1:glC:render-target-mdv! targets)
   (let* ((rng (mdvector-range targets))
          (limit (range-size rng 1))
          ;; optimizations
@@ -1002,3 +1000,27 @@
           (MATURITY -2 "no texture found after rendering" loc: 'glC:render-target-mdv!))
         ;;; (when texture (MATURITY +1 "texture found after rendering" loc: 'glC:render-target-mdv!))
         (and texture (glC:TextureDrawGlArrays texture vertices scale shift rot))))))
+
+|#
+
+(define (MATURITY+1:glC:render-target-mdv! targets)
+  (let* ((rng (mdvector-range targets))
+         ;; FIXME: export some macros to support inlining instead of
+         ;; absusing debug features.
+         (vec (debug#range-in rng))
+         (vol0 (##vector-ref vec 4))
+         (o0 (debug#range-offset rng))
+         (limit (range-size rng 1))
+         (targets (mdvector-body targets)))
+    (do ((i 0 (fx+ i 1)))
+        ((eqv? i limit))
+      (let ((j (fx+ o0 (fx* i vol0))))
+        (let ((vertices (##vector-ref targets (fx+ j 0)))
+              (shift (##vector-ref targets (fx+ j 1)))
+              (texture (##vector-ref targets (fx+ j 2)))
+              (rot #f))
+          (unless texture
+            ;; ??? might be a regular case - when?
+            (MATURITY -2 "no texture found after rendering" loc: 'glC:render-target-mdv!))
+        ;;; (when texture (MATURITY +1 "texture found after rendering" loc: 'glC:render-target-mdv!))
+          (and texture (glC:TextureDrawGlArrays texture vertices scale shift rot)))))))
