@@ -208,6 +208,7 @@
                        font: font
                        label: (if (pair? pattern) (cadr pattern) (string pattern))
                        ;; padding: '#(1 1 1 1)
+                       color: Black
                        background: (glC:image-t bgimg)
                        background-color: background-color
                        position:

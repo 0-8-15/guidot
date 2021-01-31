@@ -219,7 +219,7 @@
          (label #f)
          (horizontal-align 'left)
          (vertical-align 'bottom)
-         (color (guide-select-color-1))
+         (color (guide-select-color-2))
          (x 0)
          (y 0)
          (w 100)
