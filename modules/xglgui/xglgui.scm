@@ -551,7 +551,7 @@
        (h (- yno ysw))
        (selh line-height)
        (num-max-visible (floor (/ h line-height)))
-       (num-visible (debug 'num-visible (min len num-max-visible)))
+       (num-visible (min len num-max-visible))
        (area-visible-width (- xno ysw))
        (area-visible-height (- yno (* num-visible line-height)))
        (area-visible
