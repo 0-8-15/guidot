@@ -711,28 +711,35 @@
         (ggb-for-each
          buffer
          (lambda (i v)
-           (let* ((interval (guide-payload-measures v))
-                  (xsw (mdvector-interval-lower-bound interval 0))
-                  (ysw (mdvector-interval-lower-bound interval 1))
-                  (xno (mdvector-interval-upper-bound interval 0))
-                  (yno (mdvector-interval-upper-bound interval 1))
-                  (width (fx- xno xsw))
-                  (height (fx- yno ysw))
-                  (view! (make-guide-label-view)))
-             ;; (view! size: width height) ;; TBD: Maybe we need this?
-             (view! foreground: (guide-payload-on-redraw v))
-             (case direction
-               ((0) #f)
-               ((2)
-                (view! position: 0 offset)
-                ;; update running
-                (set! offset (+ offset height)))
-               (else
-                (view! position: offset 0)
-                ;; update running
-                (set! offset (+ offset width))))
-             ;; finally fix and execute at once
-             ((view!)))))))
+           (when (guide-payload? v)
+             (let* ((interval (guide-payload-measures v))
+                    (xsw (mdvector-interval-lower-bound interval 0))
+                    (ysw (mdvector-interval-lower-bound interval 1))
+                    (xno (mdvector-interval-upper-bound interval 0))
+                    (yno (mdvector-interval-upper-bound interval 1))
+                    (width (fx- xno xsw))
+                    (height (fx- yno ysw))
+                    (view! (make-guide-label-view)))
+               ;; (view! size: width height) ;; TBD: Maybe we need this?
+               (let ((draw (guide-payload-on-redraw v)))
+                 (cond
+                  ((procedure? draw) (view! foreground: draw))
+                  ((vector? draw) (view! foreground: (%%guide-make-redraw draw)))
+                  (else
+                   #;(MATURITY -1 "payload has no drawing" log: guide-ggb-layout)
+                   #t)))
+               (case direction
+                 ((0) #f)
+                 ((2)
+                  (view! position: 0 offset)
+                  ;; update running
+                  (set! offset (+ offset height)))
+                 (else
+                  (view! position: offset 0)
+                  ;; update running
+                  (set! offset (+ offset width))))
+               ;; finally fix and execute at once
+               ((view!))))))))
     (define (events rect payload event x y)
       (let ((area (guide-payload-measures payload)))
         (cond
@@ -740,10 +747,10 @@
          (else
           (let ((offset 0)
                 (hit #f))
-            (ggb-for-each-rtl
-             buffer
+            (ggb-for-each
+             buffer ;; TBD: this pass is almost cacheable
              (lambda (i v)
-               (unless hit
+               (when (guide-payload? v)
                  (let* ((interval (guide-payload-measures v))
                         (xsw (mdvector-interval-lower-bound interval 0))
                         (ysw (mdvector-interval-lower-bound interval 1))
@@ -755,16 +762,37 @@
                              ((1) (- x offset))
                              (else x)))
                         (y (case direction
-                             ((2) (- (- y ysw) offset))
-                             (else (- y ysw)))))
+                             ((2) y)
+                             (else y))))
+                   ;; update running
+                   (case direction
+                     ((2) (set! offset (+ offset height)))
+                     ((1) (set! offset (+ offset width))))))))
+            (ggb-for-each-rtl
+             buffer
+             (lambda (i v)
+               (when (and (not hit) (guide-payload? v))
+                 (let* ((interval (guide-payload-measures v))
+                        (xsw (mdvector-interval-lower-bound interval 0))
+                        (ysw (mdvector-interval-lower-bound interval 1))
+                        (xno (mdvector-interval-upper-bound interval 0))
+                        (yno (mdvector-interval-upper-bound interval 1))
+                        (width (fx- xno xsw))
+                        (height (fx- yno ysw))
+                        (x (case direction
+                             ((1) (+ width (- x offset)))
+                             (else x)))
+                        (y (case direction
+                             ((2) (+ height (- y offset)))
+                             (else y))))
                    (when (mdvector-rect-interval-contains/xy? interval x y)
                      (set! hit #t)
                      (guide-event-dispatch-to-payload rect v event x y))
                    ;; update running
                    (case direction
-                     ((1) (set! offset (+ offset height)))
-                     (else (set! offset (+ offset width)))))))))
-          #t))))
+                     ((2) (set! offset (+ offset height)))
+                     ((1) (set! offset (+ offset width))))))))
+            #t)))))
     (make-guide-payload
      in: area name: (vector 'guide-ggb-layout direction)
      widget: #f lifespan: 'ephemeral ;; TBD: change defaults here!
