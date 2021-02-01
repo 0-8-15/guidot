@@ -699,11 +699,12 @@
 
 (define (guide-ggb-layout area buffer #!key (direction 0))
   (unless (ggb? buffer) (error "arg1 ggb expected" 'guide-ggb-layout buffer))
-  (let ((direction ;; direction: 0: x, 1: y, 2: z...
+  (let ((direction ;; direction: 0: z, 1: x, y: z...
          (case direction
-           ((0 1) direction)
-           ((horizontal) 0)
-           ((vertical) 1)
+           ((0 1 2) direction)
+           ((layer) 0)
+           ((horizontal) 1)
+           ((vertical) 2)
            (else (error "unknown direction" 'guide-ggb-layout direction)))))
     (define (redraw!)
       (let ((offset 0))
@@ -721,7 +722,8 @@
              ;; (view! size: width height) ;; TBD: Maybe we need this?
              (view! foreground: (guide-payload-on-redraw v))
              (case direction
-               ((1)
+               ((0) #f)
+               ((2)
                 (view! position: 0 offset)
                 ;; update running
                 (set! offset (+ offset height)))
@@ -738,7 +740,7 @@
          (else
           (let ((offset 0)
                 (hit #f))
-            (ggb-for-each
+            (ggb-for-each-rtl
              buffer
              (lambda (i v)
                (unless hit
@@ -750,10 +752,10 @@
                         (width (fx- xno xsw))
                         (height (fx- yno ysw))
                         (x (case direction
-                             ((1) x)
-                             (else (- x offset))))
+                             ((1) (- x offset))
+                             (else x)))
                         (y (case direction
-                             ((1) (- (- y ysw) offset))
+                             ((2) (- (- y ysw) offset))
                              (else (- y ysw)))))
                    (when (mdvector-rect-interval-contains/xy? interval x y)
                      (set! hit #t)
