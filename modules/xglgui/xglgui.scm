@@ -697,6 +697,78 @@
      in: area-visible on-redraw: redraw on-any-event: events-here
      name: name lifespan: 'ephemeral widget: #f)))
 
+(define (guide-ggb-layout area buffer #!key (direction 0))
+  (unless (ggb? buffer) (error "arg1 ggb expected" 'guide-ggb-layout buffer))
+  (let ((direction ;; direction: 0: x, 1: y, 2: z...
+         (case direction
+           ((0 1) direction)
+           ((horizontal) 0)
+           ((vertical) 1)
+           (else (error "unknown direction" 'guide-ggb-layout direction)))))
+    (define (redraw!)
+      (let ((offset 0))
+        (ggb-for-each
+         buffer
+         (lambda (i v)
+           (let* ((interval (guide-payload-measures v))
+                  (xsw (mdvector-interval-lower-bound interval 0))
+                  (ysw (mdvector-interval-lower-bound interval 1))
+                  (xno (mdvector-interval-upper-bound interval 0))
+                  (yno (mdvector-interval-upper-bound interval 1))
+                  (width (fx- xno xsw))
+                  (height (fx- yno ysw))
+                  (view! (make-guide-label-view)))
+             ;; (view! size: width height) ;; TBD: Maybe we need this?
+             (view! foreground: (guide-payload-on-redraw v))
+             (case direction
+               ((1)
+                (view! position: 0 offset)
+                ;; update running
+                (set! offset (+ offset height)))
+               (else
+                (view! position: offset 0)
+                ;; update running
+                (set! offset (+ offset width))))
+             ;; finally fix and execute at once
+             ((view!)))))))
+    (define (events rect payload event x y)
+      (let ((area (guide-payload-measures payload)))
+        (cond
+         ((not (mdvector-rect-interval-contains/xy? area x y)) #f)
+         (else
+          (let ((offset 0)
+                (hit #f))
+            (ggb-for-each
+             buffer
+             (lambda (i v)
+               (unless hit
+                 (let* ((interval (guide-payload-measures v))
+                        (xsw (mdvector-interval-lower-bound interval 0))
+                        (ysw (mdvector-interval-lower-bound interval 1))
+                        (xno (mdvector-interval-upper-bound interval 0))
+                        (yno (mdvector-interval-upper-bound interval 1))
+                        (width (fx- xno xsw))
+                        (height (fx- yno ysw))
+                        (x (case direction
+                             ((1) x)
+                             (else (- x offset))))
+                        (y (case direction
+                             ((1) (- (- y ysw) offset))
+                             (else (- y ysw)))))
+                   (when (mdvector-rect-interval-contains/xy? interval x y)
+                     (set! hit #t)
+                     (guide-event-dispatch-to-payload rect v event x y))
+                   ;; update running
+                   (case direction
+                     ((1) (set! offset (+ offset height)))
+                     (else (set! offset (+ offset width)))))))))
+          #t))))
+    (make-guide-payload
+     in: area name: (vector 'guide-ggb-layout direction)
+     widget: #f lifespan: 'ephemeral ;; TBD: change defaults here!
+     on-redraw: redraw!
+     on-any-event: events)))
+
 (define (Xglgui-select gui x y w h #!key (line-height 20) (color (guide-select-color-1)))
   (let ((font (guide-select-font height: line-height)))
     (lambda (lst continue #!key (permanent #f) #;(longpress #f))
