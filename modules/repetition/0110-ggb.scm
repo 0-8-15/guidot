@@ -29,6 +29,8 @@
 ;; (ggb-for-each GGB PROC) -> #!void -- call 2ari PROC with consecutive
 ;; index and value from buffer.  (NOT including the gap.)
 
+;; ggb-for-each-rtl same as ggb-for-each index sequence descending
+
 ;; (ggb->vector ggb) --> vector -- fresh vector with elements from GGB
 
 ;; (ggb->string ggb) --> string -- fresh string with elements from GGB
@@ -197,6 +199,29 @@
                (do ((i i (fx+ i 1))
                     (j rest (fx+ j 1)))
                    ((fx>= i limit))
+                 (proc i (vector-ref buffer j))))
+            (proc i (vector-ref buffer j))))
+        (error "invalid arguments" ggb-for-each ggb proc))))
+
+(define (ggb-for-each-rtl ggb proc #!optional (start 0) (end (ggb-length ggb)))
+  (let* ((buffer (macro-ggb-buffer ggb))
+         (ggblen (ggb-length ggb))
+         (total (vector-length buffer))
+         (point (macro-ggb-point ggb))
+         (rest (macro-ggb-rest ggb))
+         (gap (fx- rest point)))
+    (if (and (macro-ggb? ggb) (procedure? proc)
+             (integer? start) (exact? start) (fx>= start 0)
+             (integer? end) (exact? end) (fx>= end start)
+             (fx<= end (fx- total gap)))
+        (let* ((limit (fx- end start))
+               (limit1 (if (fx> limit (fx- total rest)) rest start)))
+          (do ((i limit (fx- i 1))
+               (j (fx- total 1) (fx- j 1)))
+              ((fx< j limit1)
+               (do ((i (fx- point 1) (fx- i 1))
+                    (j (fx- point 1) (fx- j 1)))
+                   ((fx< j 0))
                  (proc i (vector-ref buffer j))))
             (proc i (vector-ref buffer j))))
         (error "invalid arguments" ggb-for-each ggb proc))))
