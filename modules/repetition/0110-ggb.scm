@@ -24,6 +24,8 @@
 ;; forward, if count is positive, backward if negative.  If this would
 ;; delete more than avail, return #f.
 
+;; (ggb-clear! GGB) -> #!void -- remove all content
+
 ;; (ggb-goto! GGB INDEX) -> #!void -- move point to INDEX
 
 ;; (ggb-for-each GGB PROC) -> #!void -- call 2ari PROC with consecutive
@@ -55,6 +57,16 @@
   (unless (and (integer? size) (exact? size) (fx>= size 0))
     (error "invalid size" make-ggb size))
   (macro-make-ggb 0 size (make-vector size #f)))
+
+(define (ggb-clear! ggb)
+  (let ((point (macro-ggb-point ggb))
+        (rest (macro-ggb-rest ggb))
+        (buffer (macro-ggb-buffer ggb)))
+    (when (fx> point 0) (subvector-fill! 0 point #f))
+    (let ((limit (vector-length buffer)))
+      (when (fx< rest limit) (subvector-fill! rest limit #f))
+      (macro-ggb-point-set! ggb 0)
+      (macro-ggb-rest-set! ggb limit))))
 
 (define (ggb-point ggb) (macro-ggb-point ggb))
 
