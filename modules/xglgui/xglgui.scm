@@ -437,7 +437,7 @@
          #!key
          (in (current-guide-gui-interval))
          (font (guide-select-font size: 'medium))
-         (label "") (label-string (lambda (value) (if (string? value) value (object->string value))))
+         (label #f) (label-string (lambda (value) (if (string? value) value (object->string value))))
          (line-height 20)
          (keypad guide-keypad/numeric)
          (on-key
@@ -484,25 +484,28 @@
           (bg! position: xsw ysw)
           (bg!)))
        (title
-        (let ((label! (make-guide-label-view)))
-          (label! horizontal-align: horizontal-align)
-          (label! vertical-align: vertical-align)
-          (label! font: font)
-          (label! color: color)
-          (label! size: w line-height)
-          (label! position: xsw (- yno line-height+border))
-          (label! text: (label-string label))
-          (label!)))
+        (and
+         label
+         (let ((label! (make-guide-label-view)))
+           (label! horizontal-align: horizontal-align)
+           (label! vertical-align: vertical-align)
+           (label! font: font)
+           (label! color: color)
+           (label! size: w line-height)
+           (label! position: xsw (- yno line-height+border))
+           (label! text: (label-string label))
+           (label!))))
+       (title-height (if title line-height+border 0))
        (line (guide-line-input
               in: (make-mdv-rect-interval
                    xsw
-                   (round (- yno (* 2 line-height+border))) xno yno)
+                   (round (- yno title-height line-height+border)) xno yno)
               horizontal-align: horizontal-align vertical-align: vertical-align
               font: font size: size line-height: line-height
               color: color hightlight-color: hightlight-color
               data: data))
        (kpd (keypad
-             in: (make-x0y0x1y1-interval/coerce xsw ysw xno (- yno (* 2 line-height+border)))
+             in: (make-x0y0x1y1-interval/coerce xsw ysw xno (- yno title-height line-height+border))
              action:
              (lambda (p/r key)
                (let ((key (if on-key (on-key p/r key) key)))
@@ -513,7 +516,7 @@
                        (guide-event-dispatch-to-payload in line EVENT_KEYRELEASE plx 0)))))))
        (redraw! ;; FIXME: nested vector drawind handlers should be supported too
         (vector-append
-         (vector background-view title)
+         (if title (vector background-view title) (vector background-view))
          (guide-payload-on-redraw line)
          (vector (guide-payload-on-redraw kpd))))
        (events
