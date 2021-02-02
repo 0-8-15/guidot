@@ -721,6 +721,7 @@
         (lower-left-x (mdvector-interval-lower-bound area 0))
         (lower-left-y (mdvector-interval-lower-bound area 1)))
     (define (redraw!)
+      ;; (MATURITY -1 "GGB drawing is needlessly expensive at this point" loc: guide-ggb-layout)
       (let ((offset 0))
         (ggb-for-each
          buffer
@@ -752,7 +753,7 @@
                   (view! position: (+ lower-left-x offset) lower-left-y)
                   ;; update running
                   (set! offset (+ offset width))))
-               ;; finally fix and execute at once
+               ;; finally fix and execute at once - FIXME: THAT's expensive!
                ((view!))))))))
     (define (events rect payload event x y)
       (let ((area (guide-payload-measures payload)))
