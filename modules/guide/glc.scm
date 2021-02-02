@@ -1015,12 +1015,12 @@
     (do ((i 0 (fx+ i 1)))
         ((eqv? i limit))
       (let ((j (fx+ o0 (fx* i vol0))))
-        (let ((vertices (##vector-ref targets (fx+ j 0)))
-              (shift (##vector-ref targets (fx+ j 1)))
-              (texture (##vector-ref targets (fx+ j 2)))
-              (rot #f))
-          (unless texture
-            ;; ??? might be a regular case - when?
-            (MATURITY -2 "no texture found after rendering" loc: 'glC:render-target-mdv!))
-        ;;; (when texture (MATURITY +1 "texture found after rendering" loc: 'glC:render-target-mdv!))
-          (and texture (glC:TextureDrawGlArrays texture vertices scale shift rot)))))))
+        (let ((texture (##vector-ref targets (fx+ j 2))))
+          (when texture
+            (let ((vertices (##vector-ref targets (fx+ j 0)))
+                  (shift (##vector-ref targets (fx+ j 1)))
+                  (rot #f))
+              ;; (when texture (MATURITY +1 "texture found after rendering" loc: 'glC:render-target-mdv!))
+              ;;
+              ;; TOP in gprof, inlining:
+              (glC:TextureDrawGlArrays texture vertices scale shift rot))))))))
