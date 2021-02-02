@@ -514,7 +514,7 @@
                                  ((char? key) (char->integer key))
                                  (else key))))
                        (guide-event-dispatch-to-payload in line EVENT_KEYRELEASE plx 0)))))))
-       (redraw! ;; FIXME: nested vector drawind handlers should be supported too
+       (redraw! ;; FIXME: nested vector drawing handlers should be supported too
         (vector-append
          (if title (vector background-view title) (vector background-view))
          (guide-payload-on-redraw line)

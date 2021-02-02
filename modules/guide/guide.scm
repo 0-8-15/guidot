@@ -533,7 +533,7 @@
              (else new))))
          (current-colorscheme
           (make-pin
-           initial: (convert #f (apply vector (map make-glColor (list Black Orange Black White))))
+           initial: (convert #f (apply vector (map make-glColor (list Black Orange SlateGray White))))
            pred: guide-colorscheme?
            filter: convert
            name: "The current color scheme"))
