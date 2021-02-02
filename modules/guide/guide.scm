@@ -702,7 +702,9 @@
                        (set! armed #f)
                        #f)))
                 (else (guide-figure-contains? view! x y)))))))
-      (make-guide-payload in: in widget: #f on-redraw: (view!) on-any-event: events lifespan: 'ephemeral))))
+      (make-guide-payload
+       in: in name: 'button widget: #f
+       on-redraw: (view!) on-any-event: events lifespan: 'ephemeral))))
 
 (define (make-guide-table
          ;; CONTRUCTOR (lambda (contructor INTERVAL COL ROW . rest) . rest)
@@ -714,6 +716,7 @@
          (border-ratio 1/20)
          (background-image (macro-guide-default-background))
          (on-key #f)
+         (name 'table)
          )
   (let* ((error-location (lambda (col row) (list 'make-guide-table-payload col row)))
          (rng (mdvector-range contructors))
@@ -755,7 +758,7 @@
                              (span 0 (fx+ span 1)))
                             ((or (eqv? i columns)
                                  (let ((next (mdvector-ref contructors row i)))
-                                   (or (not (eq? next #f)) next)))
+                                   (not (eq? next #f))))
                              span)))
                        (rowspan ;; following row is #t
                         (do ((i (fx+ row 1) (fx+ i 1))
@@ -779,7 +782,7 @@
          (vector-set! content idx payload)))))
     ;; TBD: maybe reduce event handlers to those actually having a payload.
     (make-guide-payload
-     in: in
+     in: in name: name
      on-redraw:
      (lambda () ;; better return customized vector; draw sequence does not matter
        (do ((i (fx- (vector-length content) 1) (fx- i 1)))
@@ -788,7 +791,13 @@
            (and
             payload
             (let ((draw (guide-payload-on-redraw payload)))
-              (and draw (draw)))))))
+              (cond
+               ((procedure? draw) (draw))
+               ((vector? draw)
+                (do ((i 0 (fx+ i 1))) ;; draw background first
+                    ((eqv? i (##vector-length draw)))
+                  ((##vector-ref draw i))))
+               (else (MATURITY -1 "unhandled drawing" loc: 'guide-table))))))))
      on-any-event:
      (lambda (rect payload event x y)
        (cond
@@ -890,7 +899,8 @@
          (color (guide-select-color-2))
          (background-color (guide-select-color-1))
          (background #f)
-         (on-key #f))
+         (on-key #f)
+         (name 'keypad))
   (define (%%guide-post-key-event key)
     (cond
      ((fixnum? key)
@@ -920,7 +930,7 @@
              (lambda (in col row)
                (cond
                 ((char? pat) (keybutton in pat))
-                ((and (fixnum? pat) (positive? pat)) (keybutton in (integer->char pat)))
+                ((and (fixnum? pat) (positive? pat)) (keybutton in pat))
                 ((pair? pat)
                  (cond
                   ((symbol? (car pat))
@@ -958,7 +968,7 @@
            (do ((i 0 (fx+ i 1)))
                ((eqv? i len)
                 (make-guide-payload
-                 in: area widget: #f
+                 in: area name: name widget: #f
                  on-redraw:
                  (lambda ()
                    (guide-event-dispatch-to-payload/redraw (vector-ref panes current-pane)))
@@ -1066,11 +1076,12 @@
              (value! text: (%%value-buffer->string value-buffer))
              (set! value-draw (value!))
              (update-cursor!))
-            (else
+            ((char? key)
              (ggb-insert! value-buffer (char->integer key))
              (value! text: (%%value-buffer->string value-buffer))
              (set! value-draw (value!))
-             (update-cursor!))))))
+             (update-cursor!))
+            (else (debug "ignored key" 'guide-line-input key))))))
        (redraw! (vector
                  (lambda () (and value-draw (value-draw)))
                  (lambda () (cursor-draw))))

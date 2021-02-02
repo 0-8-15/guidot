@@ -366,11 +366,11 @@
           (k-shift-on (list 'shift label: (apply make-glC:image glgui_keypad_shift_on.img)))
           (k-shift-3 (list 'shift label: "*-+"))
           (k-shift-4 (list 'shift label: "@#$"))
-          (k-del (list delchar label: (apply make-glC:image glgui_keypad_delete.img)))
+          (k-del (list EVENT_KEYBACKSPACE label: (apply make-glC:image glgui_keypad_delete.img)))
           (k-toggle (list 'toggle label: (apply make-glC:image glgui_keypad_toggle.img)))
           (k-toggle-3 (list 'toggle label: (apply make-glC:image glgui_keypad_toggleChar.img)))
           (k-space (list #\space background: %%guide-default-background background-color: (guide-select-color-2)))
-          (k-ret (list retchar label: (apply make-glC:image glgui_keypad_return.img))))
+          (k-ret (list EVENT_KEYENTER label: (apply make-glC:image glgui_keypad_return.img))))
       (vector
        ;; Pane I
        #\q #\w #\e #\r #\t #\y #\u #\i #\o #\p
@@ -404,11 +404,11 @@
           (k-shift-on (list 'shift label: (apply make-glC:image glgui_keypad_shift_on.img)))
           (k-shift-3 (list 'shift label: "*-+"))
           (k-shift-4 (list 'shift label: "@#$"))
-          (k-del (list delchar label: (apply make-glC:image glgui_keypad_delete.img)))
+          (k-del (list EVENT_KEYBACKSPACE label: (apply make-glC:image glgui_keypad_delete.img)))
           (k-toggle (list 'toggle label: (apply make-glC:image glgui_keypad_toggle.img)))
           (k-toggle-3 (list 'toggle label: (apply make-glC:image glgui_keypad_toggleChar.img)))
           (k-space (list #\space background: %%guide-default-background background-color: (guide-select-color-2)))
-          (k-ret (list retchar label: (apply make-glC:image glgui_keypad_return.img))))
+          (k-ret (list EVENT_KEYENTER label: (apply make-glC:image glgui_keypad_return.img))))
       (vector
        ;; I
        #\q #\w #\e #\r #\t #\y #\u #\i #\o #\p
@@ -430,7 +430,8 @@
        #\' #\" #\^ #\[ #\] #\{ #\} #\< #\>         k-del
        k-shift-4 #f  #\* #\- #\+ #\= #\_ #\~ #\| #t
        k-toggle-3 #f  #\, k-space #f #f #f #\. k-ret #f
-       )))))
+       )))
+   on-key: action))
 
 (define (guide-value-edit-dialog
          #!key
@@ -501,7 +502,15 @@
               color: color hightlight-color: hightlight-color
               data: data))
        (kpd (keypad
-             in: (make-x0y0x1y1-interval/coerce xsw ysw xno (- yno (* 2 line-height+border)))))
+             in: (make-x0y0x1y1-interval/coerce xsw ysw xno (- yno (* 2 line-height+border)))
+             action:
+             (lambda (p/r key)
+               (let ((key (if on-key (on-key p/r key) key)))
+                 (if key
+                     (let ((plx (cond
+                                 ((char? key) (char->integer key))
+                                 (else key))))
+                       (guide-event-dispatch-to-payload in line EVENT_KEYRELEASE plx 0)))))))
        (redraw! ;; FIXME: nested vector drawind handlers should be supported too
         (vector-append
          (vector background-view title)
@@ -697,7 +706,7 @@
      in: area-visible on-redraw: redraw on-any-event: events-here
      name: name lifespan: 'ephemeral widget: #f)))
 
-(define (guide-ggb-layout area buffer #!key (direction 0))
+(define (guide-ggb-layout area buffer #!key (direction 0) (on-key #f))
   (unless (ggb? buffer) (error "arg1 ggb expected" 'guide-ggb-layout buffer))
   (let ((direction ;; direction: 0: z, 1: x, y: z...
          (case direction
@@ -757,13 +766,7 @@
                         (xno (mdvector-interval-upper-bound interval 0))
                         (yno (mdvector-interval-upper-bound interval 1))
                         (width (fx- xno xsw))
-                        (height (fx- yno ysw))
-                        (x (case direction
-                             ((1) (- x offset))
-                             (else x)))
-                        (y (case direction
-                             ((2) y)
-                             (else y))))
+                        (height (fx- yno ysw)))
                    ;; update running
                    (case direction
                      ((2) (set! offset (+ offset height)))
@@ -772,26 +775,30 @@
              buffer
              (lambda (i v)
                (when (and (not hit) (guide-payload? v))
-                 (let* ((interval (guide-payload-measures v))
-                        (xsw (mdvector-interval-lower-bound interval 0))
-                        (ysw (mdvector-interval-lower-bound interval 1))
-                        (xno (mdvector-interval-upper-bound interval 0))
-                        (yno (mdvector-interval-upper-bound interval 1))
-                        (width (fx- xno xsw))
-                        (height (fx- yno ysw))
-                        (x (case direction
-                             ((1) (+ width (- x offset)))
-                             (else x)))
-                        (y (case direction
-                             ((2) (+ height (- y offset)))
-                             (else y))))
-                   (when (mdvector-rect-interval-contains/xy? interval x y)
-                     (set! hit #t)
-                     (guide-event-dispatch-to-payload rect v event x y))
-                   ;; update running
-                   (case direction
-                     ((2) (set! offset (+ offset height)))
-                     ((1) (set! offset (+ offset width))))))))
+                 (cond
+                  ((or (eqv? event EVENT_KEYPRESS) (eqv? event EVENT_KEYRELEASE))
+                   (and on-key (on-key press: (%%guide:legacy-keycode->guide-keycode x))))
+                  (else
+                   (let* ((interval (guide-payload-measures v))
+                          (xsw (mdvector-interval-lower-bound interval 0))
+                          (ysw (mdvector-interval-lower-bound interval 1))
+                          (xno (mdvector-interval-upper-bound interval 0))
+                          (yno (mdvector-interval-upper-bound interval 1))
+                          (width (fx- xno xsw))
+                          (height (fx- yno ysw))
+                          (x (case direction
+                               ((1) (+ width (- x offset)))
+                               (else x)))
+                          (y (case direction
+                               ((2) (+ height (- y offset)))
+                               (else y))))
+                     (when (mdvector-rect-interval-contains/xy? interval x y)
+                       (set! hit #t)
+                       (guide-event-dispatch-to-payload rect v event x y))
+                     ;; update running
+                     (case direction
+                       ((2) (set! offset (+ offset height)))
+                       ((1) (set! offset (- offset width))))))))))
             #t)))))
     (make-guide-payload
      in: area name: (vector 'guide-ggb-layout direction)
