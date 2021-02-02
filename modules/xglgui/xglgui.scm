@@ -714,7 +714,9 @@
            ((layer) 0)
            ((horizontal) 1)
            ((vertical) 2)
-           (else (error "unknown direction" 'guide-ggb-layout direction)))))
+           (else (error "unknown direction" 'guide-ggb-layout direction))))
+        (lower-left-x (mdvector-interval-lower-bound area 0))
+        (lower-left-y (mdvector-interval-lower-bound area 1)))
     (define (redraw!)
       (let ((offset 0))
         (ggb-for-each
@@ -740,11 +742,11 @@
                (case direction
                  ((0) #f)
                  ((2)
-                  (view! position: 0 offset)
+                  (view! position: 0 (+ lower-left-y offset))
                   ;; update running
                   (set! offset (+ offset height)))
                  (else
-                  (view! position: offset 0)
+                  (view! position: (+ lower-left-x offset) lower-left-y)
                   ;; update running
                   (set! offset (+ offset width))))
                ;; finally fix and execute at once
@@ -787,17 +789,17 @@
                           (width (fx- xno xsw))
                           (height (fx- yno ysw))
                           (x (case direction
-                               ((1) (+ width (- x offset)))
+                               ((1) (+ lower-left-x (+ width (- x offset))))
                                (else x)))
                           (y (case direction
-                               ((2) (+ height (- y offset)))
-                               (else y))))
+                               ((2) (- y lower-left-y (- offset height)))
+                               (else (- y lower-left-y)))))
                      (when (mdvector-rect-interval-contains/xy? interval x y)
                        (set! hit #t)
                        (guide-event-dispatch-to-payload rect v event x y))
                      ;; update running
                      (case direction
-                       ((2) (set! offset (+ offset height)))
+                       ((2) (set! offset (- offset height)))
                        ((1) (set! offset (- offset width))))))))))
             #t)))))
     (make-guide-payload
