@@ -493,7 +493,7 @@
   (glVertexPointer (glC:vertex-set-d23 glc-vertexset) GL_FLOAT 0 (glC:vertex-set-v glc-vertexset))
   (glColorPointer 4 GL_UNSIGNED_BYTE 0 (glC:vertex-set-c glc-vertexset))
   (cond
-   ((or (fx= line-type GL_LINES) (fx= line-type GL_LINE_LOOP) (fx= line-type GL_LINE_STRIP))
+   ((or (eqv? line-type GL_LINES) (eqv? line-type GL_LINE_LOOP) (eqv? line-type GL_LINE_STRIP))
     (glDisable GL_TEXTURE_2D)
     (glDisableClientState GL_TEXTURE_COORD_ARRAY))
    (else
