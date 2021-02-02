@@ -720,9 +720,9 @@
            (else (error "unknown direction" 'guide-ggb-layout direction))))
         (lower-left-x (mdvector-interval-lower-bound area 0))
         (lower-left-y (mdvector-interval-lower-bound area 1)))
-    (define (redraw!)
-      ;; (MATURITY -1 "GGB drawing is needlessly expensive at this point" loc: guide-ggb-layout)
-      (let ((offset 0))
+    (define (make-drawing)
+      (let ((offset 0)
+            (result (make-vector (ggb-length buffer) #f)))
         (ggb-for-each
          buffer
          (lambda (i v)
@@ -753,8 +753,23 @@
                   (view! position: (+ lower-left-x offset) lower-left-y)
                   ;; update running
                   (set! offset (+ offset width))))
-               ;; finally fix and execute at once - FIXME: THAT's expensive!
-               ((view!))))))))
+               (vector-set! result i (view!))))))
+        (%%guide-make-redraw result)))
+    (define redraw!
+      (let ((last-content (ggb->vector buffer))
+            (last (make-drawing)))
+        (lambda ()
+          (let ((changed (not (eqv? (vector-length last-content) (ggb-length buffer)))))
+            (unless changed
+              (ggb-for-each
+               buffer
+               (lambda (i v)
+                 (unless (eqv? v (vector-ref last-content i))
+                   (set! changed #t)))))
+            (when changed
+              (set! last-content (ggb->vector buffer))
+              (set! last (make-drawing))))
+          (last))))
     (define (events rect payload event x y)
       (let ((area (guide-payload-measures payload)))
         (cond
