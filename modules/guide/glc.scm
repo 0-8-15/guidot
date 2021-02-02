@@ -1022,5 +1022,33 @@
                   (rot #f))
               ;; (when texture (MATURITY +1 "texture found after rendering" loc: 'glC:render-target-mdv!))
               ;;
-              ;; TOP in gprof, inlining:
-              (glC:TextureDrawGlArrays texture vertices scale shift rot))))))))
+              ;; TOP in gprof; the following line did it all -- inlining:
+              ;;
+              ;; (glC:TextureDrawGlArrays texture vertices scale shift rot)
+              ;;
+              ;; Note: inlining the above line gave 2021-02-02 a
+              ;; pretty detailed profiling result essentially pointing
+              ;; into glC:glCoreEnd lines glVertexPointer and
+              ;; glTexCoordPointer above most except ___SCMOBJ_to_INT
+              (let ((needs-matrix (or scale shift rot)))
+                ;; inline of: (glC:TextureDrawGlArrays texture vertices scale shift rot)
+                (when needs-matrix (glPushMatrix))
+                (cond
+                 ((f32vector? scale)
+                  (glScalef//checks (##f32vector-ref scale 0) (##f32vector-ref scale 1) (##f32vector-ref scale 2)))
+                 ((procedure? shift) (shift)))
+                (cond
+                 ((f32vector? shift)
+                  (glTranslatef//checks (##f32vector-ref shift 0) (##f32vector-ref shift 1) (##f32vector-ref shift 2)))
+                 ((procedure? shift) (shift)))
+                #|
+                (cond
+                 ((f32vector? rot)
+                  (glRotatef//checks (f32vector-ref rot 0) (f32vector-ref rot 1)  (f32vector-ref rot 2)  (f32vector-ref rot 3)))
+                 ((procedure? rot) (rot)))
+                |#
+                (_glCoreTextureBind texture)
+                ;; (glCoreBegin)
+                (glC:glCoreEnd vertices GL_TRIANGLE_STRIP)
+                (when needs-matrix (glPopMatrix))
+                #!void))))))))
