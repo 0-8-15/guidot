@@ -789,6 +789,22 @@
    (lambda (obj)
      (and (mdvector? obj) (eq? (%%glyphvector-tag) (mdvector-special obj))))))
 
+(define-macro (macro-MATURITY+2:vector-fill-glyphs-from-unicodevector!
+               result start end source source-start font)
+  (let ((from (gensym 'from))
+        (to (gensym 'to)))
+    `(do ((,to ,start (##fx+ ,to 1))
+          (,from ,source-start (##fx+ ,from 1)))
+         ((eqv? ,to ,end))
+       (vector-set! ,result ,to (MATURITY+1:ln-ttf:font-ref ,font (vector-ref ,source ,from))))))
+
+(define (vector-fill-glyphs-from-unicodevector! result start end source source-start font)
+  #;(macro-MATURITY+2:vector-fill-glyphs-from-unicodevector! result start end source source-start font)
+  (do ((to start (fx+ to 1))
+       (from source-start (fx+ from 1)))
+      ((eqv? to end))
+    (vector-set! result to (MATURITY+1:ln-ttf:font-ref font (vector-ref source from)))))
+
 (define (MATURITY+0:utf8string->guide-glyphvector str font)
   (unless (ln-ttf:font? font) (error "not a font" 'utf8string->glyphvector))
   ;; convert UTF8 to unicode u32vector and glyph
@@ -807,30 +823,14 @@
                  (vol (range-volume rng))
                  (result (make-vector vol)))
             (subvector-move! a0 0 o result 0) ;; row 0: u32 unicode
-            (do ((o 0 (fx+ o 1)))
-                ((eqv? o len)
-                 (make-mdvector rng result (%%glyphvector-tag)))
-              (let ((to len)) ;; row 1: glyp
-                (vector-set! result (fx+ to o) (MATURITY+1:ln-ttf:font-ref font (vector-ref a0 o))))
-              #;(let* ((to (fx* len 2))
-                     (glyp-off len)
-                     (glyph (vector-ref result (fx+ o glyp-off))))
-                (let ((goy (ttf:glyph-offsety glyph)))
-                  ;; FIXME: check/defaults into constructor!
-                  (unless goy
-                    (MATURITY -1 "glyph without vertical offset" loc: utf8string->glyphvector)
-                    (set! goy 0.))
-                  ;; row 2: below
-                  (vector-set!
-                   result (fx+ to o)
-                   (let ((gh (ttf:glyph-height glyph)))
-                     (unless gh
-                       (MATURITY -1 "glyph without offset" loc: utf8string->glyphvector)
-                       (set! goy 0.))
-                     (fx- goy gh)))
-                  ;; row 3: above
-                  (let ((to (fx* len 3)))
-                    (vector-set! result (fx+ to o) goy))))))))
+            (let ((end (+ len len)))
+              (macro-MATURITY+2:vector-fill-glyphs-from-unicodevector!
+               result
+               len ;; row 1: glyphs
+               end
+               a0 0
+               font))
+            (make-mdvector rng result (%%glyphvector-tag)))))
       (vector-set! a0 o (car codepoints)))))
 
 (define utf8string->guide-glyphvector MATURITY+0:utf8string->guide-glyphvector)
