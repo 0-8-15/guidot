@@ -6,6 +6,8 @@
 
 ;; (make-ggb #!key (size 30)) --> GGB
 
+;; (ggb-copy GGB) -> new GGB and put original in copy-on-write mode
+
 ;; (ggb-length GGB) --> non-negative fixnum
 
 ;; (ggb-point GGB) --> fixnum [0..ggb-length)
@@ -47,16 +49,35 @@
   opaque:
   macros:
   prefix: macro-
+  cow                  ;; copy on write
   (point unprintable:) ;; point
   (rest unprintable:)  ;; zero in rest
   (buffer unprintable:))
 
 (define (ggb? x) (macro-ggb? x))
 
-(define (make-ggb #!key (size 30))
+(define (make-ggb #!key (size 0))
   (unless (and (integer? size) (exact? size) (fx>= size 0))
     (error "invalid size" make-ggb size))
-  (macro-make-ggb 0 size (make-vector size #f)))
+  (macro-make-ggb #f 0 size (if (eqv? size 0) '#() (make-vector size #f))))
+
+(define-macro (macro-ggb-mutable-buffer ggb)
+  (let ((buffer (gensym 'buffer)))
+    `(if (macro-ggb-cow ,ggb)
+         (let ((,buffer (##vector-copy (macro-ggb-buffer ,ggb))))
+           (macro-ggb-buffer-set! ,ggb buffer)
+           (macro-ggb-cow-set! ,ggb #t)
+           ,buffer)
+         (macro-ggb-buffer ,ggb))))
+
+(define (ggb-copy ggb)
+  (unless (macro-ggb? ggb) (error "invalid gap buffer" ggb-copy ggb))
+  (macro-ggb-cow-set! ggb #t)
+  (macro-make-ggb
+   #f
+   (macro-ggb-point ggb)
+   (macro-ggb-rest ggb)
+   (macro-ggb-buffer ggb)))
 
 (define (ggb-clear! ggb)
   (let ((point (macro-ggb-point ggb))
@@ -89,12 +110,12 @@
   (unless (and (macro-ggb? ggb) (integer? i) (exact? i) (fx>= i 0))
     (error "invalid arguments" ggb-ref ggb i))
   (let ((point (ggb-point ggb))
-        (buffer (macro-ggb-buffer ggb)))
-    (if (fx< i point) (vector-set! buffer i v)
+        (buffer (macro-ggb-mutable-buffer ggb)))
+    (if (fx< i point) (##vector-set! buffer i v)
         (let ((i (fx+ (macro-ggb-rest ggb) (fx- i point))))
-          (if (fx< i (vector-length buffer))
-              (vector-set! buffer i v)
-              (error "out of range" ggb-ref i))))))
+          (if (fx< i (##vector-length buffer))
+              (##vector-set! buffer i v)
+              (error "out of range" ggb-set! i))))))
 
 (define (%%ggb-grow-gap! ggb size)
   (let ((point (fx+ (macro-ggb-point ggb) 1))
@@ -104,19 +125,20 @@
     (cond
      ((fx>= (fx+ point size) rest)
       (cond
-       ((eqv? rest (vector-length buffer))
-        (let ((insert (min max-grow-length (max size (vector-length buffer)))))
+       ((eqv? rest (##vector-length buffer))
+        (let ((insert (min max-grow-length (max size (##vector-length buffer)))))
           (macro-ggb-buffer-set! ggb (vector-append buffer (make-vector insert #f)))
           (macro-ggb-rest-set! ggb (fx+ rest insert))))
        (else
         (let* ((len (vector-length buffer))
-               (insert (min max-grow-length (max size (vector-length buffer))))
+               (insert (min max-grow-length (max size len)))
                (new-rest (fx+ rest insert))
                (new (make-vector (fx+ len insert) #f)))
           (subvector-move! buffer 0 point new 0)
           (subvector-move! buffer rest len new new-rest)
           (macro-ggb-buffer-set! ggb new)
-          (macro-ggb-rest-set! ggb new-rest))))))))
+          (macro-ggb-rest-set! ggb new-rest)))))
+     (else (macro-ggb-mutable-buffer ggb)))))
 
 (define (ggb-insert! ggb val)
   (if (not (macro-ggb? ggb))
@@ -126,7 +148,7 @@
         (let ((point (macro-ggb-point ggb))
               (rest (macro-ggb-rest ggb))
               (buffer (macro-ggb-buffer ggb)))
-          (vector-set! buffer point val)
+          (##vector-set! buffer point val)
           (macro-ggb-point-set! ggb (fx+ (macro-ggb-point ggb) 1))))))
 
 (define (ggb-insert-sequence! ggb val)
@@ -151,7 +173,7 @@
   (cond
    ((fx> n 0)
     (let* ((rest (macro-ggb-rest ggb))
-           (buffer (macro-ggb-buffer ggb))
+           (buffer (macro-ggb-mutable-buffer ggb))
            (limit (vector-length buffer))
            (to (fx+ rest n))
            (new-rest (if (fx> to limit) limit to)))
@@ -162,7 +184,7 @@
     (let* ((point (macro-ggb-point ggb))
            (to (fx+ point n))
            (new-point (if (fx>= to 0) to 0))
-           (buffer (macro-ggb-buffer ggb)))
+           (buffer (macro-ggb-mutable-buffer ggb)))
       (subvector-fill! buffer new-point point #f)
       (macro-ggb-point-set! ggb new-point)
       (eqv? to new-point)))
@@ -172,20 +194,21 @@
   (if (not (and (macro-ggb? ggb) (integer? i) (exact? i) (fx>= i 0)))
       (error "invalid argument" ggb-goto! ggb i)
       (let ((point (macro-ggb-point ggb))
-            (rest (macro-ggb-rest ggb))
-            (buffer (macro-ggb-buffer ggb)))
+            (rest (macro-ggb-rest ggb)))
         (cond
          ((eqv? i (macro-ggb-point ggb)))  ;; nothing to be done
          ((< i point)
-          (let ((new-rest (fx- rest (fx- point i))))
+          (let ((new-rest (fx- rest (fx- point i)))
+                (buffer (macro-ggb-mutable-buffer ggb)))
             (subvector-move! buffer i point buffer new-rest)
             (subvector-fill! buffer i new-rest #f)
             (macro-ggb-rest-set! ggb new-rest)
             (macro-ggb-point-set! ggb i)))
          (else
           (let* ((gaplen (fx- rest point))
-                 (i+gap (fx+ i gaplen)))
-            (if (> i+gap (vector-length buffer))
+                 (i+gap (fx+ i gaplen))
+                 (buffer (macro-ggb-mutable-buffer ggb)))
+            (if (> i+gap (##vector-length buffer))
                 (error "out of range" ggb-goto! i)
                 (begin
                   (subvector-move! buffer rest i+gap buffer point)
