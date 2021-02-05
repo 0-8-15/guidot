@@ -1,5 +1,6 @@
 (cond-expand
  (gambit
+  (declare (fixnum))
   (include "0100-repetition.scm")
   (include "0110-ggb.scm")
   (cond-expand
