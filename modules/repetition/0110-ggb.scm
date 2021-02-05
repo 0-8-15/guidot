@@ -65,7 +65,7 @@
   (let ((buffer (gensym 'buffer)))
     `(if (macro-ggb-cow ,ggb)
          (let ((,buffer (##vector-copy (macro-ggb-buffer ,ggb))))
-           (macro-ggb-buffer-set! ,ggb buffer)
+           (macro-ggb-buffer-set! ,ggb ,buffer)
            (macro-ggb-cow-set! ,ggb #t)
            ,buffer)
          (macro-ggb-buffer ,ggb))))
@@ -227,7 +227,11 @@
              (integer? end) (exact? end) (fx>= end start)
              (fx<= end (fx- total gap)))
         (let* ((limit (fx- end start))
-               (limit1 (if (fx> limit point) point limit)))
+               (limit1
+                (cond
+                 ((fx> start point) point)
+                 ((fx> limit point) point)
+                 (else limit))))
           (do ((i 0 (fx+ i 1))
                (j start (fx+ j 1)))
               ((fx>= j limit1)
