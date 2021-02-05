@@ -912,6 +912,101 @@
           (values gax target shift))
         (values gax #f #f))))
 
+(define (guide-linebreak-unicodevector!
+;;; TBD: maybe switch to use glyphvectors here and in textarea
+         lines ;; receiving ggb
+         data  ;; vector of codepoints
+         font  ;; font to use
+         width ;; width to fill
+         #!key
+         (rows 3) (cols 20)
+         (indicator-space 32)
+         (indicator-return 13)
+         (indicator-newline 10)
+         )
+  (let* ((current-line
+          (and
+           (> (ggb-length lines) 0)
+           (ggb-ref lines (max 0 (- (ggb-point lines) 1)))))
+         (current-line-width
+          ;; TBD: look back in case the last char matches `indicator-space`
+          0 #;(MATURITY+0:utf8string->guide-glyphvector current-line font))
+         (current-word (make-ggb size: 10))
+         (current-word-width 0))
+    (define (push-line!)
+      (set! current-line (make-ggb size: cols))
+      (set! current-line-width 0)
+      (ggb-insert! lines current-line))
+    (define (push-word!)
+      (ggb-for-each current-word (lambda (i c) (ggb-insert! current-line c)))
+      (set! current-line-width (+ current-line-width current-word-width))
+      (ggb-clear! current-word)
+      (set! current-word-width 0))
+    (push-line!)
+    (let* ((getnext! #f)
+           (total-length
+            (cond
+             ((ggb? data)
+              (let* ((i0 (max 0 (- (ggb-point data) 1)))
+                     (len (let ((l0 (ggb-ref data i0)))
+                            (- (ggb-length l0) (max 0 (- (ggb-point l0) 1))))))
+                (ggb-for-each
+                 data
+                 (lambda (i line)
+                   (set! len (+ len (ggb-length line))))
+                 (+ i0 1))
+                ;; NOT using ggb-goto! here to avoid leaving cow mode
+                (let* ((lidx (max 0 (- (ggb-point data) 1)))
+                       (curlin (ggb-ref data lidx))
+                       (cidx (max 0 (- (ggb-point curlin) 1)))
+                       (curlinlen (ggb-length curlin)))
+                  (set!
+                   getnext!
+                   (lambda ()
+                     (set! len (- len 1))
+                     (when (>= cidx curlinlen)
+                       (set! lidx (+ 1 lidx))
+                       (set! curlin (ggb-ref data lidx))
+                       (set! curlinlen (ggb-length curlin))
+                       (set! cidx 0))
+                     (let ((c (ggb-ref curlin cidx)))
+                       (set! cidx (+ cidx 1))
+                       c))))
+                len))
+             ((u32vector? data) (u32vector-length data))
+             (else (error "invalid argument" guide-linebreak-unicodevector! data)))))
+      (do ((i 0 (fx+ i 1)))
+          ((eqv? i total-length)
+           (push-word!)
+           lines)
+        (let ((c (cond
+                  ((u32vector? data) (u32vector-ref data i))
+                  (else (getnext!)))))
+          (cond
+           ((eqv? c indicator-return)) ;; we currently drop return characters
+           ((eqv? c indicator-newline)
+            (push-word!)
+            (ggb-insert! current-line c)
+            (push-line!))
+           (else
+            (let ((glyph (MATURITY+1:ln-ttf:font-ref font c)))
+              (cond
+               ((eqv? c indicator-space) ;; space TBD: introduce set of word breaking chars
+                (ggb-insert! current-word c)
+                (set! current-word-width (+ current-word-width (if glyph (ttf:glyph-advancex glyph) 0)))
+                (push-word!))
+               (else
+                (ggb-insert! current-word c)
+                (let ((gw (if glyph (ttf:glyph-advancex glyph) 0)))
+                  (set! current-word-width (+ current-word-width gw)))
+                (cond
+                 ((>= current-word-width width) ;; unbreakable case
+                  (push-word!)
+                  (push-line!))
+                 ((>= (+ current-word-width current-line-width) width) ;; soft line break
+                  (unless (eqv? current-line-width 0)
+                    (push-line!))))))))))))))
+
 ;;*** glyph vector rendering (draft)
 
 (define glyphvector->render00-columns 3)
