@@ -139,6 +139,298 @@
 
 ;;;* Guide Incubator
 
+(define (guide-textarea-payload
+;;; TBD: maybe switch to use glyphvectors
+         #!key
+         (in (current-guide-gui-interval))
+         (font (guide-select-font size: 'medium))
+         (horizontal-align 'center)
+         (vertical-align 'center)
+         (line-height 20)
+         (rows 3)
+         (cols #f)
+         (data (let ((state "n/a")) (case-lambda (() state) ((val) (set! state val)))))
+         (size 'small)
+         (color (guide-select-color-2))
+         (hightlight-color (guide-select-color-4)))
+  (define (%%value-buffer->string ggb #!optional (start 0) (end (ggb-length ggb)))
+    (let ((result (make-string (- end start))))
+      (ggb-for-each ggb (lambda (i v) (string-set! result i (integer->char v))) start end)
+      result))
+  (unless (and (eqv? (mdvector-interval-lower-bound in 0) 0)
+               (eqv? (mdvector-interval-lower-bound in 1) 0))
+    (error "area not zero based" guide-textarea-payload))
+  (let*
+      ((newline-indicator 10)
+       (xsw (mdvector-interval-lower-bound in 0))
+       (ysw (mdvector-interval-lower-bound in 1))
+       (xno (mdvector-interval-upper-bound in 0))
+       (yno (mdvector-interval-upper-bound in 1))
+       (text-width (- xno xsw))
+       ;; (text-height (- yno ysw))
+       (cols (or cols
+                 ;; FIXME: should use font-width
+                 (floor (/ text-width line-height))))
+
+       (row-display-offset 0)
+
+       (value-buffer
+        (let ((buffer (make-ggb size: rows))
+              (source (data)))
+          (when (string? source) (set! source (utf8string->u32vector source)))
+          (guide-linebreak-unicodevector! buffer source font text-width)
+          (ggb-goto! buffer 0)
+          (ggb-goto! (ggb-ref buffer 0) 0)
+          buffer))
+       (display-value-on-port
+        (lambda (port)
+          (with-output-to-port port
+            (lambda ()
+              (ggb-for-each
+               value-buffer
+               (lambda (row line)
+                 (ggb-for-each
+                  line
+                  (lambda (col val)
+                    (display (integer->char val) port)))))))))
+       (linebreak-again!
+        (lambda ()
+          (let* ((nb (let* ((source value-buffer)
+                            (result (make-ggb size: (+ (ggb-length source) 5))))
+                       (ggb-for-each source (lambda (i v) (ggb-insert! result (ggb-copy v))))
+                       (ggb-goto! result (ggb-point source))
+                       result))
+                 (point (ggb-point nb))
+                 (row (ggb-point nb)))
+            (ggb-delete! nb (- (ggb-length nb) (ggb-point nb)))
+            (guide-linebreak-unicodevector! nb value-buffer font text-width)
+            (ggb-goto! nb row)
+            (ggb-goto! (ggb-ref nb row) point)
+            (set! value-buffer nb))))
+
+       (value-views
+        (let ((vec (make-vector rows #f)))
+          (do ((i 0 (+ i 1)))
+              ((eqv? i rows) vec)
+            (let ((label! (make-guide-label-view)))
+              (label! horizontal-align: horizontal-align)
+              (label! vertical-align: vertical-align)
+              (label! font: font)
+              (label! color: color)
+              (label! size: text-width line-height)
+              (label! position: xsw (round (- yno (* (+ i 1) line-height))))
+              (label! text: "")
+              (vector-set! vec i label!)))))
+       (update-value-views!
+        (lambda ()
+          (let ((vec value-views)
+                (used-rows (ggb-length value-buffer)))
+            (do ((i 0 (+ i 1))
+                 (j row-display-offset (fx+ j 1)))
+                ((eqv? i rows))
+              (let ((label! (vector-ref vec i)))
+                (label!
+                 text:
+                 (if (< j used-rows)
+                     (%%value-buffer->string (ggb-ref value-buffer j))
+                     "")))))))
+       (value-draw #f)
+       (fix-value-draw!
+        (lambda ()
+          (let ((vec (make-vector rows #f)))
+            (do ((i 0 (+ i 1)) (j 0))
+                ((eqv? i rows)
+                 (set! value-draw (%%guide-make-redraw (subvector vec 0 j))))
+              (let ((draw ((vector-ref value-views i))))
+                (when draw
+                  (vector-set! vec j draw)
+                  (set! j (+ j 1))))))))
+
+       (current-line-number #f)
+       (current-line #f)
+       (current-line-length #f)
+       (current-line-ends-in-newline #f)
+       (update-current-line!
+        (lambda ()
+          (let ((line-point (ggb-point value-buffer)))
+            (when (eqv? line-point 0)
+              (ggb-goto-right! value-buffer)
+              (set! line-point 1))
+            (cond
+             ((or (> line-point rows) (<= line-point row-display-offset))
+              (set! row-display-offset (max 0 (- line-point rows)))
+              (update-value-views!)
+              (fix-value-draw!)))
+            (set! current-line-number (max 0 (- line-point 1)))
+            (set! current-line (ggb-ref value-buffer current-line-number))
+            (set! current-line-length (ggb-length current-line))
+            (set! current-line-ends-in-newline
+                  (and (> current-line-length 0)
+                       (eqv? (ggb-ref current-line (- current-line-length 1))
+                             newline-indicator)))
+            (when (and current-line-ends-in-newline
+                       (eqv? current-line-length (ggb-point current-line)))
+              (ggb-goto-left! current-line)))))
+
+       (cursor-draw #f)
+       (update-cursor!
+        (lambda ()
+          (update-current-line!)
+          (let* ((line-buffer current-line)
+                 (line-point (ggb-point line-buffer))
+                 (width-before 0)
+                 (width-total
+                  (let ((w 0))
+                    (ggb-for-each
+                     line-buffer
+                     (lambda (i c)
+                       (if (eqv? i line-point) (set! width-before w))
+                       (let ((glyph (MATURITY+1:ln-ttf:font-ref font c)))
+                         (if glyph (set! w (+ w (ttf:glyph-advancex glyph)))))))
+                    w))
+                 (label! (make-guide-label-view)))
+            (if (eqv? current-line-length line-point)
+                (set! width-before width-total))
+            (label! horizontal-align: horizontal-align)
+            (label! vertical-align: vertical-align)
+            (label! font: font)
+            (label! color: hightlight-color)
+            (label! size: text-width line-height)
+            (label!
+             position:
+             (round (case horizontal-align
+                      ((left) (+ xsw width-before))
+                      ((center) (+ xsw (* 1/2 (- text-width width-total))))
+                      (else (- width-total width-before))))
+             (round (+ ysw (* (+ (- (- rows 1) current-line-number) row-display-offset) line-height))))
+            (label! text: "|")
+            (let ((draw
+                   (if #t ;; blink
+                       (let ((on (label!)))
+                         (lambda ()
+                           (let* ((n0 ##now)
+                                  (n0f (floor n0)))
+                             (when (< (- n0 n0f) 1/2) (on)))))
+                       (label!))))
+              (set! cursor-draw draw)))))
+
+       (on-key
+        (lambda (p/r key)
+          (or
+           (eq? press: p/r) ;; ignore press - maybe more
+           (let ((value! (vector-ref value-views (- current-line-number row-display-offset))))
+             (cond
+              ((eqv? key EVENT_KEYRIGHT) (ggb-goto-right! current-line) (update-cursor!))
+              ((eqv? key EVENT_KEYLEFT) (ggb-goto-left! current-line) (update-cursor!))
+              ((or (eqv? key EVENT_KEYUP) (eqv? key EVENT_KEYDOWN))
+               (let ((col (ggb-point current-line)))
+                 (if (eqv? key EVENT_KEYUP)
+                     (ggb-goto-left! value-buffer)
+                     (ggb-goto-right! value-buffer))
+                 (update-current-line!)
+                 (ggb-goto! current-line (min col current-line-length)))
+               (update-cursor!))
+              ((eqv? key EVENT_KEYHOME) (ggb-goto! current-line 0) (update-cursor!))
+              ((eqv? key EVENT_KEYEND) (ggb-goto! current-line current-line-length) (update-cursor!))
+              ((eqv? key EVENT_KEYDELETE)
+               (let ((line-point (ggb-point current-line)))
+                 (cond
+                  ((or (eqv? line-point current-line-length)
+                       (and current-line-ends-in-newline
+                            (eqv? (+ line-point 1) current-line-length)))
+                   (cond
+                    ;; can't remove beyond last line
+                    ((eqv? (ggb-point value-buffer) (ggb-length value-buffer)))
+                    (else
+                     (let ((next (ggb-ref value-buffer (+ current-line-number 1))))
+                       (cond
+                        (current-line-ends-in-newline
+                         (ggb-delete! current-line 1))
+                        (else
+                         (ggb-goto! next 0)
+                         (ggb-delete! next 1)))
+                       (ggb-insert-sequence! current-line (ggb->vector next))
+                       (ggb-goto! current-line line-point)
+                       (ggb-delete! value-buffer 1)
+                       (linebreak-again!)
+                       (update-value-views!)
+                       (fix-value-draw!)
+                       (update-cursor!)))))
+                  (else
+                   (ggb-delete! current-line 1)
+                   (value! text: (%%value-buffer->string current-line))
+                   (fix-value-draw!)
+                   (update-cursor!)))))
+              ((eqv? key EVENT_KEYBACKSPACE)
+               (cond
+                ((eqv? (ggb-point current-line) 0)
+                 (cond
+                  ((eqv? (ggb-point value-buffer) 1)) ;; can't remove 1st line
+                  (else
+                   (let ((before (ggb-ref value-buffer (- current-line-number 1))))
+                     (ggb-goto! before (ggb-length before))
+                     (ggb-delete! before -1)
+                     (let ((col (ggb-point before)))
+                       (ggb-insert-sequence! before (ggb->vector current-line))
+                       (ggb-goto! before col))
+                     (ggb-delete! value-buffer -1)
+                     (linebreak-again!)
+                     (update-value-views!)
+                     (fix-value-draw!)
+                     (update-cursor!)))))
+                (else
+                 (ggb-delete! current-line -1)
+                 (value! text: (%%value-buffer->string current-line))
+                 (fix-value-draw!)
+                 (update-cursor!))))
+              ((eqv? key EVENT_KEYENTER)
+               (let ((point (ggb-point current-line)))
+                 (let ((nextline (make-ggb size: cols)))
+                   (ggb-insert-sequence! nextline (ggb->vector current-line point current-line-length))
+                   (ggb-goto! nextline 0)
+                   (ggb-delete! current-line (- current-line-length point))
+                   (ggb-insert! current-line newline-indicator)
+                   (ggb->vector current-line)
+                   (ggb->vector nextline)
+                   (ggb-insert! value-buffer nextline)))
+               (update-value-views!)
+               (update-cursor!)
+               (fix-value-draw!))
+              ((char? key)
+               (ggb-insert! current-line (char->integer key))
+               (linebreak-again!) ;; FIXME: should be wrong in last line
+               (value! text: (%%value-buffer->string current-line))
+               (fix-value-draw!)
+               (update-cursor!))
+              (else (debug "ignored key" (list 'guide-line-input key))))))))
+       (redraw! (lambda () (value-draw) (cursor-draw)))
+       (events
+        (lambda (rect payload event x y)
+          (cond
+           ((eqv? event EVENT_KEYPRESS)
+            (on-key press: (%%guide:legacy-keycode->guide-keycode x)))
+           ((eqv? event EVENT_KEYRELEASE)
+            (on-key release: (%%guide:legacy-keycode->guide-keycode x)))
+           (else (mdvector-rect-interval-contains/xy? in x y))))))
+    (update-value-views!)
+    (update-current-line!)
+    (fix-value-draw!)
+    (update-cursor!)
+    (values
+     (make-guide-payload
+      name: 'guide-textarea-payload in: in widget: #f
+      on-redraw: redraw! on-any-event: events lifespan: 'ephemeral)
+     ;; control procedure
+     (lambda (key . more)
+       (case key
+         ((display)
+          (let ((port (if (pair? more) (car more) (open-output-string))))
+            (unless (output-port? port)
+              (error "invalid arguments" 'guide-textarea-payload key more))
+            (display-value-on-port port)
+            (if (null? more) (get-output-string port))))
+         (else (error "invalid command key" 'guide-textarea-payload key)))))))
+
 (define (make-figure-list-payload
          in content
          #!key
@@ -505,7 +797,7 @@
               color: color hightlight-color: hightlight-color
               data: data))
        (kpd (keypad
-             in: (make-x0y0x1y1-interval/coerce xsw ysw xno (- yno title-height line-height+border))
+             in: (make-x0y0x1y1-interval/coerce xsw ysw xno (round (- yno title-height line-height+border)))
              action:
              (lambda (p/r key)
                (let ((key (if on-key (on-key p/r key) key)))
@@ -534,6 +826,128 @@
            (else (mdvector-rect-interval-contains/xy? in x y))))))
     (make-guide-payload
      name: 'guide-value-edit-dialog in: in widget: #f
+     on-redraw: redraw! on-any-event: events lifespan: 'ephemeral)))
+
+(define (guide-textarea-edit
+         #!key
+         (in (current-guide-gui-interval))
+         (font (guide-select-font size: 'medium))
+         (label #f) (label-string (lambda (value) (if (string? value) value (object->string value))))
+         (line-height 20)
+         (keypad guide-keypad/default)
+         (on-key
+          (lambda (p/r key)
+            (if (eq? press: p/r)
+                #f ;; ignore press - maybe more
+                key)))
+         (data (let ((state "n/a")) (case-lambda (() state) ((val) (set! state val)))))
+         (control-receiver #f)
+         (rows 3)
+         (cols #f)
+         (size 'small)
+         (horizontal-align 'left)
+         (vertical-align 'bottom)
+         (background %%guide-default-background)
+         (background-color
+          (let* ((color (guide-select-color-1))
+                 (r (color-red color))
+                 (g (color-green color))
+                 (b (color-blue color))
+                 (a 210))
+            (color-rgba r g b a)))
+         (color (guide-select-color-2))
+         (hightlight-color (guide-select-color-4)))
+  (let*
+      ((xsw (mdvector-interval-lower-bound in 0))
+       (ysw (mdvector-interval-lower-bound in 1))
+       (xno (mdvector-interval-upper-bound in 0))
+       (yno (mdvector-interval-upper-bound in 1))
+       (width (- xno xsw))
+       (height (- yno ysw))
+       (border-width (* height 1/20))
+       (line-height+border (+ border-width line-height))
+       (background-view
+        (let ((bg! (make-guide-figure-view)))
+          (bg! background: background)
+          (bg! color: background-color)
+          (bg! size: width height)
+          (bg! position: xsw ysw)
+          (bg!)))
+       (title-height (if label line-height+border 0))
+       (title
+        (and
+         label
+         (let ((label! (make-guide-label-view)))
+           (label! horizontal-align: horizontal-align)
+           (label! vertical-align: vertical-align)
+           (label! font: font)
+           (label! color: color)
+           (label! size: width line-height)
+           (label! position: xsw (- yno line-height+border))
+           (label! text: (label-string label))
+           (label!))))
+       (edit-position
+        (let ((yno (ceiling (- yno title-height))))
+          (vector xsw (floor (- yno (* rows line-height))))))
+       (edit-area (make-mdv-rect-interval 0 0 width (* rows line-height)))
+       (lines-control! #f)
+       (lines
+        (receive
+            (pl ctrl)
+            (guide-textarea-payload
+             in: edit-area
+             rows: rows cols: cols
+             horizontal-align: horizontal-align vertical-align: vertical-align
+             font: font size: size line-height: line-height
+             color: color hightlight-color: hightlight-color
+             data: data)
+          (if control-receiver
+              (control-receiver ctrl)
+              (set! lines-control! ctrl))
+          pl))
+       (edit-area-positioned-view
+        (let ((view! (MATURITY+2:make-guide-bg+fg-view)))
+          (view! foreground: (guide-payload-on-redraw lines))
+          (view! position: (vector-ref edit-position 0) (vector-ref edit-position 1))
+          (view!)))
+       (kpd (keypad
+             ;; FIXME: normalize x/y to be zero based
+             in: (make-x0y0x1y1-interval/coerce
+                  xsw ysw
+                  xno (round (- yno title-height border-width (* rows line-height))))
+             action:
+             (lambda (p/r key)
+               (let ((key (if on-key (on-key p/r key) key)))
+                 (if key
+                     (let ((plx (cond
+                                 ((char? key) (char->integer key))
+                                 (else key))))
+                       (guide-event-dispatch-to-payload in lines EVENT_KEYRELEASE plx 0)))))))
+       (redraw! ;; FIXME: nested vector drawing handlers should be supported too
+        (vector-append
+         (if title (vector background-view title) (vector background-view))
+         (vector edit-area-positioned-view (guide-payload-on-redraw kpd))))
+       (events
+        (lambda (rect payload event x y)
+          (cond
+           ((or (eqv? event EVENT_BUTTON1DOWN) (eqv? event EVENT_BUTTON1UP))
+            ;; FIXME: normalize x/y to be zero based
+            (cond
+             ((guide-payload-contains/xy? kpd x y)
+              (guide-event-dispatch-to-payload rect kpd event x y))
+             ((guide-payload-contains/xy? lines x y)
+              (guide-event-dispatch-to-payload rect line event x y))
+             ((and lines-control! title (> y (- yno line-height+border)))
+              (lines-control! 'display (current-output-port)))))
+           ((eqv? event EVENT_KEYPRESS)
+            (let ((v (on-key press: (%%guide:legacy-keycode->guide-keycode x))))
+              (if v (guide-event-dispatch-to-payload rect lines event x y))))
+           ((eqv? event EVENT_KEYRELEASE)
+            (let ((v (on-key release: (%%guide:legacy-keycode->guide-keycode x))))
+              (if v (guide-event-dispatch-to-payload rect lines event x y))))
+           (else (mdvector-rect-interval-contains/xy? in x y))))))
+    (make-guide-payload
+     name: 'guide-textarea-edit in: in widget: #f
      on-redraw: redraw! on-any-event: events lifespan: 'ephemeral)))
 
 (define (guide-list-select-payload
