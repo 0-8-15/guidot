@@ -996,16 +996,18 @@
                 (set! current-word-width (+ current-word-width (if glyph (ttf:glyph-advancex glyph) 0)))
                 (push-word!))
                (else
-                (ggb-insert! current-word c)
                 (let ((gw (if glyph (ttf:glyph-advancex glyph) 0)))
                   (set! current-word-width (+ current-word-width gw)))
                 (cond
                  ((>= current-word-width width) ;; unbreakable case
-                  (push-word!)
-                  (push-line!))
+                  (push-word!) ;; push what fits
+                  (push-line!)
+                  (ggb-insert! current-word c))
                  ((>= (+ current-word-width current-line-width) width) ;; soft line break
                   (unless (eqv? current-line-width 0)
-                    (push-line!))))))))))))))
+                    (push-line!)
+                    (ggb-insert! current-word c)))
+                 (else (ggb-insert! current-word c)))))))))))))
 
 ;;*** glyph vector rendering (draft)
 
