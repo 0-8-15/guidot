@@ -45,14 +45,27 @@
 
 ;;* Implementation
 
+;;#|
+;;; intented version
 (define-structure ggb ;; generic gap buffer
-  opaque:
-  macros:
+  opaque: macros:
   prefix: macro-
   cow                  ;; copy on write
   (point unprintable:) ;; point
   (rest unprintable:)  ;; zero in rest
   (buffer unprintable:))
+;;|#
+#|
+;;; debug version
+(define-structure ggb ;; generic gap buffer
+;;;  opaque: macros:
+  prefix: macro-
+  cow   ;; copy on write
+  point ;; point
+  rest  ;; zero in rest
+  buffer
+  )
+;;|#
 
 (define (ggb? x) (macro-ggb? x))
 
@@ -66,7 +79,7 @@
     `(if (macro-ggb-cow ,ggb)
          (let ((,buffer (##vector-copy (macro-ggb-buffer ,ggb))))
            (macro-ggb-buffer-set! ,ggb ,buffer)
-           (macro-ggb-cow-set! ,ggb #t)
+           (macro-ggb-cow-set! ,ggb #f)
            ,buffer)
          (macro-ggb-buffer ,ggb))))
 
@@ -74,7 +87,7 @@
   (unless (macro-ggb? ggb) (error "invalid gap buffer" ggb-copy ggb))
   (macro-ggb-cow-set! ggb #t)
   (macro-make-ggb
-   #f
+   #t
    (macro-ggb-point ggb)
    (macro-ggb-rest ggb)
    (macro-ggb-buffer ggb)))
@@ -82,7 +95,7 @@
 (define (ggb-clear! ggb)
   (let ((point (macro-ggb-point ggb))
         (rest (macro-ggb-rest ggb))
-        (buffer (macro-ggb-buffer ggb)))
+        (buffer (macro-ggb-mutable-buffer ggb)))
     (when (fx> point 0) (subvector-fill! buffer 0 point #f))
     (let ((limit (vector-length buffer)))
       (when (fx< rest limit) (subvector-fill! buffer rest limit #f))
@@ -128,6 +141,7 @@
        ((eqv? rest (##vector-length buffer))
         (let ((insert (min max-grow-length (max size (##vector-length buffer)))))
           (macro-ggb-buffer-set! ggb (vector-append buffer (make-vector insert #f)))
+          (if (macro-ggb-cow ggb) (macro-ggb-cow-set! ggb #f))
           (macro-ggb-rest-set! ggb (fx+ rest insert))))
        (else
         (let* ((len (vector-length buffer))
@@ -137,6 +151,7 @@
           (subvector-move! buffer 0 point new 0)
           (subvector-move! buffer rest len new new-rest)
           (macro-ggb-buffer-set! ggb new)
+          (if (macro-ggb-cow ggb) (macro-ggb-cow-set! ggb #f))
           (macro-ggb-rest-set! ggb new-rest)))))
      (else (macro-ggb-mutable-buffer ggb)))))
 
