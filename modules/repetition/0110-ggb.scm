@@ -255,7 +255,7 @@
                    ((fx>= i limit))
                  (proc i (vector-ref buffer j))))
             (proc i (vector-ref buffer j))))
-        (error "invalid arguments" ggb-for-each ggb proc))))
+        (error "invalid arguments" ggb-for-each ggb proc start end))))
 
 (define (ggb-for-each-rtl ggb proc #!optional (start 0) (end (ggb-length ggb)))
   (let* ((buffer (macro-ggb-buffer ggb))
@@ -291,7 +291,7 @@
     result))
 
 (define (ggb-goto-left! ggb #!optional (n 1))
-  (ggb-goto! ggb (max 0 (fx- (macro-ggb-point ggb) n))))
+  (ggb-goto! ggb (max 0 (min (ggb-length ggb) (fx- (macro-ggb-point ggb) n)))))
 
 (define (ggb-goto-right! ggb #!optional (n 1))
-  (ggb-goto! ggb (min (ggb-length ggb) (fx+ (macro-ggb-point ggb) n))))
+  (ggb-goto! ggb (max 0 (min (ggb-length ggb) (fx+ (macro-ggb-point ggb) n)))))
