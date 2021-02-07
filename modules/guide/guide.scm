@@ -1026,6 +1026,7 @@
         ;; TBD: this is a bit overly simple and needlessly expensive
         ;; at runtime
         (lambda ()
+          (guide-wakeup!)
           (let* ((total (%%value-buffer->string value-buffer))
                  (before (%%value-buffer->string value-buffer 0 (ggb-point value-buffer)))
                  (glv-before (MATURITY+0:utf8string->guide-glyphvector before font))
