@@ -19,7 +19,13 @@
       ;; TBD: optimize initialization, for now we use the pre-tested
       ;; code as is, no matter how expesinve the overhead is.
       (do ((o o0 (fx+ o 1))
-           (codepoints (utf8string->unicode str) (cdr codepoints)))
+           (codepoints
+            (begin
+              (MATURITY -2 "overly expensive: utf8string->unicode begin" loc: utf8string->u32vector*)
+              (let ((result (utf8string->unicode str)))
+                (MATURITY -2 "overly expensive: utf8string->unicode end" loc: utf8string->u32vector*)
+                result))
+            (cdr codepoints)))
           ((null? codepoints)
            (if (fx= ie o) a0 (subu32vector a0 o0 o)))
         (u32vector-set! a0 (a0i o) (car codepoints)))))
@@ -925,6 +931,8 @@
          (indicator-newline 10)
          )
   ;; TBD: use ggb2d-procedures (which where late in the game).
+  (MATURITY -2 "BEWARE DoS: overly expensive, especially for crafted input (e.g., sequences of zeros)"
+            loc: guide-linebreak-unicodevector!)
   (let* ((lines (ggb2d-lines into))
          (current-line
           (and
