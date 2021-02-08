@@ -914,7 +914,7 @@
 
 (define (guide-linebreak-unicodevector!
 ;;; TBD: maybe switch to use glyphvectors here and in textarea
-         lines ;; receiving ggb
+         into ;; receiving ggb2d
          data  ;; vector of codepoints
          font  ;; font to use
          width ;; width to fill
@@ -924,7 +924,9 @@
          (indicator-return 13)
          (indicator-newline 10)
          )
-  (let* ((current-line
+  ;; TBD: use ggb2d-procedures (which where late in the game).
+  (let* ((lines (ggb2d-lines into))
+         (current-line
           (and
            (> (ggb-length lines) 0)
            (ggb-ref lines (max 0 (- (ggb-point lines) 1)))))
@@ -946,19 +948,20 @@
     (let* ((getnext! #f)
            (total-length
             (cond
-             ((ggb? data)
-              (let* ((i0 (max 0 (- (ggb-point data) 1)))
-                     (len (let ((l0 (ggb-ref data i0)))
-                            (- (ggb-length l0) (max 0 (- (ggb-point l0) 1))))))
-                (ggb-for-each
-                 data
-                 (lambda (i line)
-                   (set! len (+ len (ggb-length line))))
-                 (+ i0 1))
+             ((or (ggb2d? data) (ggb? data))
+              (let* ((lines (if (ggb2d? data) (ggb2d-lines data) data))
+                     (len 0))
+                (let ((i0 (ggb2d-current-row data)))
+                  (when (and i0 (< i0 (ggb-length lines)))
+                    (ggb-for-each
+                     lines
+                     (lambda (i line) (debug i line)
+                             (set! len (+ len (ggb-length line))))
+                     i0)))
                 ;; NOT using ggb-goto! here to avoid leaving cow mode
-                (let* ((lidx (max 0 (- (ggb-point data) 1)))
-                       (curlin (ggb-ref data lidx))
-                       (cidx (max 0 (- (ggb-point curlin) 1)))
+                (let* ((lidx (max 0 (- (ggb-point lines) 1)))
+                       (curlin (ggb-ref lines lidx))
+                       (cidx 0)
                        (curlinlen (ggb-length curlin)))
                   (set!
                    getnext!
@@ -966,7 +969,7 @@
                      (set! len (- len 1))
                      (when (>= cidx curlinlen)
                        (set! lidx (+ 1 lidx))
-                       (set! curlin (ggb-ref data lidx))
+                       (set! curlin (ggb-ref lines lidx))
                        (set! curlinlen (ggb-length curlin))
                        (set! cidx 0))
                      (let ((c (ggb-ref curlin cidx)))
@@ -978,7 +981,7 @@
       (do ((i 0 (fx+ i 1)))
           ((eqv? i total-length)
            (push-word!)
-           lines)
+           into)
         (let ((c (cond
                   ((u32vector? data) (u32vector-ref data i))
                   (else (getnext!)))))
@@ -989,25 +992,31 @@
             (ggb-insert! current-line c)
             (push-line!))
            (else
-            (let ((glyph (MATURITY+1:ln-ttf:font-ref font c)))
+            (let* ((glyph (MATURITY+1:ln-ttf:font-ref font c))
+                   (gw (if glyph (ttf:glyph-advancex glyph) 0))
+                   (next-word-width (+ current-word-width gw)))
               (cond
                ((eqv? c indicator-space) ;; space TBD: introduce set of word breaking chars
                 (ggb-insert! current-word c)
-                (set! current-word-width (+ current-word-width (if glyph (ttf:glyph-advancex glyph) 0)))
+                (set! current-word-width (+ current-word-width gw))
+                (when (>= (+ next-word-width current-line-width) width)
+                  (push-line!))
                 (push-word!))
                (else
-                (let ((gw (if glyph (ttf:glyph-advancex glyph) 0)))
-                  (set! current-word-width (+ current-word-width gw)))
                 (cond
-                 ((>= current-word-width width) ;; unbreakable case
+                 ((>= next-word-width width) ;; unbreakable case
                   (push-word!) ;; push what fits
                   (push-line!)
-                  (ggb-insert! current-word c))
-                 ((>= (+ current-word-width current-line-width) width) ;; soft line break
+                  (ggb-insert! current-word c)
+                  (set! current-word-width gw))
+                 ((>= (+ next-word-width current-line-width) width) ;; soft line break
                   (unless (eqv? current-line-width 0)
                     (push-line!)
-                    (ggb-insert! current-word c)))
-                 (else (ggb-insert! current-word c)))))))))))))
+                    (ggb-insert! current-word c)
+                    (set! current-word-width (+ current-word-width gw))))
+                 (else
+                  (ggb-insert! current-word c)
+                  (set! current-word-width (+ current-word-width gw))))))))))))))
 
 ;;*** glyph vector rendering (draft)
 
