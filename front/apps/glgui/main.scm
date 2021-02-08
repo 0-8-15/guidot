@@ -72,7 +72,7 @@
    decode: #f load:
    (lambda (pin)
      (when (file-exists? filename)
-       (pin (call-with-input-file filename read-line))))
+       (pin (call-with-input-file filename (lambda (port) (read-line port #f))))))
    encode: #f save:
    (lambda (old)
      (call-with-output-file filename
