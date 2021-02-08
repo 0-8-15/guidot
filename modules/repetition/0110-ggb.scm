@@ -83,6 +83,17 @@
            ,buffer)
          (macro-ggb-buffer ,ggb))))
 
+(define-macro (macro-ggb-mutable-buffer/reduce ggb)
+  (let ((buffer (gensym 'buffer)))
+    `(if (macro-ggb-cow ,ggb)
+         (cond
+          (else
+           (let ((,buffer (##vector-copy (macro-ggb-buffer ,ggb))))
+             (macro-ggb-buffer-set! ,ggb ,buffer)
+             (macro-ggb-cow-set! ,ggb #f)
+             ,buffer)))
+         (macro-ggb-buffer ,ggb))))
+
 (define (ggb-copy ggb)
   (unless (macro-ggb? ggb) (error "invalid gap buffer" ggb-copy ggb))
   (macro-ggb-cow-set! ggb #t)
@@ -214,7 +225,7 @@
          ((eqv? i (macro-ggb-point ggb)))  ;; nothing to be done
          ((< i point)
           (let ((new-rest (fx- rest (fx- point i)))
-                (buffer (macro-ggb-mutable-buffer ggb)))
+                (buffer (macro-ggb-mutable-buffer/reduce ggb)))
             (subvector-move! buffer i point buffer new-rest)
             (subvector-fill! buffer i new-rest #f)
             (macro-ggb-rest-set! ggb new-rest)
