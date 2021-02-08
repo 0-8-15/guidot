@@ -178,7 +178,11 @@
         (let ((buffer (make-ggb2d size: rows))
               (source (data)))
           (when (string? source) (set! source (utf8string->u32vector source)))
-          (guide-linebreak-unicodevector! buffer source font text-width)
+          (cond
+           ((or (ggb2d? source) (u32vector? source) (ggb? source))
+            (guide-linebreak-unicodevector! buffer source font text-width))
+           (else ;; backward compatible: insert empty row
+            (ggb2d-insert-row! buffer)))
           (ggb2d-goto! buffer position: 'absolute row: 1 col: 0)
           buffer))
        (linebreak-again!
