@@ -84,14 +84,27 @@
          (macro-ggb-buffer ,ggb))))
 
 (define-macro (macro-ggb-mutable-buffer/reduce ggb)
-  (let ((buffer (gensym 'buffer)))
+  (let ((buffer (gensym 'buffer))
+        (point (gensym 'point))
+        (rest (gensym 'rest))
+        (length (gensym 'length)))
     `(if (macro-ggb-cow ,ggb)
-         (cond
-          (else
-           (let ((,buffer (##vector-copy (macro-ggb-buffer ,ggb))))
-             (macro-ggb-buffer-set! ,ggb ,buffer)
-             (macro-ggb-cow-set! ,ggb #f)
-             ,buffer)))
+         (let* ((,buffer (macro-ggb-buffer ,ggb))
+                (,point (macro-ggb-point ,ggb))
+                (,rest (macro-ggb-rest ,ggb))
+                (,length (##vector-length ,buffer)))
+           (cond
+            ((and (eqv? ,rest ,length) ;; gap at end
+                  (< ,point (- ,rest 500)))
+             (let ((,buffer (##subvector ,buffer 0 ,point)))
+               (macro-ggb-buffer-set! ,ggb ,buffer)
+               (macro-ggb-cow-set! ,ggb #f)
+               ,buffer))
+            (else
+             (let ((,buffer (##vector-copy ,buffer)))
+               (macro-ggb-buffer-set! ,ggb ,buffer)
+               (macro-ggb-cow-set! ,ggb #f)
+               ,buffer))))
          (macro-ggb-buffer ,ggb))))
 
 (define (ggb-copy ggb)
@@ -145,7 +158,8 @@
   (let ((point (fx+ (macro-ggb-point ggb) 1))
         (rest (macro-ggb-rest ggb))
         (buffer (macro-ggb-buffer ggb))
-        (max-grow-length 100))
+        (max-grow-length ;; 4 GB
+         #x40000000))
     (cond
      ((fx>= (fx+ point size) rest)
       (cond
