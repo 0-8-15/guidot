@@ -955,8 +955,8 @@
                   (when (and i0 (< i0 (ggb-length lines)))
                     (ggb-for-each
                      lines
-                     (lambda (i line) (debug i line)
-                             (set! len (+ len (ggb-length line))))
+                     (lambda (i line)
+                       (set! len (+ len (ggb-length line))))
                      i0)))
                 ;; NOT using ggb-goto! here to avoid leaving cow mode
                 (let* ((lidx (max 0 (- (ggb-point lines) 1)))
