@@ -12,7 +12,7 @@
 
 (define (ggb2d? obj) (macro-ggb2d? obj))
 
-(define (make-ggb2d #!optional (ggb #f))
+(define (make-ggb2d #!key (size 0) (ggb #f))
   (let ((lines
          (if (ggb? obj)
              (begin
@@ -20,7 +20,7 @@
                (MATURITY -1 "using GGB as if we knew it's actually ggb2d"
                          loc: make-ggb2d)
                obj)
-             (make-ggb size: 0))))
+             (make-ggb size: size))))
     (macro-make-ggb2d lines)))
 
 (define (debug#ggb2d-lines obj) (macro-ggb2d-lines obj))
@@ -47,7 +47,7 @@
   (ggb-for-each
    (cond ;; MATURITY-2: transparent replace
     ((macro-ggb2d? ggb2d) (macro-ggb2d-lines ggb2d))
-    ((ggb? ggb2d) (make-ggb2d ggb2d))
+    ((ggb? ggb2d) (make-ggb2d ggb: ggb2d))
     (else (error "invalid ggb2d" ggb2d-for-each ggb2d)))
    (lambda (row-number row) row
      (ggb-for-each
