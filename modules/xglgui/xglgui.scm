@@ -175,38 +175,28 @@
        (row-display-offset 0)
 
        (value-buffer
-        (let ((buffer (make-ggb size: rows))
+        (let ((buffer (make-ggb2d size: rows))
               (source (data)))
           (when (string? source) (set! source (utf8string->u32vector source)))
           (guide-linebreak-unicodevector! buffer source font text-width)
-          (ggb-goto! buffer 0)
-          (ggb-goto! (ggb-ref buffer 0) 0)
+          (ggb2d-goto! buffer position: 'absolute row: 1 col: 0)
           buffer))
-       (display-value-on-port
-        (lambda (port)
-          (with-output-to-port port
-            (lambda ()
-              (ggb-for-each
-               value-buffer
-               (lambda (row line)
-                 (ggb-for-each
-                  line
-                  (lambda (col val)
-                    (display (integer->char val) port)))))))))
        (linebreak-again!
         (lambda ()
-          (let* ((nb (let* ((source value-buffer)
-                            (result (make-ggb size: (+ (ggb-length source) 5))))
-                       (ggb-for-each source (lambda (i v) (ggb-insert! result (ggb-copy v))))
-                       (ggb-goto! result (ggb-point source))
-                       result))
-                 (point (ggb-point nb))
-                 (row (ggb-point nb)))
-            (ggb-delete! nb (- (ggb-length nb) (ggb-point nb)))
-            (guide-linebreak-unicodevector! nb value-buffer font text-width)
-            (ggb-goto! nb row)
-            (ggb-goto! (ggb-ref nb row) point)
-            (set! value-buffer nb))))
+          (let* ((source0 value-buffer)
+                 (source (ggb2d-copy source0))
+                 (next-buffer (ggb2d-copy source 0 'point reserve: (ggb2d-length value-buffer)))
+                 (row (ggb2d-current-row next-buffer)))
+            (when row
+              (let ((lalipo (ggb-point (%%ggb2d-row-ref source row))))
+                (ggb2d-delete-row! next-buffer -1)
+                (ggb2d-goto! source position: 'relative col: 0)
+                (guide-linebreak-unicodevector! next-buffer source font text-width)
+                (let* ((rlen (ggb2d-length next-buffer))
+                       (row (min row (- rlen 1)))
+                       (lalipo (min lalipo (ggb-length (%%ggb2d-row-ref next-buffer row)))))
+                  (ggb2d-goto! next-buffer position: 'absolute row: (+ row 1) col: lalipo))))
+            (set! value-buffer next-buffer))))
 
        (value-views
         (let ((vec (make-vector rows #f)))
@@ -224,7 +214,7 @@
        (update-value-views!
         (lambda ()
           (let ((vec value-views)
-                (used-rows (ggb-length value-buffer)))
+                (used-rows (ggb2d-length value-buffer)))
             (do ((i 0 (+ i 1))
                  (j row-display-offset (fx+ j 1)))
                 ((eqv? i rows))
@@ -232,7 +222,7 @@
                 (label!
                  text:
                  (if (< j used-rows)
-                     (%%value-buffer->string (ggb-ref value-buffer j))
+                     (%%value-buffer->string (%%ggb2d-row-ref value-buffer j))
                      "")))))))
        (value-draw #f)
        (fix-value-draw!
@@ -252,17 +242,14 @@
        (current-line-ends-in-newline #f)
        (update-current-line!
         (lambda ()
-          (let ((line-point (ggb-point value-buffer)))
-            (when (eqv? line-point 0)
-              (ggb-goto-right! value-buffer)
-              (set! line-point 1))
-            (cond
-             ((or (> line-point rows) (<= line-point row-display-offset))
-              (set! row-display-offset (max 0 (- line-point rows)))
-              (update-value-views!)
-              (fix-value-draw!)))
-            (set! current-line-number (max 0 (- line-point 1)))
-            (set! current-line (ggb-ref value-buffer current-line-number))
+          (define row (ggb2d-current-row value-buffer))
+          (when (and (not row) (> (ggb2d-length value-buffer) 0))
+            (MATURITY -1 "ggb2d before first line" loc: 'guide-textarea-payload)
+            (ggb2d-goto! value-buffer position: 'absolute row: 1)
+            (set! row (ggb2d-current-row value-buffer)))
+          (when row
+            (set! current-line-number row)
+            (set! current-line (%%ggb2d-row-ref value-buffer current-line-number))
             (set! current-line-length (ggb-length current-line))
             (set! current-line-ends-in-newline
                   (and (> current-line-length 0)
@@ -270,11 +257,18 @@
                              newline-indicator)))
             (when (and current-line-ends-in-newline
                        (eqv? current-line-length (ggb-point current-line)))
-              (ggb-goto-left! current-line)))))
+              (ggb-goto-left! current-line))
+            (let ((line-point (+ current-line-number 1)))
+              (cond
+               ((or (> line-point rows) (<= line-point row-display-offset))
+                (set! row-display-offset (max 0 (- line-point rows)))
+                (update-value-views!)
+                (fix-value-draw!)))))))
 
        (cursor-draw #f)
        (update-cursor!
         (lambda ()
+          (guide-wakeup!) ;; ensure timely visual response
           (update-current-line!)
           (let* ((line-buffer current-line)
                  (line-point (ggb-point line-buffer))
@@ -323,12 +317,7 @@
               ((eqv? key EVENT_KEYRIGHT) (ggb-goto-right! current-line) (update-cursor!))
               ((eqv? key EVENT_KEYLEFT) (ggb-goto-left! current-line) (update-cursor!))
               ((or (eqv? key EVENT_KEYUP) (eqv? key EVENT_KEYDOWN))
-               (let ((col (ggb-point current-line)))
-                 (if (eqv? key EVENT_KEYUP)
-                     (ggb-goto-left! value-buffer)
-                     (ggb-goto-right! value-buffer))
-                 (update-current-line!)
-                 (ggb-goto! current-line (min col current-line-length)))
+               (ggb2d-goto! value-buffer position: 'relative row: (if (eqv? key EVENT_KEYUP) -1 1))
                (update-cursor!))
               ((eqv? key EVENT_KEYHOME) (ggb-goto! current-line 0) (update-cursor!))
               ((eqv? key EVENT_KEYEND) (ggb-goto! current-line current-line-length) (update-cursor!))
@@ -340,9 +329,9 @@
                             (eqv? (+ line-point 1) current-line-length)))
                    (cond
                     ;; can't remove beyond last line
-                    ((eqv? (ggb-point value-buffer) (ggb-length value-buffer)))
+                    ((eqv? (ggb2d-current-row value-buffer) (- (ggb2d-length value-buffer) 1)))
                     (else
-                     (let ((next (ggb-ref value-buffer (+ current-line-number 1))))
+                     (let ((next (%%ggb2d-row-ref value-buffer (+ current-line-number 1))))
                        (cond
                         (current-line-ends-in-newline
                          (ggb-delete! current-line 1))
@@ -351,11 +340,13 @@
                          (ggb-delete! next 1)))
                        (ggb-insert-sequence! current-line (ggb->vector next))
                        (ggb-goto! current-line line-point)
-                       (ggb-delete! value-buffer 1)
-                       (linebreak-again!)
-                       (update-value-views!)
-                       (fix-value-draw!)
-                       (update-cursor!)))))
+                       (ggb2d-delete-row! value-buffer 1)
+                       (begin
+                         (linebreak-again!)
+                         (update-value-views!)
+                         (update-current-line!)
+                         (fix-value-draw!)
+                         (update-cursor!))))))
                   (else
                    (ggb-delete! current-line 1)
                    (value! text: (%%value-buffer->string current-line))
@@ -365,19 +356,20 @@
                (cond
                 ((eqv? (ggb-point current-line) 0)
                  (cond
-                  ((eqv? (ggb-point value-buffer) 1)) ;; can't remove 1st line
+                  ((eqv? (ggb2d-current-row value-buffer) 0)) ;; can't remove 1st line
                   (else
-                   (let ((before (ggb-ref value-buffer (- current-line-number 1))))
+                   (let ((before (%%ggb2d-row-ref value-buffer (- current-line-number 1))))
                      (ggb-goto! before (ggb-length before))
                      (ggb-delete! before -1)
                      (let ((col (ggb-point before)))
                        (ggb-insert-sequence! before (ggb->vector current-line))
                        (ggb-goto! before col))
-                     (ggb-delete! value-buffer -1)
-                     (linebreak-again!)
-                     (update-value-views!)
-                     (fix-value-draw!)
-                     (update-cursor!)))))
+                     (ggb2d-delete-row! value-buffer -1)
+                     (begin
+                       (linebreak-again!)
+                       (update-value-views!)
+                       (fix-value-draw!)
+                       (update-cursor!))))))
                 (else
                  (ggb-delete! current-line -1)
                  (value! text: (%%value-buffer->string current-line))
@@ -392,16 +384,18 @@
                    (ggb-insert! current-line newline-indicator)
                    (ggb->vector current-line)
                    (ggb->vector nextline)
-                   (ggb-insert! value-buffer nextline)))
+                   (ggb2d-insert-row! value-buffer nextline)))
                (update-value-views!)
                (update-cursor!)
                (fix-value-draw!))
               ((char? key)
                (ggb-insert! current-line (char->integer key))
-               (linebreak-again!) ;; FIXME: should be wrong in last line
+               (begin
+                 ;; (linebreak-again!) ;; FIXME: should be wrong in last line
+                 ;; (update-value-views!)
+                 (update-cursor!))
                (value! text: (%%value-buffer->string current-line))
-               (fix-value-draw!)
-               (update-cursor!))
+               (fix-value-draw!))
               (else (debug "ignored key" (list 'guide-line-input key))))))))
        (redraw! (lambda () (value-draw) (cursor-draw)))
        (events
@@ -427,7 +421,9 @@
           (let ((port (if (pair? more) (car more) (open-output-string))))
             (unless (output-port? port)
               (error "invalid arguments" 'guide-textarea-payload key more))
-            (display-value-on-port port)
+            (ggb2d-display-value-on-port
+             value-buffer port
+             display: (lambda (c p) (display (integer->char c) p)))
             (if (null? more) (get-output-string port))))
          (else (error "invalid command key" 'guide-textarea-payload key)))))))
 
