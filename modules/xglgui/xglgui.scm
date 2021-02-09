@@ -270,6 +270,7 @@
                 (fix-value-draw!)))))))
 
        (cursor-draw #f)
+       (this-payload #f)
        (update-cursor!
         (lambda ()
           (guide-wakeup!) ;; ensure timely visual response
@@ -303,7 +304,7 @@
              (round (+ ysw (* (+ (- (- rows 1) current-line-number) row-display-offset) line-height))))
             (label! text: "|")
             (let ((draw
-                   (if #t ;; blink
+                   (if (eq? (guide-focus) this-payload) ;; blink
                        (let ((on (label!)))
                          (lambda ()
                            (let* ((n0 ##now)
@@ -415,9 +416,12 @@
     (fix-value-draw!)
     (update-cursor!)
     (values
-     (make-guide-payload
-      name: 'guide-textarea-payload in: in widget: #f
-      on-redraw: redraw! on-any-event: events lifespan: 'ephemeral)
+     (let ((result
+            (make-guide-payload
+             name: 'guide-textarea-payload in: in widget: #f
+             on-redraw: redraw! on-any-event: events lifespan: 'ephemeral)))
+       (set! this-payload result)
+       result)
      ;; control procedure
      (lambda (key . more)
        (case key
@@ -429,6 +433,7 @@
              value-buffer port
              display: (lambda (c p) (display (integer->char c) p)))
             (if (null? more) (get-output-string port))))
+         ((text) (ggb2d-copy value-buffer))
          (else (error "invalid command key" 'guide-textarea-payload key)))))))
 
 (define (make-figure-list-payload
@@ -907,7 +912,7 @@
              color: color hightlight-color: hightlight-color
              data: data)
           (if control-receiver
-              (control-receiver ctrl)
+              (set! lines-control! (control-receiver ctrl))
               (set! lines-control! ctrl))
           pl))
        (edit-area-positioned-view
@@ -936,6 +941,7 @@
         (lambda (rect payload event x y)
           (cond
            ((or (eqv? event EVENT_BUTTON1DOWN) (eqv? event EVENT_BUTTON1UP))
+            (guide-focus lines)
             ;; FIXME: normalize x/y to be zero based
             (cond
              ((guide-payload-contains/xy? kpd x y)
@@ -945,6 +951,7 @@
              ((and lines-control! title (> y (- yno line-height+border)) (eqv? event EVENT_BUTTON1DOWN))
               (data (lines-control! 'display)))))
            ((eqv? event EVENT_KEYPRESS)
+            (guide-focus lines)
             (let ((v (on-key press: (%%guide:legacy-keycode->guide-keycode x))))
               (if v (guide-event-dispatch-to-payload rect lines event x y))))
            ((eqv? event EVENT_KEYRELEASE)
