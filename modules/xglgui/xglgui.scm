@@ -935,11 +935,13 @@
               (set! lines-control! (control-receiver ctrl))
               (set! lines-control! (lambda (event x y) (data (ctrl 'text)))))
           pl))
+       (edit-area-positioned-draw #f)
        (edit-area-positioned-view
         (let ((view! (MATURITY+2:make-guide-bg+fg-view)))
           (view! foreground: (guide-payload-on-redraw lines))
           (view! position: (vector-ref edit-position 0) (vector-ref edit-position 1))
-          (view!)))
+          (set! edit-area-positioned-draw (view!))
+          view!))
        (kpd (keypad
              ;; FIXME: normalize x/y to be zero based
              in: (make-x0y0x1y1-interval/coerce
@@ -953,25 +955,25 @@
                                  ((char? key) (char->integer key))
                                  (else key))))
                        (guide-event-dispatch-to-payload in lines EVENT_KEYRELEASE plx 0)))))))
-       (redraw! ;; FIXME: nested vector drawing handlers should be supported too
+       (redraw! ;; TBD: nested vector drawing handlers should be supported too - aren't they
         (vector-append
          (if title (vector background-view title) (vector background-view))
-         (vector edit-area-positioned-view (guide-payload-on-redraw kpd))))
+         (vector edit-area-positioned-draw (guide-payload-on-redraw kpd))))
        (events
         (lambda (rect payload event x y)
           (cond
            ((or (eqv? event EVENT_BUTTON1DOWN) (eqv? event EVENT_BUTTON1UP))
-            (guide-focus lines)
-            ;; FIXME: normalize x/y to be zero based
+            ;; FIXME:
             (cond
              ((guide-payload-contains/xy? kpd x y)
+              (when (eqv? event EVENT_BUTTON1UP) (guide-focus lines))
               (guide-event-dispatch-to-payload rect kpd event x y))
-             ((guide-payload-contains/xy? lines x y)
-              (guide-event-dispatch-to-payload rect line event x y))
+             ((guide-figure-contains? edit-area-positioned-view x y)
+              (when (eqv? event EVENT_BUTTON1UP) (guide-focus lines)))
              ((and lines-control! title (> y (- yno line-height+border)) (eqv? event EVENT_BUTTON1DOWN))
               (lines-control! event x y))))
            ((eqv? event EVENT_KEYPRESS)
-            (guide-focus lines)
+            (guide-focus lines) ;; questionable!
             (let ((v (on-key press: (%%guide:legacy-keycode->guide-keycode x))))
               (if v (guide-event-dispatch-to-payload rect lines event x y))))
            ((eqv? event EVENT_KEYRELEASE)
