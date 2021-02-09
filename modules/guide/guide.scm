@@ -678,11 +678,12 @@
     (when color (label! color: color))
     (label! size: w h)
     (label! padding: padding)
-    ;; finally - in order to ot trigger useless recalculations
-    (unless (procedure? label) (label! text: label))
     (view! size: w h)
+    ;; finally - in order to not trigger useless recalculations
     (cond
-     ((or (string? label) (glC:image? label)) (view! foreground: (label!)))
+     ((or (string? label) (glC:image? label))
+      (label! text: label)
+      (view! foreground: (label!)))
      ((procedure? label)
       (let* ((cached
               (macro-memoize:2->1
@@ -692,6 +693,7 @@
                (macro-alway-true-comparsion) equal?))
              (check! (lambda (update!) (cached update! (label)))))
         (view! foreground: (label! check! (list "guide-button" label)))))
+     ((guide-payload? label) (view! foreground: (guide-payload-on-redraw label)))
      (else (error "invalid label" guide-button label)))
     (when background
       (view!
