@@ -833,6 +833,7 @@
          (in (current-guide-gui-interval))
          (font (guide-select-font size: 'medium))
          (label #f) (label-string (lambda (value) (if (string? value) value (object->string value))))
+         label-properties
          (line-height 20)
          (keypad guide-keypad/default)
          (on-key
@@ -882,9 +883,13 @@
            (label! vertical-align: vertical-align)
            (label! font: font)
            (label! color: color)
+           (label! text: (label-string label))
+           (when (pair? label-properties)
+             (for-each
+              (lambda (setting) (apply label! setting))
+              label-properties))
            (label! size: width line-height)
            (label! position: xsw (- yno line-height+border))
-           (label! text: (label-string label))
            (label!))))
        (edit-position
         (let ((yno (ceiling (- yno title-height))))
