@@ -304,12 +304,14 @@
              (round (+ ysw (* (+ (- (- rows 1) current-line-number) row-display-offset) line-height))))
             (label! text: "|")
             (let ((draw
-                   (if (eq? (guide-focus) this-payload) ;; blink
+                   (if #t ;; blink
                        (let ((on (label!)))
                          (lambda ()
                            (let* ((n0 ##now)
                                   (n0f (floor n0)))
-                             (when (< (- n0 n0f) 1/2) (on)))))
+                             (when (and (eq? (guide-focus) this-payload)
+                                        (< (- n0 n0f) 1/2))
+                               (on)))))
                        (label!))))
               (set! cursor-draw draw)))))
 
