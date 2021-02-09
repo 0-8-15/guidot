@@ -933,7 +933,7 @@
              data: data)
           (if control-receiver
               (set! lines-control! (control-receiver ctrl))
-              (set! lines-control! ctrl))
+              (set! lines-control! (lambda (event x y) (data (ctrl 'text)))))
           pl))
        (edit-area-positioned-view
         (let ((view! (MATURITY+2:make-guide-bg+fg-view)))
@@ -969,7 +969,7 @@
              ((guide-payload-contains/xy? lines x y)
               (guide-event-dispatch-to-payload rect line event x y))
              ((and lines-control! title (> y (- yno line-height+border)) (eqv? event EVENT_BUTTON1DOWN))
-              (data (lines-control! 'display)))))
+              (lines-control! event x y))))
            ((eqv? event EVENT_KEYPRESS)
             (guide-focus lines)
             (let ((v (on-key press: (%%guide:legacy-keycode->guide-keycode x))))
