@@ -434,6 +434,24 @@
              display: (lambda (c p) (display (integer->char c) p)))
             (if (null? more) (get-output-string port))))
          ((text) (ggb2d-copy value-buffer))
+         ((text:)
+          (let ((value
+                 (if (null? more)
+                     (error "argument required to keyword 'text:'" 'textarea-payload)
+                     (car more))))
+            (cond
+             ((or (ggb2d? value) (u32vector? value))
+              (cond
+               ((ggb2d? value) (set! value-buffer value))
+               ((u32vector? value)
+                (let ((buffer (make-ggb2d size: rows)))
+                  (guide-linebreak-unicodevector! buffer value font text-width)
+                  (set! value-buffer buffer))))
+              (update-value-views!)
+              (update-current-line!)
+              (fix-value-draw!)
+              (update-cursor!))
+             (else (error "" 'textarea-payload text: value)))))
          (else (error "invalid command key" 'guide-textarea-payload key)))))))
 
 (define (make-figure-list-payload
