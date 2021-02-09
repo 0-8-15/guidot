@@ -1042,6 +1042,7 @@
        (value-draw (value!))
 
        (cursor-draw #f)
+       (this-payload 'none)
        (update-cursor!
         ;; TBD: this is a bit overly simple and needlessly expensive
         ;; at runtime
@@ -1075,7 +1076,9 @@
                          (lambda ()
                            (let* ((n0 ##now)
                                   (n0f (floor n0)))
-                             (when (< (- n0 n0f) 1/2) (on)))))
+                             (when (and (eq? (guide-focus) this-payload)
+                                        (< (- n0 n0f) 1/2))
+                               (on)))))
                        (label!))))
               (set! cursor-draw draw)))))
 
@@ -1115,9 +1118,12 @@
             (on-key release: (%%guide:legacy-keycode->guide-keycode x)))
            (else (mdvector-rect-interval-contains/xy? in x y))))))
     (update-cursor!)
-    (make-guide-payload
-     name: 'guide-line-input in: in widget: #f
-     on-redraw: redraw! on-any-event: events lifespan: 'ephemeral)))
+    (let ((result ;; a letrec* on `this-payload`
+           (make-guide-payload
+            name: 'guide-line-input in: in widget: #f
+            on-redraw: redraw! on-any-event: events lifespan: 'ephemeral)))
+      (set! this-payload result)
+      result)))
 
 (include "calculator.scm")
 
