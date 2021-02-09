@@ -121,6 +121,16 @@
 
 (define guide-terminate-on-key (make-parameter EVENT_KEYESCAPE))
 
+(define guide-focus
+  (let ((guide-focus #f))
+    (case-lambda
+     (() guide-focus)
+     ((value)
+      (cond
+       ((or (not value) (guide-payload? value))
+        (set! guide-focus value))
+       (else "invalid payload" guide-focus value))))))
+
 (define guide-meta-menu (make-parameter #f))
 (define MATURITY+4:%%guide-overlay ;; note: keeping %%-prefix as this
                                    ;; might be debug only!
@@ -210,11 +220,19 @@
        ((eq? event EVENT_IDLE)
         (thread-yield!)
         #t)
-       ;; (check-magic-keys gui t x y)
-       ((and (fx= event EVENT_KEYPRESS)
-             (let ((termkey (guide-terminate-on-key)))
-               (and termkey (fx= x termkey))))
-        (terminate))
+       ((or (eq? event EVENT_KEYPRESS) (eq? event EVENT_KEYRELEASE))
+        (cond
+         ((and ;; (check-magic-keys gui t x y)
+           (let ((termkey (guide-terminate-on-key)))
+             (and termkey (eqv? x termkey))))
+          (terminate))
+         ((guide-focus) =>
+          (lambda (payload) ;; redirecting to focus payload here
+            (reset-wait!)
+            (kick! (lambda () (guide-event-dispatch-to-payload rect payload event x y)))))
+         (else
+          (reset-wait!)
+          (kick! (lambda () (guide-event-dispatch-to-payload rect payload event x y))))))
        (else
         (reset-wait!)
         (kick! (lambda () (guide-event-dispatch-to-payload rect payload event x y))))))
