@@ -275,15 +275,19 @@
                  (line-point (ggb-point line-buffer))
                  (width-before 0)
                  (width-total
-                  (let loop ((w 0))
+                  (let loop ((w 0) (count 0))
                     (ggb-for-each
                      line-buffer
                      (lambda (i c)
                        (if (eqv? i line-point) (set! width-before w))
                        (let ((glyph (MATURITY+1:ln-ttf:font-ref font c)))
                          (if glyph (set! w (+ w (ttf:glyph-advancex glyph)))))))
-                    (when (>= w (- text-width 3))
-                      ;; The -3 is rather arbitrary - helps to see the cursor
+                    (when (and (>= w (- text-width 3))
+                               ;; The -3 is rather arbitrary - helps
+                               ;; to see the cursor but might break
+                               ;; the logic, hence we break the loop.
+                               (< count 3))
+                      (debug 'Libreak (list current-line-number: current-line-number w: w))
                       (linebreak-again!)
                       (update-current-line!)
                       (let ((new-curlinlen (ggb-length current-line)))
@@ -296,7 +300,7 @@
                       (set! line-buffer current-line)
                       (set! line-point (ggb-point line-buffer))
                       (set! width-before 0)
-                      (loop 0))
+                      (loop 0 (+ count 1)))
                     w))
                  (label! (make-guide-label-view)))
             (begin ;; must come after linebreak-again!
