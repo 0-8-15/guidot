@@ -141,6 +141,8 @@
 
 (define (guide-textarea-payload
 ;;; TBD: maybe switch to use glyphvectors
+;;;
+;;; This is a bit of grown up code; maybe rewrite.
          #!key
          (in (current-guide-gui-interval))
          (font (guide-select-font size: 'medium))
@@ -153,16 +155,6 @@
          (size 'small)
          (color (guide-select-color-2))
          (hightlight-color (guide-select-color-4)))
-  (define (%%MATURITY-2:value-buffer->string ggb #!optional (start 0) (end (ggb-length ggb)))
-    (let ((result (make-string (- end start))))
-      (ggb-for-each ggb (lambda (i v) (string-set! result i (integer->char v))) start end)
-      result))
-  (define (%%value-buffer->string ggb #!optional (start 0) (end (ggb-length ggb)))
-    (u8vector->string
-     (call-with-output-u8vector
-      '(char-encoding: UTF-8)
-      (lambda (port)
-        (ggb-for-each ggb (lambda (i v) (display (integer->char c) port)) start end)))))
   (unless (and (eqv? (mdvector-interval-lower-bound in 0) 0)
                (eqv? (mdvector-interval-lower-bound in 1) 0))
     (error "area not zero based" guide-textarea-payload))
@@ -232,7 +224,7 @@
                 (label!
                  text:
                  (if (< j used-rows)
-                     (%%value-buffer->string (%%ggb2d-row-ref value-buffer j))
+                     (ggb->vector (%%ggb2d-row-ref value-buffer j))
                      "")))))))
        (value-draw #f)
        (fix-value-draw!
@@ -271,9 +263,7 @@
             (let ((line-point (+ current-line-number 1)))
               (cond
                ((or (> line-point rows) (<= line-point row-display-offset))
-                (set! row-display-offset (max 0 (- line-point rows)))
-                (update-value-views!)
-                (fix-value-draw!)))))))
+                (set! row-display-offset (max 0 (- line-point rows)))))))))
 
        (cursor-draw #f)
        (this-payload #f)
@@ -285,15 +275,33 @@
                  (line-point (ggb-point line-buffer))
                  (width-before 0)
                  (width-total
-                  (let ((w 0))
+                  (let loop ((w 0))
                     (ggb-for-each
                      line-buffer
                      (lambda (i c)
                        (if (eqv? i line-point) (set! width-before w))
                        (let ((glyph (MATURITY+1:ln-ttf:font-ref font c)))
                          (if glyph (set! w (+ w (ttf:glyph-advancex glyph)))))))
+                    (when (>= w (- text-width 3))
+                      ;; The -3 is rather arbitrary - helps to see the cursor
+                      (linebreak-again!)
+                      (update-current-line!)
+                      (let ((new-curlinlen (ggb-length current-line)))
+                        (when (> line-point new-curlinlen) ;; current word was wrapped
+                          (ggb2d-goto! value-buffer position: 'relative row: 1)
+                          (ggb2d-goto!
+                           value-buffer position: 'absolute
+                           col: (- line-point new-curlinlen))
+                          (update-current-line!)))
+                      (set! line-buffer current-line)
+                      (set! line-point (ggb-point line-buffer))
+                      (set! width-before 0)
+                      (loop 0))
                     w))
                  (label! (make-guide-label-view)))
+            (begin ;; must come after linebreak-again!
+              (update-value-views!)
+              (fix-value-draw!))
             (if (eqv? current-line-length line-point)
                 (set! width-before width-total))
             (label! horizontal-align: horizontal-align)
@@ -354,16 +362,11 @@
                        (ggb-insert-sequence! current-line (ggb->vector next))
                        (ggb-goto! current-line line-point)
                        (ggb2d-delete-row! value-buffer 1)
-                       (begin
-                         (linebreak-again!)
-                         (update-value-views!)
-                         (update-current-line!)
-                         (fix-value-draw!)
-                         (update-cursor!))))))
+                       (linebreak-again!)
+                       (update-cursor!)))))
                   (else
                    (ggb-delete! current-line 1)
-                   (value! text: (%%value-buffer->string current-line))
-                   (fix-value-draw!)
+                   (value! text: (ggb->vector current-line))
                    (update-cursor!)))))
               ((eqv? key EVENT_KEYBACKSPACE)
                (cond
@@ -378,15 +381,10 @@
                        (ggb-insert-sequence! before (ggb->vector current-line))
                        (ggb-goto! before col))
                      (ggb2d-delete-row! value-buffer -1)
-                     (begin
-                       (linebreak-again!)
-                       (update-value-views!)
-                       (fix-value-draw!)
-                       (update-cursor!))))))
+                     (update-cursor!)))))
                 (else
                  (ggb-delete! current-line -1)
-                 (value! text: (%%value-buffer->string current-line))
-                 (fix-value-draw!)
+                 (value! text: (ggb->vector current-line))
                  (update-cursor!))))
               ((eqv? key EVENT_KEYENTER)
                (let ((point (ggb-point current-line)))
@@ -398,17 +396,14 @@
                    (ggb->vector current-line)
                    (ggb->vector nextline)
                    (ggb2d-insert-row! value-buffer nextline)))
-               (update-value-views!)
-               (update-cursor!)
-               (fix-value-draw!))
+               (update-cursor!))
               ((char? key)
                (ggb-insert! current-line (char->integer key))
-               (begin
-                 ;; (linebreak-again!) ;; FIXME: should be wrong in last line
-                 ;; (update-value-views!)
-                 (update-cursor!))
-               (value! text: (%%value-buffer->string current-line))
-               (fix-value-draw!))
+               (when (and (not current-line-ends-in-newline)
+                          (eqv? (ggb-point current-line) (ggb-length current-line)))
+                 (linebreak-again!))
+               (value! text: (ggb->vector current-line))
+               (update-cursor!))
               (else (debug "ignored key" (list 'guide-line-input key))))))))
        (redraw! (lambda () (value-draw) (cursor-draw)))
        (events
