@@ -75,8 +75,14 @@
        (pin (call-with-input-file filename (lambda (port) (read-line port #f))))))
    encode: #f save:
    (lambda (old)
-     (call-with-output-file filename
-       (lambda (port) (display (pin) port))))))
+     (let ((data (pin)))
+       (cond
+        ((u8vector? data)
+         (call-with-output-file filename
+           (lambda (port) (##write-subu8vector data 0 (##u8vector-length data) port))))
+        (else
+         (call-with-output-file filename
+           (lambda (port) (display (pin) port)))))))))
 
 (utf8string->unicode:on-encoding-error 'replace)
 
