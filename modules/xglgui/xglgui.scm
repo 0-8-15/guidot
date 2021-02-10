@@ -153,10 +153,16 @@
          (size 'small)
          (color (guide-select-color-2))
          (hightlight-color (guide-select-color-4)))
-  (define (%%value-buffer->string ggb #!optional (start 0) (end (ggb-length ggb)))
+  (define (%%MATURITY-2:value-buffer->string ggb #!optional (start 0) (end (ggb-length ggb)))
     (let ((result (make-string (- end start))))
       (ggb-for-each ggb (lambda (i v) (string-set! result i (integer->char v))) start end)
       result))
+  (define (%%value-buffer->string ggb #!optional (start 0) (end (ggb-length ggb)))
+    (u8vector->string
+     (call-with-output-u8vector
+      '(char-encoding: UTF-8)
+      (lambda (port)
+        (ggb-for-each ggb (lambda (i v) (display (integer->char c) port)) start end)))))
   (unless (and (eqv? (mdvector-interval-lower-bound in 0) 0)
                (eqv? (mdvector-interval-lower-bound in 1) 0))
     (error "area not zero based" guide-textarea-payload))
@@ -933,12 +939,18 @@
              data: data)
           (if control-receiver
               (set! lines-control! (control-receiver ctrl))
-              (set! lines-control! (lambda (event x y) (data (ctrl 'text)))))
+              (set! lines-control!
+                    (lambda (event x y)
+                      (let ((in (data)))
+                        (cond
+                         ((string? in) (data (ctrl 'display)))
+                         (else (data (ctrl 'text))))))))
           pl))
        (edit-area-positioned-draw #f)
        (edit-area-positioned-view
         (let ((view! (MATURITY+2:make-guide-bg+fg-view)))
           (view! foreground: (guide-payload-on-redraw lines))
+          (view! size: width (* rows line-height))
           (view! position: (vector-ref edit-position 0) (vector-ref edit-position 1))
           (set! edit-area-positioned-draw (view!))
           view!))
