@@ -90,23 +90,79 @@
   ;; TBD: check parameters
   (ggb2d-for-each (lambda (obj) (display obj port)) obj))
 
-(define (ggb2d->string obj)
-  (call-with-output-string
-   (lambda (port)
-     (ggb2d-display-value-on-port
-      obj port
-      display:
-      (lambda (c p)
-        (cond
-         ((##fx< c 128)
-          (display (##integer->char c) p))
-         ((##fx< c 2048)
-          (display (##integer->char (##fxior (##fxarithmetic-shift-right c 6) 192)) p)
-          (display (##integer->char (##fxior (##fxand c 63) 128)) p))
-         (else
-          (display (##integer->char (##fxior (##fxarithmetic-shift-right c 12) 224)) p)
-          (display (##integer->char (##fxior (##fxand (##fxarithmetic-shift-right c 6) 63) 128)) p)
-          (display (##integer->char (##fxior (##fxand c 63) 128)) p))))))))
+(define (ggb2d->string/encoding-utf8 obj)
+  ;; Beware: UTF8 encoding *within* gambit strings seems questionable.
+  (let* ((len (ggb2d-total-length obj))
+         (i 0)
+         (n 0)
+         (result (make-string len)))
+    (define (shift!)
+      (set! i (+ i 1))
+      (when (and (eqv? i (##string-length result))
+                 (##fx< n len))
+        (let ((replacement (make-string (* 2 (##string-length result)))))
+          (substring-move! result 0 i replacement 0)
+          (set! result replacement))))
+    (ggb2d-for-each
+     (lambda (c)
+       (set! n (+ n 1))
+       (cond
+        ((##fx< c 128)
+         (##string-set! result i (##integer->char c))
+         (shift!))
+        ((##fx< c 2048)
+         (##string-set! result i (##integer->char (##fxior (##fxarithmetic-shift-right c 6) 192)))
+         (shift!)
+         (##string-set! result i (##integer->char (##fxior (##fxand c 63) 128)))
+         (shift!))
+        (else
+         (##string-set! result i (##integer->char (##fxior (##fxarithmetic-shift-right c 12) 224)))
+         (shift!)
+         (##string-set! result i (##integer->char (##fxior (##fxand (##fxarithmetic-shift-right c 6) 63) 128)))
+         (shift!)
+         (##string-set! result i (##integer->char (##fxior (##fxand c 63) 128)))
+         (shift!))))
+     obj)
+    (if (< i (##string-length result)) (substring result 0 i) result)))
+
+(define ggb2d->string ggb2d->string/encoding-utf8)
+
+(define (ggb2d->u8vector obj #!key (encoding 'UTF-8))
+  (unless (ggb2d? obj) (error "invalid ggb2d" ggb2d->u8vector obj))
+  (unless (or (eq? encoding 'UTF-8) (eq? encoding 'utf-8))
+    (error "only UTF-8 encoding supported" ggb2d->u8vector encoding))
+  (let* ((len (ggb2d-total-length obj))
+         (i 0)
+         (n 0)
+         (result (make-u8vector len)))
+    (define (shift!)
+      (set! i (+ i 1))
+      (when (and (eqv? i (##u8vector-length result))
+                 (##fx< n len))
+        (let ((replacement (make-string (* 2 (####u8vector-length result)))))
+          (sub##u8vector-move! result 0 i replacement 0)
+          (set! result replacement))))
+    (ggb2d-for-each
+     (lambda (c)
+       (set! n (+ n 1))
+       (cond
+        ((##fx< c 128)
+         (##u8vector-set! result i (##integer->char c))
+         (shift!))
+        ((##fx< c 2048)
+         (##u8vector-set! result i (##integer->char (##fxior (##fxarithmetic-shift-right c 6) 192)))
+         (shift!)
+         (##u8vector-set! result i (##integer->char (##fxior (##fxand c 63) 128)))
+         (shift!))
+        (else
+         (##u8vector-set! result i (##integer->char (##fxior (##fxarithmetic-shift-right c 12) 224)))
+         (shift!)
+         (##u8vector-set! result i (##integer->char (##fxior (##fxand (##fxarithmetic-shift-right c 6) 63) 128)))
+         (shift!)
+         (##u8vector-set! result i (##integer->char (##fxior (##fxand c 63) 128)))
+         (shift!))))
+     obj)
+    (if (< i (##u8vector-length result)) (##subu8vector result 0 i) result)))
 
 (define (ggb2d-insert-row! ggb2d #!optional (line (make-ggb)))
   (unless (ggb? line) (error "invalid argument" ggb2d-insert-row! line))
