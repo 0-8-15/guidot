@@ -91,11 +91,13 @@
   (ggb2d-for-each (lambda (obj) (display obj port)) obj))
 
 (define (ggb2d->string obj)
-  (call-with-output-string
-   (lambda (port)
-     (ggb2d-display-value-on-port
-      obj port
-      display: (lambda (c p) (display (integer->char c) p))))))
+  (u8vector->string
+   (call-with-output-u8vector
+    '(char-encoding: UTF-8)
+    (lambda (port)
+      (ggb2d-display-value-on-port
+       obj port
+       display: (lambda (c p) (display (integer->char c) p)))))))
 
 (define (ggb2d-insert-row! ggb2d #!optional (line (make-ggb)))
   (unless (ggb? line) (error "invalid argument" ggb2d-insert-row! line))
