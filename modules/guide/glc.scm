@@ -945,11 +945,17 @@
          (indicator-space 32)
          (indicator-return 13)
          (indicator-newline 10)
+         (padding-right #f)
          )
   ;; TBD: use ggb2d-procedures (which where late in the game).
   (MATURITY -2 "BEWARE DoS: overly expensive, especially for crafted input (e.g., sequences of zeros)"
             loc: guide-linebreak-unicodevector!)
-  (let* ((lines (ggb2d-lines into))
+  (let* ((width
+          (- width
+             (if padding-right padding-right
+                 (let ((glyph (MATURITY+1:ln-ttf:font-ref font #\|)))
+                   (if glyph (ttf:glyph-advancex glyph) 3)))))
+         (lines (ggb2d-lines into))
          (current-line
           (and
            (> (ggb-length lines) 0)
