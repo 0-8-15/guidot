@@ -44,7 +44,7 @@
          (save
           (lambda old-pin-values
             ;; default: fail on encode before damaging the file
-            (let ((content (apply encode pins)))
+            (let ((content (apply encode (if (pair? pins) pins (list pins)))))
               (unless (u8vector? content)
                 (error "defaut `save` expects u8vector"
                        wire-persistent-file! filename pins content))
