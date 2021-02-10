@@ -432,24 +432,7 @@
      ;; control procedure
      (lambda (key . more)
        (case key
-         ((display)
-          (let ((port (if (pair? more) (car more) (open-output-string))))
-            (unless (output-port? port)
-              (error "invalid arguments" 'guide-textarea-payload key more))
-            (ggb2d-display-value-on-port
-             value-buffer port
-             display:
-             (lambda (c p)
-               (cond ((##fx< c 128)
-                      (display (##integer->char c) p))
-                     ((##fx< c 2048)
-                      (display (##integer->char (##fxior (##fxarithmetic-shift-right c 6) 192)) p)
-                      (display (##integer->char (##fxior (##fxand c 63) 128)) p))
-                     (else
-                      (display (##integer->char (##fxior (##fxarithmetic-shift-right c 12) 224)) p)
-                      (display (##integer->char (##fxior (##fxand (##fxarithmetic-shift-right c 6) 63) 128)) p)
-                      (display (##integer->char (##fxior (##fxand c 63) 128)) p)))))
-            (if (null? more) (get-output-string port))))
+         ((string) (ggb2d->string/encoding-utf8 value-buffer))
          ((text) (ggb2d-copy value-buffer))
          ((text:)
           (let ((value
@@ -952,7 +935,7 @@
                     (lambda (event x y)
                       (let ((in (data)))
                         (cond
-                         ((string? in) (data (ctrl 'display)))
+                         ((string? in) (data (ctrl 'string)))
                          (else (data (ctrl 'text))))))))
           pl))
        (edit-area-positioned-draw #f)
