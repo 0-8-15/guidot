@@ -322,6 +322,16 @@
     (define (text-set! str)
       (set! label str)
       (cond
+       ((vector? str)
+        (if (eqv? (vector-length str) 0) (set! label #f))
+        (set! glyphs (and label font (MATURITY-1:vector->guide-glyphvector str font)))
+        (let ((targets
+               (and glyphs
+                    (let ((w (if padding (- w (+ (vector-ref padding 1) (vector-ref padding 3))) w))
+                          (h (if padding (- h (+ (vector-ref padding 0) (vector-ref padding 2))) h)))
+                      (MATURITY+1:glC:glyphvector->render00 0 0 w h glyphs (fgcolora))))))
+          (set! foreground targets))
+        #!void)
        ((or (string? str) (not str))
         (set! glyphs (and label font (utf8string->guide-glyphvector label font)))
         (let ((targets
@@ -352,7 +362,8 @@
          (if (null? more) label
              (let ((thing (car more)))
                (cond
-                ((or (string? thing) (glC:image? thing)) (text-set! thing))
+                ((or (vector? thing) (glC:image? thing) (string? thing))
+                 (text-set! thing))
                 ((or (procedure? thing) (not thing))
                  (set! label #f)
                  (set! foreground thing))

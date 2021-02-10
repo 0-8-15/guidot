@@ -811,6 +811,22 @@
       ((eqv? to end))
     (vector-set! result to (MATURITY+1:ln-ttf:font-ref font (vector-ref source from)))))
 
+(define (MATURITY-1:vector->guide-glyphvector vec font)
+  ;; TBD: don't store the source in the glyphvector; useless overhead.
+  (let* ((len (vector-length vec))
+         (rng (range (vector len glyphvector-columns)))
+         (vol (range-volume rng))
+         (result (make-vector vol)))
+    (subvector-move! vec 0 len result 0) ;; row 0: u32 unicode
+    (let ((end (+ len len)))
+      (macro-MATURITY+2:vector-fill-glyphs-from-unicodevector!
+       result
+       len ;; row 1: glyphs
+       end
+       vec 0
+       font))
+    (make-mdvector rng result (%%glyphvector-tag))))
+
 (define (MATURITY+0:utf8string->guide-glyphvector str font)
   (unless (ln-ttf:font? font) (error "not a font" 'utf8string->glyphvector))
   ;; convert UTF8 to unicode u32vector and glyph
