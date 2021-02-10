@@ -1006,8 +1006,8 @@
               (cond
                ((eqv? c indicator-space) ;; space TBD: introduce set of word breaking chars
                 (ggb-insert! current-word c)
-                (set! current-word-width (+ current-word-width gw))
-                (when (>= (+ next-word-width current-line-width) width)
+                (set! current-word-width next-word-width)
+                (when (>= (+ current-word-width current-line-width) width)
                   (push-line!))
                 (push-word!))
                (else
@@ -1021,10 +1021,10 @@
                   (unless (eqv? current-line-width 0)
                     (push-line!)
                     (ggb-insert! current-word c)
-                    (set! current-word-width (+ current-word-width gw))))
+                    (set! current-word-width next-word-width)))
                  (else
                   (ggb-insert! current-word c)
-                  (set! current-word-width (+ current-word-width gw))))))))))))))
+                  (set! current-word-width next-word-width)))))))))))))
 
 ;;*** glyph vector rendering (draft)
 
