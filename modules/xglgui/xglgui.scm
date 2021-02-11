@@ -525,6 +525,8 @@
            (< x (mdvector-interval-upper-bound in 0))
            (> y (mdvector-interval-lower-bound in 1))
            (< y (mdvector-interval-upper-bound in 1)))))
+  (unless (and (procedure? selection) (procedure? options))
+    (error "invalid arguments" make-tool-switch-payload/dropdown selection options))
   (let ((selection-area
          (or selection-area ;; garbage in garbage out
              (let* ((x0 (mdvector-interval-lower-bound in 0))
@@ -927,7 +929,13 @@
              color: color hightlight-color: hightlight-color
              data: data)
           (if control-receiver
-              (set! lines-control! (control-receiver ctrl))
+              (set! lines-control!
+                    (let ((call (control-receiver ctrl)))
+                      (if (procedure? call) call
+                          (begin
+                            (MATURITY -1 "control-receiver should return #f or procedure"
+                                      loc: guide-textarea-edit call)
+                            #f))))
               (set! lines-control!
                     (lambda (event x y)
                       (let ((in (data)))
