@@ -16,8 +16,10 @@
            (rng (range ie))
            (a0 (make-u32vector ie))
            (a0i (mdv-indexer rng ie)))
-      ;; TBD: optimize initialization, for now we use the pre-tested
-      ;; code as is, no matter how expesinve the overhead is.
+      ;; FIXME: optimize initialization, for now we use the pre-tested
+      ;; code as is, no matter how expensive the overhead is.  However
+      ;; processing 40M file rund out of memory on 8GB memory
+      ;; consumption.
       (do ((o o0 (fx+ o 1))
            (codepoints
             (begin
