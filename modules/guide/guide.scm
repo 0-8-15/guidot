@@ -932,9 +932,10 @@
   (define (post-key pat)
     (lambda (rect payload event x y)
       (%%guide-post-key-event pat)))
-  (define (keybutton in c #!key (label (string c)) (color color) (background #f) (background-color background-color) (vertical-align 'center))
+  (define (keybutton in c #!key (label (string c)) (color color) (background #f) (background-color background-color) (vertical-align 'center) (padding '#(1 1 1 1)))
     (guide-button
      in: in label: label color: color font: font
+     padding: padding
      background: background background-color: background-color guide-callback: (post-key c)))
   (define (keypane rng spec-vector switch)
     (let* ((len (range-volume rng))
@@ -944,25 +945,25 @@
       (do ((i 0 (fx+ i 1)))
           ((eqv? i len))
         (let ((pat (vector-ref spec-vector (+ i start))))
-          (when (not (boolean? pat))
-            (vector-set!
-             constructors i
-             (lambda (in col row)
-               (cond
-                ((char? pat) (keybutton in pat))
-                ((and (fixnum? pat) (positive? pat)) (keybutton in pat))
-                ((pair? pat)
+          (vector-set!
+           constructors i
+           (if (boolean? pat) pat
+               (lambda (in col row)
                  (cond
-                  ((symbol? (car pat))
-                   (and switch
-                        (apply
-                         guide-button in: in
-                         guide-callback: (let ((key (car pat))) (lambda (rect payload event x y) (switch key)))
-                         color: color font: font
-                         background: background background-color: background-color
-                         (cdr pat))))
-                  (else (apply keybutton in pat))))
-                (else (error "invalid key spec" guide-make-keypad pat))))))))
+                  ((char? pat) (keybutton in pat))
+                  ((and (fixnum? pat) (positive? pat)) (keybutton in pat))
+                  ((pair? pat)
+                   (cond
+                    ((symbol? (car pat))
+                     (and switch
+                          (apply
+                           guide-button in: in
+                           guide-callback: (let ((key (car pat))) (lambda (rect payload event x y) (switch key)))
+                           color: color font: font
+                           background: background background-color: background-color
+                           (cdr pat))))
+                    (else (apply keybutton in pat))))
+                  (else (error "invalid key spec" guide-make-keypad pat))))))))
       (make-guide-table
        (make-mdvector (range (vector (range-size rng 0) (range-size rng 1))) constructors)
        in: area)))
