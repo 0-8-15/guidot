@@ -262,7 +262,9 @@
               (ggb-goto-left! current-line))
             (let ((line-point (+ current-line-number 1)))
               (cond
-               ((or (> line-point rows) (<= line-point row-display-offset))
+               ((<= line-point row-display-offset)
+                (set! row-display-offset (max 0 current-line-number)))
+               ((> line-point rows)
                 (set! row-display-offset (max 0 (- line-point rows)))))))))
 
        (cursor-draw #f)
@@ -446,7 +448,7 @@
               (update-current-line!)
               (fix-value-draw!)
               (update-cursor!))
-             (else (error "" 'textarea-payload text: value)))))
+             (else (error "unhandled text representation" 'textarea-payload text: value)))))
          (else (error "invalid command key" 'guide-textarea-payload key)))))))
 
 (define (make-figure-list-payload
