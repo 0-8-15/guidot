@@ -271,6 +271,15 @@
           ((eqv? i (##vector-length spec)))
         ((##vector-ref spec i)))))))
 
+(define (%%guide-make-redraw/check spec)
+  (cond
+   ((vector? spec)
+    (lambda ()
+      (do ((i 0 (fx+ i 1))) ;; draw background first
+          ((eqv? i (##vector-length spec)))
+        (let ((draw (##vector-ref spec i)))
+          (and (procedure? draw) (draw))))))))
+
 (define (guide-event-dispatch-to-payload/redraw payload)
   (let ((redraw (guide-payload-on-redraw payload)))
     (cond
