@@ -538,7 +538,7 @@
   (cond
    ((f32vector? scale)
     (glScalef//checks (f32vector-ref scale 0) (f32vector-ref scale 1) (f32vector-ref scale 2)))
-   ((procedure? shft) (shft)))
+   ((procedure? scale) (scale)))
   (cond
    ((f32vector? shft)
     (glTranslatef//checks (f32vector-ref shft 0) (f32vector-ref shft 1) (f32vector-ref shft 2)))
@@ -1168,10 +1168,11 @@
          (targets (mdvector-body targets)))
     (do ((i 0 (fx+ i 1)))
         ((eqv? i limit))
-      (let ((j (fx+ o0 (fx* i vol0))))
+      (let ((j (##fx+ o0 (##fx* i vol0))))
         (let ((texture (##vector-ref targets (fx+ j 2))))
           (when texture
             (let ((vertices (##vector-ref targets (fx+ j 0)))
+                  (scale #f)
                   (shift (##vector-ref targets (fx+ j 1)))
                   (rot #f))
               ;; (when texture (MATURITY +1 "texture found after rendering" loc: 'glC:render-target-mdv!))
@@ -1187,10 +1188,12 @@
               (let ((needs-matrix (or scale shift rot)))
                 ;; inline of: (glC:TextureDrawGlArrays texture vertices scale shift rot)
                 (when needs-matrix (glPushMatrix))
+                #|
                 (cond
                  ((f32vector? scale)
                   (glScalef//checks (##f32vector-ref scale 0) (##f32vector-ref scale 1) (##f32vector-ref scale 2)))
-                 ((procedure? shift) (shift)))
+                 ((procedure? scale) (scale)))
+                |#
                 (cond
                  ((f32vector? shift)
                   (glTranslatef//checks (##f32vector-ref shift 0) (##f32vector-ref shift 1) (##f32vector-ref shift 2)))
