@@ -244,3 +244,21 @@
           (let ((cl (ggb-ref rows row)))
             (if (>= col (ggb-length cl)) (fail "column out of range" ggb2d-ref row col)
                 (ggb-ref cl col))))))))
+
+(define (ggb2d-load-file name)
+  ;; TBD: try to optimize, loading 40MB takes 30'' wall clock time.
+  (call-with-input-file name
+    (lambda (port)
+      (let ((result (make-ggb2d))
+            (line (make-ggb)))
+        (do ((c (read-char port) (read-char port)))
+            ((eof-object? c)
+             (unless (eqv? (ggb-point line) 0)
+               (ggb2d-insert-row! result line))
+             (ggb2d-goto! result position: 'absolute row: 0 col: 0)
+             result)
+          (unless (eqv? c #\return)
+            (ggb-insert! line (char->integer c)))
+          (when (eqv? c #\newline)
+            (ggb2d-insert-row! result line)
+            (set! line (make-ggb))))))))
