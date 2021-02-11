@@ -245,9 +245,16 @@
             (if (>= col (ggb-length cl)) (fail "column out of range" ggb2d-ref row col)
                 (ggb-ref cl col))))))))
 
-(define (ggb2d-load-file name)
+(define (ggb2d-load-file name #!optional (char-encoding 'UTF-8))
   ;; TBD: try to optimize, loading 40MB takes 30'' wall clock time.
-  (call-with-input-file name
+  (call-with-input-file
+      `(path:
+        ,name
+        char-encoding: ,char-encoding
+        ;; The 'lf eol-encoding is the only one that
+        ;; does not make changes to serialization of
+        ;; "\r", "\n" or "\r\n".
+        eol-encoding: lf)
     (lambda (port)
       (let ((result (make-ggb2d))
             (line (make-ggb)))
