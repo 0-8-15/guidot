@@ -1166,9 +1166,11 @@
            ((vertical) 2)
            ((topdown) -2)
            (else (error "unknown direction" 'guide-ggb-layout direction))))
-        (lower-left-x (mdvector-interval-lower-bound area 0))
+        (lower-bound-x0 (mdvector-interval-lower-bound area 0))
         (upper-bound-y (mdvector-interval-upper-bound area 1))
-        (lower-bound-y (mdvector-interval-lower-bound area 1)))
+        (lower-bound-y0 (mdvector-interval-lower-bound area 1)))
+    (define lower-bound-x lower-bound-x0)
+    (define lower-bound-y lower-bound-y0)
     (define (make-drawing)
       (let ((offset
              (case direction
@@ -1205,16 +1207,19 @@
                   (set! offset (- offset height))
                   (view! position: 0 (+ lower-bound-y offset)))
                  (else
-                  (view! position: (+ lower-left-x offset) lower-bound-y)
+                  (view! position: (+ lower-bound-x0 offset) lower-bound-y)
                   ;; update running
                   (set! offset (+ offset width))))
                (vector-set! result i (view!))))))
         (%%guide-make-redraw result)))
     (define redraw!
       (let ((last-content (ggb->vector buffer))
+            (last-lower-bound-y lower-bound-y)
             (last (make-drawing)))
         (lambda ()
-          (let ((changed (not (eqv? (vector-length last-content) (ggb-length buffer)))))
+          (let ((changed
+                 (or (not (eqv? last-lower-bound-y lower-bound-y))
+                     (not (eqv? (vector-length last-content) (ggb-length buffer))))))
             (unless changed
               (ggb-for-each
                buffer
@@ -1225,63 +1230,96 @@
               (set! last-content (ggb->vector buffer))
               (set! last (make-drawing))))
           (last))))
-    (define (events rect payload event x y)
-      (let ((area (guide-payload-measures payload)))
-        (cond
-         ((not (mdvector-rect-interval-contains/xy? area x y)) #f)
-         ((or (eqv? event EVENT_KEYPRESS) (eqv? event EVENT_KEYRELEASE))
-          (and on-key (on-key press: (%%guide:legacy-keycode->guide-keycode x))))
-         (else
-          (let ((offset
-                 (case direction
-                   ((-2) upper-bound-y)
-                   (else 0)))
-                (hit #f))
-            (ggb-for-each
-             buffer ;; TBD: this pass is almost cacheable
-             (lambda (i v)
-               (when (guide-payload? v)
-                 (let* ((interval (guide-payload-measures v))
-                        (xsw (mdvector-interval-lower-bound interval 0))
-                        (ysw (mdvector-interval-lower-bound interval 1))
-                        (xno (mdvector-interval-upper-bound interval 0))
-                        (yno (mdvector-interval-upper-bound interval 1))
-                        (width (fx- xno xsw))
-                        (height (fx- yno ysw)))
-                   ;; update running
-                   (case direction
-                     ((2) (set! offset (+ offset height)))
-                     ((-2) (set! offset (- offset height)))
-                     ((1) (set! offset (+ offset width))))))))
-            (ggb-for-each-rtl
-             buffer
-             (lambda (i v)
-               (when (and (not hit) (guide-payload? v))
-                 (let* ((interval (guide-payload-measures v))
-                        (xsw (mdvector-interval-lower-bound interval 0))
-                        (ysw (mdvector-interval-lower-bound interval 1))
-                        (xno (mdvector-interval-upper-bound interval 0))
-                        (yno (mdvector-interval-upper-bound interval 1))
-                        (width (fx- xno xsw))
-                        (height (fx- yno ysw))
-                        (y0 y)
-                        (x (case direction
-                             ((1) (+ lower-left-x (+ width (- x offset))))
-                             (else x)))
-                        (y (case direction
-                             ((2) (- y lower-bound-y (- offset height)))
-                             ((-2)
-                              (- y offset))
-                             (else (- y lower-bound-y)))))
-                   (when (mdvector-rect-interval-contains/xy? interval x y)
-                     (set! hit #t)
-                     (guide-event-dispatch-to-payload rect v event x y))
-                   ;; update running
-                   (case direction
-                     ((2) (set! offset (- offset height)))
-                     ((-2) (set! offset (+ offset height)))
-                     ((1) (set! offset (- offset width))))))))
-            #t)))))
+    (define (pass-event! rect payload event x y)
+      (let ((offset
+             (case direction
+               ((-2) upper-bound-y)
+               (else 0)))
+            (hit #f))
+        (ggb-for-each
+         buffer ;; TBD: this pass is almost cacheable
+         (lambda (i v)
+           (when (guide-payload? v)
+             (let* ((interval (guide-payload-measures v))
+                    (xsw (mdvector-interval-lower-bound interval 0))
+                    (ysw (mdvector-interval-lower-bound interval 1))
+                    (xno (mdvector-interval-upper-bound interval 0))
+                    (yno (mdvector-interval-upper-bound interval 1))
+                    (width (fx- xno xsw))
+                    (height (fx- yno ysw)))
+               ;; update running
+               (case direction
+                 ((2) (set! offset (+ offset height)))
+                 ((-2) (set! offset (- offset height)))
+                 ((1) (set! offset (+ offset width))))))))
+        (ggb-for-each-rtl
+         buffer
+         (lambda (i v)
+           (when (and (not hit) (guide-payload? v))
+             (let* ((interval (guide-payload-measures v))
+                    (xsw (mdvector-interval-lower-bound interval 0))
+                    (ysw (mdvector-interval-lower-bound interval 1))
+                    (xno (mdvector-interval-upper-bound interval 0))
+                    (yno (mdvector-interval-upper-bound interval 1))
+                    (width (fx- xno xsw))
+                    (height (fx- yno ysw))
+                    (y0 y)
+                    (x (case direction
+                         ((1) (+ lower-bound-x0 (+ width (- x offset))))
+                         (else x)))
+                    (y (case direction
+                         ((2) (- y lower-bound-y (- offset height)))
+                         ((-2)
+                          (+ (- y offset) (- lower-bound-y0 lower-bound-y)))
+                         (else (- y lower-bound-y)))))
+               (when (mdvector-rect-interval-contains/xy? interval x y)
+                 (set! hit #t)
+                 (guide-event-dispatch-to-payload rect v event x y))
+               ;; update running
+               (case direction
+                 ((2) (set! offset (- offset height)))
+                 ((-2) (set! offset (+ offset height)))
+                 ((1) (set! offset (- offset width))))))))
+        #t))
+    (define events
+      ;; TBD: factor motion/shit handling out (copied here from
+      ;; `select` already.
+      (let ((armed #f) (armed-at #f) (motion-hyst 15))
+        (lambda (rect payload event x y)
+          (let ((area (guide-payload-measures payload)))
+            (cond
+             ((not (mdvector-rect-interval-contains/xy? area x y)) #f)
+             ((or (eqv? event EVENT_KEYPRESS) (eqv? event EVENT_KEYRELEASE))
+              (and on-key (on-key press: (%%guide:legacy-keycode->guide-keycode x))))
+             ((eqv? event EVENT_BUTTON1DOWN)
+              (set! armed (vector x y))
+              (set! armed-at armed)
+              #t)
+             ((eqv? event EVENT_BUTTON1UP)
+              (cond
+               ((eq? armed armed-at)
+                (pass-event! rect payload EVENT_BUTTON1DOWN x y)
+                (pass-event! rect payload event x y)))
+              (set! armed #f)
+              (set! armed-at #f)
+              #t)
+             ((and armed (eqv? event EVENT_MOTION))
+              (cond
+               (armed
+                (let* ((dx (- x (vector-ref armed-at 0)))
+                       (dy (- y (vector-ref armed-at 1))))
+                  (when (and (eq? armed armed-at)
+                             (> (sqrt (+ (* dx dx) (* dy dy))) ;; distance
+                                motion-hyst))
+                    (case direction
+                      ((1) (set! armed lower-bound-x))
+                      ((2 -2) (set! armed lower-bound-y))))
+                  (when (number? armed)
+                    (case direction
+                      ((1) (set! lower-bound-x (+ armed dx)))
+                      ((2 -2) (set! lower-bound-y (+ armed dy)))))))
+               (else #t)))
+             (else (pass-event! rect payload event x y)))))))
     (make-guide-payload
      in: area name: (vector 'guide-ggb-layout direction)
      widget: #f lifespan: 'ephemeral ;; TBD: change defaults here!
