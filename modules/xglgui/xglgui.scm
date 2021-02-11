@@ -1160,15 +1160,20 @@
   (unless (ggb? buffer) (error "arg1 ggb expected" 'guide-ggb-layout buffer))
   (let ((direction ;; direction: 0: z, 1: x, y: z...
          (case direction
-           ((0 1 2) direction)
+           ((0 1 2 -2) direction)
            ((layer) 0)
            ((horizontal) 1)
            ((vertical) 2)
+           ((topdown) -2)
            (else (error "unknown direction" 'guide-ggb-layout direction))))
         (lower-left-x (mdvector-interval-lower-bound area 0))
-        (lower-left-y (mdvector-interval-lower-bound area 1)))
+        (upper-bound-y (mdvector-interval-upper-bound area 1))
+        (lower-bound-y (mdvector-interval-lower-bound area 1)))
     (define (make-drawing)
-      (let ((offset 0)
+      (let ((offset
+             (case direction
+               ((-2) upper-bound-y)
+               (else 0)))
             (result (make-vector (ggb-length buffer) #f)))
         (ggb-for-each
          buffer
@@ -1182,7 +1187,7 @@
                     (width (fx- xno xsw))
                     (height (fx- yno ysw))
                     (view! (make-guide-label-view)))
-               ;; (view! size: width height) ;; TBD: Maybe we need this?
+               (view! size: width height) ;; TBD: Maybe we need this?
                (let ((draw (guide-payload-on-redraw v)))
                  (cond
                   ((procedure? draw) (view! foreground: draw))
@@ -1193,11 +1198,14 @@
                (case direction
                  ((0) #f)
                  ((2)
-                  (view! position: 0 (+ lower-left-y offset))
+                  (view! position: 0 (+ lower-bound-y offset))
                   ;; update running
                   (set! offset (+ offset height)))
+                 ((-2)
+                  (set! offset (- offset height))
+                  (view! position: 0 (+ lower-bound-y offset)))
                  (else
-                  (view! position: (+ lower-left-x offset) lower-left-y)
+                  (view! position: (+ lower-left-x offset) lower-bound-y)
                   ;; update running
                   (set! offset (+ offset width))))
                (vector-set! result i (view!))))))
@@ -1221,8 +1229,13 @@
       (let ((area (guide-payload-measures payload)))
         (cond
          ((not (mdvector-rect-interval-contains/xy? area x y)) #f)
+         ((or (eqv? event EVENT_KEYPRESS) (eqv? event EVENT_KEYRELEASE))
+          (and on-key (on-key press: (%%guide:legacy-keycode->guide-keycode x))))
          (else
-          (let ((offset 0)
+          (let ((offset
+                 (case direction
+                   ((-2) upper-bound-y)
+                   (else 0)))
                 (hit #f))
             (ggb-for-each
              buffer ;; TBD: this pass is almost cacheable
@@ -1238,35 +1251,36 @@
                    ;; update running
                    (case direction
                      ((2) (set! offset (+ offset height)))
+                     ((-2) (set! offset (- offset height)))
                      ((1) (set! offset (+ offset width))))))))
             (ggb-for-each-rtl
              buffer
              (lambda (i v)
                (when (and (not hit) (guide-payload? v))
-                 (cond
-                  ((or (eqv? event EVENT_KEYPRESS) (eqv? event EVENT_KEYRELEASE))
-                   (and on-key (on-key press: (%%guide:legacy-keycode->guide-keycode x))))
-                  (else
-                   (let* ((interval (guide-payload-measures v))
-                          (xsw (mdvector-interval-lower-bound interval 0))
-                          (ysw (mdvector-interval-lower-bound interval 1))
-                          (xno (mdvector-interval-upper-bound interval 0))
-                          (yno (mdvector-interval-upper-bound interval 1))
-                          (width (fx- xno xsw))
-                          (height (fx- yno ysw))
-                          (x (case direction
-                               ((1) (+ lower-left-x (+ width (- x offset))))
-                               (else x)))
-                          (y (case direction
-                               ((2) (- y lower-left-y (- offset height)))
-                               (else (- y lower-left-y)))))
-                     (when (mdvector-rect-interval-contains/xy? interval x y)
-                       (set! hit #t)
-                       (guide-event-dispatch-to-payload rect v event x y))
-                     ;; update running
-                     (case direction
-                       ((2) (set! offset (- offset height)))
-                       ((1) (set! offset (- offset width))))))))))
+                 (let* ((interval (guide-payload-measures v))
+                        (xsw (mdvector-interval-lower-bound interval 0))
+                        (ysw (mdvector-interval-lower-bound interval 1))
+                        (xno (mdvector-interval-upper-bound interval 0))
+                        (yno (mdvector-interval-upper-bound interval 1))
+                        (width (fx- xno xsw))
+                        (height (fx- yno ysw))
+                        (y0 y)
+                        (x (case direction
+                             ((1) (+ lower-left-x (+ width (- x offset))))
+                             (else x)))
+                        (y (case direction
+                             ((2) (- y lower-bound-y (- offset height)))
+                             ((-2)
+                              (- y offset))
+                             (else (- y lower-bound-y)))))
+                   (when (mdvector-rect-interval-contains/xy? interval x y)
+                     (set! hit #t)
+                     (guide-event-dispatch-to-payload rect v event x y))
+                   ;; update running
+                   (case direction
+                     ((2) (set! offset (- offset height)))
+                     ((-2) (set! offset (+ offset height)))
+                     ((1) (set! offset (- offset width))))))))
             #t)))))
     (make-guide-payload
      in: area name: (vector 'guide-ggb-layout direction)
