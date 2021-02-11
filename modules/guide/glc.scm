@@ -5,41 +5,63 @@
  (else ;; interactive load
   (define-macro (MATURITY l m . a) `(maturity-note ,l ,m ,@a))))
 
-(utf8string->unicode:on-encoding-error 'replace)
+(define (utf8string->ggb str #!optional (encoding-error #f))
+  (define (on-encoding-error i)
+    (cond
+     ((not encoding-error) #xfffd) ;; deliver replacement charater
+     ((procedure? encoding-error) (encoding-error str i)) ;; delegate to caller
+     (else (error "UTF8 encoding error" str i))))
+  (let* ((len (string-length str))
+         (result (make-ggb size: len)))
+    (do ((i 0 (fx+ i 1)))
+        ((eqv? i len) result)
+      (let* ((c (string-ref str i))
+             (c1 (char->integer c)))
+        (cond
+         ((fx< c1 #x80) (ggb-insert! result c1))
+         (else
+          (receive (size m1)
+            (cond
+             ((fx< c1 #x80) (values 1 #x7f))
+             ((fx< c1 #xe0) (values 2 #x0f))
+             ((fx< c1 #xf0) (values 3 #x0f))
+             ((fx< c1 #xf8) (values 4 #x07))
+             ((fx< c1 #xfc) (values 5 #x03))
+             (else (values 6 #x01)))
+            (let ((limit (fx+ i size)))
+              (let subc ((j (fx+ i 1)) (r (##bitwise-and c1 m1)))
+                (cond
+                 ((eqv? j limit) (ggb-insert! result c1) (set! i (##fx- j 1)))
+                 ((eqv? j len)
+                  (ggb-insert! result (on-encoding-error j))
+                  (set! i (##fx- j 1)))
+                 (else
+                  (let ((cc (##char->integer (##string-ref str j))))
+                    (if (or (##fx< cc #x80) (##fx>= cc #xc0))
+                        (let ((r (on-encoding-error j)))
+                          (ggb-insert! result c1)
+                          (set! i (##fx- j 1)))
+                        (subc
+                         (##fx+ j 1)
+                         (##bitwise-ior
+                          (##arithmetic-shift r 6)
+                          (##bitwise-and cc #x3F))))))))))))))))
 
-(define (utf8string->u32vector* str)
+(define (utf8string->u32vector str)
   ;; convert UTF8 to unicode u32vector
-  (define (convert str)
-    (let* ((o0 0)
-           (sl (string-length str))
-           (ie (+ o0 sl))
-           (rng (range ie))
-           (a0 (make-u32vector ie))
-           (a0i (mdv-indexer rng ie)))
-      ;; FIXME: optimize initialization, for now we use the pre-tested
-      ;; code as is, no matter how expensive the overhead is.  However
-      ;; processing 40M file rund out of memory on 8GB memory
-      ;; consumption.
-      (do ((o o0 (fx+ o 1))
-           (codepoints
-            (begin
-              (MATURITY -2 "overly expensive: utf8string->unicode begin" loc: utf8string->u32vector*)
-              (let ((result (utf8string->unicode str)))
-                (MATURITY -2 "overly expensive: utf8string->unicode end" loc: utf8string->u32vector*)
-                result))
-            (cdr codepoints)))
-          ((null? codepoints)
-           (if (fx= ie o) a0 (subu32vector a0 o0 o)))
-        (u32vector-set! a0 (a0i o) (car codepoints)))))
-  (if (fx> (string-length str) 0)
-      (convert str)
-      '#u32()))
+  (if (eqv? (string-length str) 0) '#u32()
+      (let* ((buffer (utf8string->ggb str #t))
+             (len (ggb-length buffer))
+             (result (make-u32vector len)))
+        (do ((i 0 (##fx+ i 1)))
+            ((eqv? i len) result)
+          (##u32vector-set! result i (ggb-ref buffer i))))))
 
-(define utf8string->u32vector
+(define utf8string->u32vector/cache ;; likely caching is no longer useful
   (let ((cache (make-table test: string=? weak-keys: #t)))
     (lambda (str)
       (or (table-ref cache str #f)
-          (let ((result (utf8string->u32vector* str)))
+          (let ((result (utf8string->u32vector str)))
             (table-set! cache str result)
             result)))))
 
