@@ -67,6 +67,7 @@
   (wire! pins critical: save))
 
 (define (wire-persistent-file-as-string! pin filename)
+  (MATURITY -4 "to slow, not recommended" loc: wire-persistent-file-as-string!)
   (wire-persistent-file*!
    pin filename
    decode: #f load:
