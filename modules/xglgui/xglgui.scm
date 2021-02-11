@@ -913,10 +913,11 @@
            (label! size: width line-height)
            (label! position: xsw (- yno line-height+border))
            (label!))))
+       (edit-area-height (* rows line-height))
        (edit-position
         (let ((yno (ceiling (- yno title-height))))
           (vector xsw (floor (- yno (* rows line-height))))))
-       (edit-area (make-mdv-rect-interval 0 0 width (* rows line-height)))
+       (edit-area (make-mdv-rect-interval 0 0 width edit-area-height))
        (lines-control! #f)
        (lines
         (receive
@@ -947,7 +948,7 @@
        (edit-area-positioned-view
         (let ((view! (MATURITY+2:make-guide-bg+fg-view)))
           (view! foreground: (guide-payload-on-redraw lines))
-          (view! size: width (* rows line-height))
+          (view! size: width edit-area-height)
           (view! position: (vector-ref edit-position 0) (vector-ref edit-position 1))
           (set! edit-area-positioned-draw (view!))
           view!))
@@ -955,7 +956,9 @@
              ;; FIXME: normalize x/y to be zero based
              in: (make-x0y0x1y1-interval/coerce
                   xsw ysw
-                  xno (round (- yno title-height border-width (* rows line-height))))
+                  xno
+                  (let ((intented (round (- yno title-height border-width edit-area-height))))
+                    (if (> intented line-height) intented (+ ysw line-height))))
              action:
              (lambda (p/r key)
                (let ((key (if on-key (on-key p/r key) key)))
