@@ -1156,7 +1156,7 @@
      in: area-visible on-redraw: redraw on-any-event: events-here
      name: name lifespan: 'ephemeral widget: #f)))
 
-(define (guide-ggb-layout area buffer #!key (direction 0) (on-key #f))
+(define (guide-ggb-layout area buffer #!key (direction 0) (fixed #f) (on-key #f))
   (unless (ggb? buffer) (error "arg1 ggb expected" 'guide-ggb-layout buffer))
   (let ((direction ;; direction: 0: z, 1: x, y: z...
          (case direction
@@ -1166,6 +1166,7 @@
            ((vertical) 2)
            ((topdown) -2)
            (else (error "unknown direction" 'guide-ggb-layout direction))))
+        (upper-bound-x (mdvector-interval-upper-bound area 0))
         (lower-bound-x0 (mdvector-interval-lower-bound area 0))
         (upper-bound-y (mdvector-interval-upper-bound area 1))
         (lower-bound-y0 (mdvector-interval-lower-bound area 1)))
@@ -1189,7 +1190,7 @@
                     (width (fx- xno xsw))
                     (height (fx- yno ysw))
                     (view! (make-guide-label-view)))
-               (view! size: width height) ;; TBD: Maybe we need this?
+               (view! size: width height)
                (let ((draw (guide-payload-on-redraw v)))
                  (cond
                   ((procedure? draw) (view! foreground: draw))
@@ -1200,18 +1201,30 @@
                (case direction
                  ((0) #f)
                  ((2)
-                  (view! position: 0 (+ lower-bound-y offset))
+                  (let ((y (+ lower-bound-y offset)))
+                    (if (or fixed
+                            (and (>= y lower-bound-y0) (<= (+ y height) upper-bound-y)))
+                        (begin (view! visible: #t) (view! position: 0 y))
+                        (view! visible: #f)))
                   ;; update running
                   (set! offset (+ offset height)))
                  ((-2)
                   (set! offset (- offset height))
-                  (view! position: 0 (+ lower-bound-y offset)))
+                  (let ((y (+ lower-bound-y offset)))
+                    (if (or fixed
+                            (and (>= y lower-bound-y0) (<= (+ y height) upper-bound-y)))
+                        (begin (view! visible: #t) (view! position: 0 y))
+                        (view! visible: #f))))
                  (else
-                  (view! position: (+ lower-bound-x0 offset) lower-bound-y)
+                  (let ((x (+ lower-bound-x0 offset)))
+                    (if (or fixed
+                            (and (>= x lower-bound-x0) (<= (+ x width) upper-bound-x)))
+                        (begin (view! visible: #t) (view! position: x lower-bound-y))
+                        (view! visible: #f)))
                   ;; update running
                   (set! offset (+ offset width))))
                (vector-set! result i (view!))))))
-        (%%guide-make-redraw result)))
+        (%%guide-make-redraw/check result)))
     (define redraw!
       (let ((last-content (ggb->vector buffer))
             (last-lower-bound-y lower-bound-y)
@@ -1291,11 +1304,11 @@
              ((not (mdvector-rect-interval-contains/xy? area x y)) #f)
              ((or (eqv? event EVENT_KEYPRESS) (eqv? event EVENT_KEYRELEASE))
               (and on-key (on-key press: (%%guide:legacy-keycode->guide-keycode x))))
-             ((eqv? event EVENT_BUTTON1DOWN)
+             ((and (eqv? event EVENT_BUTTON1DOWN) (not fixed))
               (set! armed (vector x y))
               (set! armed-at armed)
               #t)
-             ((eqv? event EVENT_BUTTON1UP)
+             ((and (eqv? event EVENT_BUTTON1UP) (not fixed))
               (cond
                ((eq? armed armed-at)
                 (pass-event! rect payload EVENT_BUTTON1DOWN x y)
