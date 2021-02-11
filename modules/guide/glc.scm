@@ -851,35 +851,29 @@
        font))
     (make-mdvector rng result (%%glyphvector-tag))))
 
-(define (MATURITY+0:utf8string->guide-glyphvector str font)
+(define (MATURITY-1:utf8string->guide-glyphvector str font)
   (unless (ln-ttf:font? font) (error "not a font" 'utf8string->glyphvector))
   ;; convert UTF8 to unicode u32vector and glyph
-  (let* ((sl (string-length str))
-         (ie sl)
-         (a0 (make-vector ie)))
-    ;; TBD: optimize initialization, for now we use the pre-tested
-    ;; code as is, no matter how expensive the overhead is.
-    (do ((o 0 (fx+ o 1))
-         (codepoints (utf8string->unicode str) (cdr codepoints)))
-        ((null? codepoints)
-         (and
-          (not (eqv? o 0))
-          (let* ((len o)
-                 (rng (range (vector len glyphvector-columns)))
-                 (vol (range-volume rng))
-                 (result (make-vector vol)))
-            (subvector-move! a0 0 o result 0) ;; row 0: u32 unicode
-            (let ((end (+ len len)))
-              (macro-MATURITY+2:vector-fill-glyphs-from-unicodevector!
-               result
-               len ;; row 1: glyphs
-               end
-               a0 0
-               font))
-            (make-mdvector rng result (%%glyphvector-tag)))))
-      (vector-set! a0 o (car codepoints)))))
+  (MATURITY -1 "avoid UTF8 encoded strings" loc: 'utf8string->glyphvector)
+  (and
+   (not (eqv? (string-length str) 0))
+   (let* ((source (utf8string->ggb str))
+          (len (ggb-length source))
+          (source-start 0)
+          (start 0)
+          (end len)
+          (rng (range (vector len glyphvector-columns)))
+          (vol (range-volume rng))
+          (result (make-vector vol)))
+     (do ((to start (##fx+ to 1))
+          (from source-start (##fx+ from 1)))
+         ((eqv? to end) (make-mdvector rng result (%%glyphvector-tag)))
+       (let ((c (ggb-ref source from)))
+         (##vector-set! result to c) ;; row 0: still u32 unicode, avoid!
+         ;; row 1: the actual glyph
+         (##vector-set! result (##fx+ to end) (MATURITY+1:ln-ttf:font-ref font c)))))))
 
-(define utf8string->guide-glyphvector MATURITY+0:utf8string->guide-glyphvector)
+(define utf8string->guide-glyphvector MATURITY-1:utf8string->guide-glyphvector)
 
 (define (guide-glyphvector-length vec)
   (unless (glyphvector? vec) (error "illegal argument" guide-glyphvector-length))
@@ -986,7 +980,7 @@
            (ggb-ref lines (max 0 (- (ggb-point lines) 1)))))
          (current-line-width
           ;; TBD: look back in case the last char matches `indicator-space`
-          0 #;(MATURITY+0:utf8string->guide-glyphvector current-line font))
+          0 #;(MATURITY-1:utf8string->guide-glyphvector current-line font))
          (current-word (make-ggb size: 10))
          (current-word-width 0))
     (define (push-line!)
