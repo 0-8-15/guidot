@@ -344,7 +344,7 @@
        ((glC:image? str)
         (set! glyphs str)
         (let ((target
-               (make-glC:vertex-set
+               (MACRO-make-glC:vertex-set
                 (let ((w (glC:image-w glyphs)) (h (glC:image-h glyphs)))
                   (mdvector-body (make-mdvector-rect-vertices/x0y0x1y1 0 0 w h)))
                 (mdvector-body (glC:image-legacy-texcoords glyphs))
@@ -509,7 +509,7 @@
          (bgvset
           (let* ((formula
                   (lambda (figure texcoords colors)
-                    (make-glC:vertex-set
+                    (MACRO-make-glC:vertex-set
                      (mdvector-body figure)
                      (mdvector-body texcoords)
                      (mdvector-body colors)

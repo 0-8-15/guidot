@@ -85,7 +85,6 @@
               (error "invalid arguments" make-mdv-rect-interval l1 l2 u1 u2))
             (make-mdvector d2 (vector l1 l2 u1 u2) tag)))
     (lambda (dimensions . inits)
-      ;; TBD: support alternative API compatible with srfi-179 for the sake of copatibility
       (define (valid? arg) (and (number? arg) (integer? arg) (not (negative? arg))))
       (unless (and (valid? dimensions) (positive? dimensions))
         (##raise-range-exception 1 'make-mdvector-interval dimensions))
@@ -102,7 +101,7 @@
            (error "odd argument count" make-mdvector-interval inits))
          (unless (eqv? len (fx* 2 dimensions))
            (error "wrong argument count, requires"
-                  make-mdvector-interval (fx+ (fx* dimensions 2) 1)))
+                  make-mdvector-interval (+ (* dimensions 2) 1)))
          (do ((i 0 (fx+ i 2))
               (j dimensions (fx+ j 2)))
              ((eqv? j len) vec) ;; all checked
@@ -428,21 +427,24 @@
          (guide-image-texcoord img)
          a2))))
 
-(define-structure glC:vertex-set v t c d23 volume)
+(define-structure glC:vertex-set
+  macros:
+  prefix: MACRO-
+  v t c d23 volume)
 
-(define glC:legacy-vertex-set-2d (make-glC:vertex-set glCore:varray glCore:tarray glCore:carray 2 glCore:MAX))
-(define glC:legacy-vertex-set-3d (make-glC:vertex-set glCore:varray3D glCore:tarray glCore:carray 3 glCore:MAX))
+(define glC:legacy-vertex-set-2d (MACRO-make-glC:vertex-set glCore:varray glCore:tarray glCore:carray 2 glCore:MAX))
+(define glC:legacy-vertex-set-3d (MACRO-make-glC:vertex-set glCore:varray3D glCore:tarray glCore:carray 3 glCore:MAX))
 
 (define (create-glC:vertex-set d23 size)
   (let ((v (make-f32vector (* d23 size)))
         (t (make-f32vector (* 2 size)))
         (c (make-u8vector (* 4 size))))
-    (make-glC:vertex-set v t c d23 size)))
+    (MACRO-make-glC:vertex-set v t c d23 size)))
 
 (define (dev#glC:vertex-set-vertex2d-set! target idx x y tx ty color) ;; deprecated
   ;;; NOTE: unused, deprecated, manual debug helper
-  (let ((varr (glC:vertex-set-v target))
-        (tarr (glC:vertex-set-t target))
+  (let ((varr (MACRO-glC:vertex-set-v target))
+        (tarr (MACRO-glC:vertex-set-t target))
         (cidx idx)
         (idx (fx* idx 2)))
     (f32vector-set! varr (fx+ idx 0) x)
@@ -454,15 +456,15 @@
            (cond
             ((vector? color) (vector-ref color cidx))
             (else color)))
-          (arr (glC:vertex-set-c target)))
+          (arr (MACRO-glC:vertex-set-c target)))
       (u8vector/32-set! arr idx color))))
 
 (define (glC:vertex-set-set! target idx vertices texcoords colors)
   ;; TBD: error check: vertices texcoords colors should supply the
   ;; be (range X 2) and have alls the same X.
-  (let* ((varr (glC:vertex-set-v target))
-         (tarr (glC:vertex-set-t target))
-         (carr (glC:vertex-set-c target)))
+  (let* ((varr (MACRO-glC:vertex-set-v target))
+         (tarr (MACRO-glC:vertex-set-t target))
+         (carr (MACRO-glC:vertex-set-c target)))
     ;; colors
     (let ((colors-as-u8 (mdvector-body colors))
           (rng (mdvector-range colors))
@@ -498,7 +500,7 @@
     ;; finally
     ;; cone: drag that index
     (set! idx (fx+ (range-volume (mdvector-range vertices)) idx))
-    (glC:vertex-set-volume-set! target idx) ;; sure?
+    (MACRO-glC:vertex-set-volume-set! target idx) ;; sure?
     idx))
 
 (define (glC:fill-rect-full-vertex-set! target idx interval color)
@@ -513,7 +515,7 @@
   #;(let ((target (create-glC:vertex-set 2 4)))
     (glC:fill-rect-full-vertex-set! target 0 interval color)
     target)
-  (make-glC:vertex-set
+  (MACRO-make-glC:vertex-set
    (mdvector-body (make-mdvector-rect-vertices/mdvector-interval interval))
    (mdvector-body rect-full-texcoords)
    (mdvector-body (make-rect-single-color-array color))
@@ -522,8 +524,8 @@
 (define (glC:glCoreEnd glc-vertexset line-type)
   ;; 2012-02-11: glVertexPointer here appears to be the to candidate
   ;; to optimizations
-  (glVertexPointer (glC:vertex-set-d23 glc-vertexset) GL_FLOAT 0 (glC:vertex-set-v glc-vertexset))
-  (glColorPointer 4 GL_UNSIGNED_BYTE 0 (glC:vertex-set-c glc-vertexset))
+  (glVertexPointer (MACRO-glC:vertex-set-d23 glc-vertexset) GL_FLOAT 0 (MACRO-glC:vertex-set-v glc-vertexset))
+  (glColorPointer 4 GL_UNSIGNED_BYTE 0 (MACRO-glC:vertex-set-c glc-vertexset))
   (cond
    ((or (eqv? line-type GL_LINES) (eqv? line-type GL_LINE_LOOP) (eqv? line-type GL_LINE_STRIP))
     (glDisable GL_TEXTURE_2D)
@@ -531,8 +533,8 @@
    (else
     (glEnable GL_TEXTURE_2D)
     (glEnableClientState GL_TEXTURE_COORD_ARRAY)
-    (glTexCoordPointer 2 GL_FLOAT 0 (glC:vertex-set-t glc-vertexset))))
-  (glDrawArrays line-type 0 (glC:vertex-set-volume glc-vertexset)))
+    (glTexCoordPointer 2 GL_FLOAT 0 (MACRO-glC:vertex-set-t glc-vertexset))))
+  (glDrawArrays line-type 0 (MACRO-glC:vertex-set-volume glc-vertexset)))
 
 (define (glC:TextureDrawGlArrays texture vertices scale shft rot)
   (when (or scale shft rot)
@@ -757,7 +759,7 @@
                               t0
                               (let ((result (cliptexcoords t0 interval0 interval)))
                                 result))))
-                       (target (make-glC:vertex-set
+                       (target (MACRO-make-glC:vertex-set
                                 (mdvector-body vertices)
                                 (mdvector-body texcoords)
                                 (mdvector-body colors)
@@ -939,7 +941,7 @@
                (let ((vertices
                       (make-mdvector-rect-vertices/x0y0x1y1
                        0 0 (ttf:glyph-width glyph) (ttf:glyph-height glyph))))
-                 (make-glC:vertex-set
+                 (MACRO-make-glC:vertex-set
                   (mdvector-body vertices)
                   (ttf:glyph-rect-texcoords glyph)
                   (mdvector-body color)
@@ -1190,11 +1192,11 @@
                 (begin ;; inlining here: (glC:glCoreEnd vertices GL_TRIANGLE_STRIP)
                   ;; 2012-02-11: glVertexPointer here appears to be the to candidate
                   ;; to optimizations
-                  (glVertexPointer (glC:vertex-set-d23 vertices) GL_FLOAT 0 (glC:vertex-set-v vertices))
-                  (glColorPointer 4 GL_UNSIGNED_BYTE 0 (glC:vertex-set-c vertices))
+                  (glVertexPointer (MACRO-glC:vertex-set-d23 vertices) GL_FLOAT 0 (MACRO-glC:vertex-set-v vertices))
+                  (glColorPointer 4 GL_UNSIGNED_BYTE 0 (MACRO-glC:vertex-set-c vertices))
                   (glEnable GL_TEXTURE_2D)
                   (glEnableClientState GL_TEXTURE_COORD_ARRAY)
-                  (glTexCoordPointer 2 GL_FLOAT 0 (glC:vertex-set-t vertices))
-                  (glDrawArrays GL_TRIANGLE_STRIP 0 (glC:vertex-set-volume vertices)))
+                  (glTexCoordPointer 2 GL_FLOAT 0 (MACRO-glC:vertex-set-t vertices))
+                  (glDrawArrays GL_TRIANGLE_STRIP 0 (MACRO-glC:vertex-set-volume vertices)))
                 (when needs-matrix (glPopMatrix))
                 #!void))))))))
