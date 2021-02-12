@@ -542,9 +542,11 @@
     (glScalef//checks (f32vector-ref scale 0) (f32vector-ref scale 1) (f32vector-ref scale 2)))
    ((procedure? scale) (scale)))
   (cond
+   ((and (vector? shft) (eqv? (##vector-length shft) 3))
+    (glTranslatef//checks (##vector-ref shft 0) (##vector-ref shft 1) (##vector-ref shft 2)))
+   ((procedure? shft) (shft))
    ((f32vector? shft)
-    (glTranslatef//checks (f32vector-ref shft 0) (f32vector-ref shft 1) (f32vector-ref shft 2)))
-   ((procedure? shft) (shft)))
+    (glTranslatef//checks (f32vector-ref shft 0) (f32vector-ref shft 1) (f32vector-ref shft 2))))
   (cond
    ((f32vector? rot)
     (glRotatef//checks (f32vector-ref rot 0) (f32vector-ref rot 1)  (f32vector-ref rot 2)  (f32vector-ref rot 3)))
@@ -949,7 +951,7 @@
                       (gax (exact->inexact (ttf:glyph-advancex glyph)))
                       (x (fl+ x gox))
                       (y (fl- (fl+ y goy) (exact->inexact gh))))
-                 (f32vector x y 0.)))
+                 (vector #;f32vector x y 0.)))
               (rot #f))
           (values gax target shift))
         (values gax #f #f))))
@@ -1168,7 +1170,7 @@
          (o0 (debug#range-offset rng))
          (limit (range-size rng 1))
          (targets (mdvector-body targets)))
-    (do ((i 0 (fx+ i 1)))
+    (do ((i 0 (##fx+ i 1)))
         ((eqv? i limit))
       (let ((j (##fx+ o0 (##fx* i vol0))))
         (let ((texture (##vector-ref targets (fx+ j 2))))
@@ -1197,9 +1199,11 @@
                  ((procedure? scale) (scale)))
                 |#
                 (cond
+                 ((and (vector? shift) (eqv? (##vector-length shift) 3))
+                  (glTranslatef//checks (##vector-ref shift 0) (##vector-ref shift 1) (##vector-ref shift 2)))
+                 ((procedure? shift) (shift))
                  ((f32vector? shift)
-                  (glTranslatef//checks (##f32vector-ref shift 0) (##f32vector-ref shift 1) (##f32vector-ref shift 2)))
-                 ((procedure? shift) (shift)))
+                  (glTranslatef//checks (##f32vector-ref shift 0) (##f32vector-ref shift 1) (##f32vector-ref shift 2))))
                 #|
                 (cond
                  ((f32vector? rot)
@@ -1208,6 +1212,14 @@
                 |#
                 (_glCoreTextureBind texture)
                 ;; (glCoreBegin)
-                (glC:glCoreEnd vertices GL_TRIANGLE_STRIP)
+                (begin ;; inlining here: (glC:glCoreEnd vertices GL_TRIANGLE_STRIP)
+                  ;; 2012-02-11: glVertexPointer here appears to be the to candidate
+                  ;; to optimizations
+                  (glVertexPointer (glC:vertex-set-d23 vertices) GL_FLOAT 0 (glC:vertex-set-v vertices))
+                  (glColorPointer 4 GL_UNSIGNED_BYTE 0 (glC:vertex-set-c vertices))
+                  (glEnable GL_TEXTURE_2D)
+                  (glEnableClientState GL_TEXTURE_COORD_ARRAY)
+                  (glTexCoordPointer 2 GL_FLOAT 0 (glC:vertex-set-t vertices))
+                  (glDrawArrays GL_TRIANGLE_STRIP 0 (glC:vertex-set-volume vertices)))
                 (when needs-matrix (glPopMatrix))
                 #!void))))))))
