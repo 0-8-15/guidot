@@ -191,8 +191,9 @@
         ((point-d1 (ggb-point lines)))
       (case point-d1
         ((0) ;; return #t if valid
-         (or (not row) (and (eqv? row 0))
-             (ggb-goto! lines row))))
+         (or (not row)
+             (when (eqv? row 0)
+               (ggb-goto! lines row)))))
       (let ((index-d1 (ggb2d-current-row ggb2d)))
         (cond
          ((not (or row col)) index-d1)
