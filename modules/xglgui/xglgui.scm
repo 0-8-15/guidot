@@ -145,10 +145,10 @@
 ;;; This is a bit of grown up code; maybe rewrite.
          #!key
          (in (current-guide-gui-interval))
-         (font (guide-select-font size: 'medium))
          (horizontal-align 'center)
          (vertical-align 'center)
-         (line-height 20)
+         (line-height 16)
+         (font (guide-select-font height: line-height))
          (rows 3)
          (cols #f)
          (data (let ((state "n/a")) (case-lambda (() state) ((val) (set! state val)))))
@@ -911,10 +911,10 @@
 (define (guide-textarea-edit
          #!key
          (in (current-guide-gui-interval))
-         (font (guide-select-font size: 'medium))
          (label #f) (label-string (lambda (value) (if (string? value) value (object->string value))))
          label-properties
-         (line-height 20)
+         (line-height 16)
+         (font (guide-select-font height: line-height))
          (keypad guide-keypad/default)
          (on-key
           (lambda (p/r key)

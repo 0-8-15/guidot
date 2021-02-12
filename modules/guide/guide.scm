@@ -621,10 +621,9 @@
       (find-font
        (case (cond
               ((eq? height #f) size)
-              ((<= height 16) 'small)
+              ((<= height 20) 'small)
               ((<= height 26) 'medium)
-              ((<= height 35) 'large)
-              (else 'small))
+              (else 'large))
          ((small small:) small.fnt)
          ((medium small:) medium.fnt)
          ((large small:) large.fnt)
