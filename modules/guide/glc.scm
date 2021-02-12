@@ -1000,34 +1000,8 @@
     (let* ((getnext! #f)
            (total-length
             (cond
-             ((or (ggb2d? data) (ggb? data))
-              (let* ((lines (if (ggb2d? data) (ggb2d-lines data) data))
-                     (len 0))
-                (let ((i0 (ggb2d-current-row data)))
-                  (when (and i0 (< i0 (ggb-length lines)))
-                    (ggb-for-each
-                     lines
-                     (lambda (i line)
-                       (set! len (+ len (ggb-length line))))
-                     i0)))
-                ;; NOT using ggb-goto! here to avoid leaving cow mode
-                (let* ((lidx (max 0 (- (ggb-point lines) 1)))
-                       (curlin (ggb-ref lines lidx))
-                       (cidx 0)
-                       (curlinlen (ggb-length curlin)))
-                  (set!
-                   getnext!
-                   (lambda ()
-                     (set! len (- len 1))
-                     (when (>= cidx curlinlen)
-                       (set! lidx (+ 1 lidx))
-                       (set! curlin (ggb-ref lines lidx))
-                       (set! curlinlen (ggb-length curlin))
-                       (set! cidx 0))
-                     (let ((c (ggb-ref curlin cidx)))
-                       (set! cidx (+ cidx 1))
-                       c))))
-                len))
+             ((ggb2d? data)
+              (ggb2d-reader data (lambda (reader limit) (set! getnext! reader) limit)))
              ((u32vector? data) (u32vector-length data))
              (else (error "invalid argument" guide-linebreak-unicodevector! data)))))
       (do ((i 0 (fx+ i 1)))
