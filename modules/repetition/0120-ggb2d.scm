@@ -215,7 +215,7 @@
                   (set! current-line (ggb-ref lines row))
                   (if col
                       (move! current-line col)
-                      (let ((col (min point-d2 (ggb-length current-line))))
+                      (let ((col (##fxmin point-d2 (ggb-length current-line))))
                         (ggb-goto! current-line col)))))))))
          (else '|0x0|))))))
 
@@ -245,6 +245,39 @@
           (let ((cl (ggb-ref rows row)))
             (if (>= col (ggb-length cl)) (fail "column out of range" ggb2d-ref row col)
                 (ggb-ref cl col))))))))
+
+(define (ggb2d-reader data #!optional (values values))
+  ;; get the total length and thunk reading values
+  (let* ((lines
+          (let ((lines (ggb2d-lines data)))
+            ;; ensure copy-on-write mode
+            (if (macro-ggb-cow lines) lines (ggb2d-lines (ggb2d-copy data)))))
+         (len 0))
+    (let ((i0 (ggb2d-current-row data)))
+      (when (and i0 (< i0 (ggb-length lines)))
+        (ggb-for-each
+         lines
+         (lambda (i line)
+           (set! len (+ len (ggb-length line))))
+         i0)))
+    (let* ((lidx (##fxmax 0 (- (ggb-point lines) 1)))
+           (curlin (ggb-ref lines lidx))
+           (cidx 0)
+           (curlinlen (ggb-length curlin)))
+      (values
+       (lambda ()
+         (if (< len 0) (eof-object)
+             (begin
+               (set! len (- len 1))
+               (when (>= cidx curlinlen)
+                 (set! lidx (+ 1 lidx))
+                 (set! curlin (ggb-ref lines lidx))
+                 (set! curlinlen (ggb-length curlin))
+                 (set! cidx 0))
+               (let ((c (ggb-ref curlin cidx)))
+                 (set! cidx (+ cidx 1))
+                 c))))
+       len))))
 
 (define (ggb2d-load-file name #!optional (char-encoding 'UTF-8))
   ;; TBD: try to optimize, loading 40MB takes 30'' wall clock time.
