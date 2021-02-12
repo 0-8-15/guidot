@@ -542,11 +542,11 @@
     (glScalef//checks (f32vector-ref scale 0) (f32vector-ref scale 1) (f32vector-ref scale 2)))
    ((procedure? scale) (scale)))
   (cond
-   ((and (vector? shft) (eqv? (##vector-length shft) 3))
-    (glTranslatef//checks (##vector-ref shft 0) (##vector-ref shft 1) (##vector-ref shft 2)))
+   ((and (f32vector? shft) (eqv? (##f32vector-length shft) 3))
+    (glTranslatef/f32vector//checks shft))
    ((procedure? shft) (shft))
-   ((f32vector? shft)
-    (glTranslatef//checks (f32vector-ref shft 0) (f32vector-ref shft 1) (f32vector-ref shft 2))))
+   ((and (vector? shft) (eqv? (##vector-length shft) 3))
+    (glTranslatef//checks (##vector-ref shft 0) (##vector-ref shft 1) (##vector-ref shft 2))))
   (cond
    ((f32vector? rot)
     (glRotatef//checks (f32vector-ref rot 0) (f32vector-ref rot 1)  (f32vector-ref rot 2)  (f32vector-ref rot 3)))
@@ -951,7 +951,7 @@
                       (gax (exact->inexact (ttf:glyph-advancex glyph)))
                       (x (fl+ x gox))
                       (y (fl- (fl+ y goy) (exact->inexact gh))))
-                 (vector #;f32vector x y 0.)))
+                 (f32vector #;vector x y 0.)))
               (rot #f))
           (values gax target shift))
         (values gax #f #f))))
@@ -1199,11 +1199,12 @@
                  ((procedure? scale) (scale)))
                 |#
                 (cond
-                 ((and (vector? shift) (eqv? (##vector-length shift) 3))
-                  (glTranslatef//checks (##vector-ref shift 0) (##vector-ref shift 1) (##vector-ref shift 2)))
-                 ((procedure? shift) (shift))
                  ((f32vector? shift)
-                  (glTranslatef//checks (##f32vector-ref shift 0) (##f32vector-ref shift 1) (##f32vector-ref shift 2))))
+                  (unless (eqv? (##f32vector-length shift) 3) (error "illegal shift" shift))
+                  (glTranslatef/f32vector//checks shift))
+                 ((procedure? shift) (shift))
+                 ((and (vector? shift) (eqv? (##vector-length shift) 3))
+                  (glTranslatef//checks (##vector-ref shift 0) (##vector-ref shift 1) (##vector-ref shift 2))))
                 #|
                 (cond
                  ((f32vector? rot)
