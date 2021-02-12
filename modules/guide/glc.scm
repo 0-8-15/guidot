@@ -283,7 +283,7 @@
                     (else (range (vector 4 size)))))
              (storage (make-u8vector (range-volume rng))))
         ;; (for-range-index! size (lambda (i) (u8vector/32-set! storage (fx* i 4) color)))
-        (do ((i (fx* 4 (fx- size 1)) (fx- i 4)))
+        (do ((i (##fx* 4 (##fx- size 1)) (##fx- i 4)))
             ((eqv? i -4) (%%make-mdvector-color rng storage))
           (u8vector/32-set! storage i color))))
     make-single-color-mdv/1))
