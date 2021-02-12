@@ -520,6 +520,8 @@
    2 4))
 
 (define (glC:glCoreEnd glc-vertexset line-type)
+  ;; 2012-02-11: glVertexPointer here appears to be the to candidate
+  ;; to optimizations
   (glVertexPointer (glC:vertex-set-d23 glc-vertexset) GL_FLOAT 0 (glC:vertex-set-v glc-vertexset))
   (glColorPointer 4 GL_UNSIGNED_BYTE 0 (glC:vertex-set-c glc-vertexset))
   (cond
