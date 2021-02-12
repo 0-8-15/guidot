@@ -215,7 +215,7 @@
                   (set! current-line (ggb-ref lines row))
                   (if col
                       (move! current-line col)
-                      (let ((col (##fxmin point-d2 (ggb-length current-line))))
+                      (let ((col (min point-d2 (ggb-length current-line))))
                         (ggb-goto! current-line col)))))))))
          (else '|0x0|))))))
 

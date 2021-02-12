@@ -369,7 +369,7 @@
      ((not (and (number? n) (integer? n)))
       (error "invalid index" 'range-row n)))
     (let* ((d0 (macro-range-dim obj))
-           (d0a (##fxabs d0))
+           (d0a (abs d0))
            (na (abs n))
            (z (macro-range-offset obj))
            (d1i (- d0a 1)))
@@ -387,7 +387,7 @@
      (else (error "not a range" 'range-volume obj))))
   (define (dimension rng step d vzs) ;; FIXME: runs too often in tight loops
     (let (;; (z0 0 #;(macro-range-offset rng)) ;; usually zero
-          (dn (##fxabs (macro-range-dim rng))))
+          (dn (abs (macro-range-dim rng))))
       (when (or (< d 0) (>= d dn))
         (%%raise-range-exception 3 'range-dimension d dn rng))
       ;; (vector-ref step (fx+ (fx+ (fx* d 3) vzs) z0))
@@ -675,7 +675,7 @@
                 ((fx= i length) r)
               (set! r (proc! i j step))))
            ((negative? length)
-            (let* ((length (##fxabs length))
+            (let* ((length (abs length))
                    (limit (##fx- length 1)))
               (do ((i limit (##fx- i 1))
                    (j (fx* limit step) (##fx- j step))
