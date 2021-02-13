@@ -86,6 +86,34 @@
 
 ;;* ACTUAL CODE
 
+;;** Keys
+
+(define (%%guide:legacy-special-key? x) ;; special keys
+  (or
+   (eqv? x EVENT_KEYENTER)
+   (eqv? x EVENT_KEYTAB)
+   (eqv? x EVENT_KEYBACKSPACE)
+   (eqv? x EVENT_KEYRIGHT)
+   (eqv? x EVENT_KEYLEFT)
+   (eqv? x EVENT_KEYUP)
+   (eqv? x EVENT_KEYDOWN)
+   (eqv? x EVENT_KEYESCAPE)
+   (eqv? x EVENT_KEYMENU)
+   (eqv? x EVENT_KEYBACK)
+   (eqv? x EVENT_KEYDELETE)
+   (eqv? x EVENT_KEYHOME)
+   (eqv? x EVENT_KEYEND)))
+
+(define (%%guide:legacy-keycode->guide-keycode x)
+  (case x
+    ((#xff55) 'PageUp)
+    ((#xff56) 'PageDown)
+    (else
+     (cond
+      ((symbol? x) x)
+      ((%%guide:legacy-special-key? x) x)
+      (else (integer->char x))))))
+
 (define-structure guide-widget redraw) ;; temporary helper for type safety
 
 (define-structure guide-rectangle glgui measures)
@@ -221,6 +249,9 @@
         (thread-yield!)
         #t)
        ((or (eq? event EVENT_KEYPRESS) (eq? event EVENT_KEYRELEASE))
+        (set! x (%%guide:legacy-keycode->guide-keycode x))
+        (unless (keyword? event)
+          (set! event (if (eq? event EVENT_KEYPRESS) press: release:)))
         (cond
          ((and ;; (check-magic-keys gui t x y)
            (let ((termkey (guide-terminate-on-key)))
@@ -446,6 +477,8 @@
 
 (define (guide-default-event-dispatch/fallback-to-glgui rect payload event x y)
   ;; fallback to glgui
+  (MATURITY -10 "conversion to legacy event representation NYI"
+            loc: guide-default-event-dispatch/fallback-to-glgui)
   (let ((glgui (guide-payload-widget payload)))
     (cond
      ((not glgui)) ;; TBD
@@ -630,27 +663,6 @@
          (else small.fnt))))
     select-font))
 
-;;** Keys
-
-(define (%%guide:legacy-special-key? x) ;; special keys
-  (or
-   (eqv? x EVENT_KEYENTER)
-   (eqv? x EVENT_KEYTAB)
-   (eqv? x EVENT_KEYBACKSPACE)
-   (eqv? x EVENT_KEYRIGHT)
-   (eqv? x EVENT_KEYLEFT)
-   (eqv? x EVENT_KEYUP)
-   (eqv? x EVENT_KEYDOWN)
-   (eqv? x EVENT_KEYESCAPE)
-   (eqv? x EVENT_KEYMENU)
-   (eqv? x EVENT_KEYBACK)
-   (eqv? x EVENT_KEYDELETE)
-   (eqv? x EVENT_KEYHOME)
-   (eqv? x EVENT_KEYEND)))
-
-(define (%%guide:legacy-keycode->guide-keycode x)
-  (if (%%guide:legacy-special-key? x) x (integer->char x)))
-
 ;;** GUI Widgets (payloads)
 
 (define %%guide-default-background
@@ -662,6 +674,7 @@
          #!key
          (in (current-guide-gui-interval))
          (font (guide-select-font size: 'medium))
+         (accesskey #f)
          (label "exit")
          (color (guide-select-color-2))
          (padding '#(1 1 1 1))
@@ -718,18 +731,23 @@
     (let ((events
            (let ((armed #f))
              (lambda (rect payload event x y)
-               (cond
-                ((eqv? event EVENT_BUTTON1DOWN)
-                 (if (guide-figure-contains? view! x y) (begin (set! armed #t) #t) #f))
-                ((eqv? event EVENT_BUTTON1UP)
-                 (if (and (guide-figure-contains? view! x y) armed)
-                     (begin
-                       (set! armed #f)
-                       (guide-callback rect payload event x y))
-                     (begin
-                       (set! armed #f)
-                       #f)))
-                (else (guide-figure-contains? view! x y)))))))
+               (case event
+                 ((press: release:)
+                  (and accesskey (eqv? x accesskey)
+                       (guide-callback rect payload event x y)))
+                 (else
+                  (cond
+                   ((eqv? event EVENT_BUTTON1DOWN)
+                    (if (guide-figure-contains? view! x y) (begin (set! armed #t) #t) #f))
+                   ((eqv? event EVENT_BUTTON1UP)
+                    (if (and (guide-figure-contains? view! x y) armed)
+                        (begin
+                          (set! armed #f)
+                          (guide-callback rect payload event x y))
+                        (begin
+                          (set! armed #f)
+                          #f)))
+                   (else (guide-figure-contains? view! x y)))))))))
       (make-guide-payload
        in: in name: 'button widget: #f
        on-redraw: (view!) on-any-event: events lifespan: 'ephemeral))))
@@ -829,10 +847,8 @@
      on-any-event:
      (lambda (rect payload event x y)
        (cond
-        ((eqv? event EVENT_KEYPRESS)
-         (and on-key (on-key press: (%%guide:legacy-keycode->guide-keycode x))))
-        ((eqv? event EVENT_KEYRELEASE)
-         (and on-key (on-key release: (%%guide:legacy-keycode->guide-keycode x))))
+        ((or (eqv? press: event) (eqv? release: event))
+         (and on-key (on-key event x)))
         ((guide-payload-contains/xy? payload x y)
          (do ((i (fx- (vector-length content) 1) (fx- i 1))
               (hit #f))
@@ -930,11 +946,17 @@
          (on-key #f)
          (name 'keypad))
   (define (%%guide-post-key-event key)
+    ;; note: still using legacy events encoding
+    (define modifiers 0)
     (cond
      ((fixnum? key)
-      (if (procedure? on-key) (on-key release: key) (event-push EVENT_KEYRELEASE key 0)))
+      (if (procedure? on-key)
+          (on-key release: key modifiers)
+          (event-push EVENT_KEYRELEASE key modifiers)))
      ((char? key)
-      (if (procedure? on-key) (on-key release: key) (event-push EVENT_KEYRELEASE (char->integer key) 0)))
+      (if (procedure? on-key)
+          (on-key release: key modifiers)
+          (event-push EVENT_KEYRELEASE (char->integer key) modifiers)))
      (else (error "invalid key" %%guide-post-key-event key)))
     #t)
   (define (post-key pat)
@@ -1092,7 +1114,7 @@
               (set! cursor-draw draw)))))
 
        (on-key
-        (lambda (p/r key)
+        (lambda (p/r key mod)
           (or
            (eq? press: p/r) ;; ignore press - maybe more
            (cond
@@ -1120,11 +1142,8 @@
                  (lambda () (cursor-draw))))
        (events
         (lambda (rect payload event x y)
-          (cond
-           ((eqv? event EVENT_KEYPRESS)
-            (on-key press: (%%guide:legacy-keycode->guide-keycode x)))
-           ((eqv? event EVENT_KEYRELEASE)
-            (on-key release: (%%guide:legacy-keycode->guide-keycode x)))
+          (case event
+            ((press: release:) (on-key event x y))
            (else (mdvector-rect-interval-contains/xy? in x y))))))
     (update-cursor!)
     (let ((result ;; a letrec* on `this-payload`

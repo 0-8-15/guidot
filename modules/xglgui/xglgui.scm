@@ -354,7 +354,7 @@
             (update-cursor!))))
 
        (on-key
-        (lambda (p/r key)
+        (lambda (p/r key mod)
           (or
            (eq? press: p/r) ;; ignore press - maybe more
            (let ((value! (vector-ref value-views (- current-line-number row-display-offset))))
@@ -366,6 +366,15 @@
                (update-cursor!))
               ((eqv? key EVENT_KEYHOME) (ggb-goto! current-line 0) (update-cursor!))
               ((eqv? key EVENT_KEYEND) (ggb-goto! current-line current-line-length) (update-cursor!))
+              ((or (eq? key 'PageDown) (eq? key 'PageUp))
+               (let ((delta
+                      (case key
+                        ((PageDown) rows)
+                        ((PageUp) (- rows))
+                        (else 0))))
+                 (ggb2d-goto! value-buffer position: 'relative row: delta)
+                 (ggb2d-goto! value-buffer position: 'absolute col: 0))
+               (update-cursor!))
               ((eqv? key EVENT_KEYDELETE)
                (let ((line-point (ggb-point current-line)))
                  (cond
@@ -428,7 +437,7 @@
                  (linebreak-again!))
                (value! text: (ggb->vector current-line))
                (update-cursor!))
-              (else (debug "ignored key" (list 'guide-line-input key))))))))
+              (else (debug "ignored key" (list 'guide-textarea-payload key))))))))
        (redraw! (lambda () (value-draw) (cursor-draw)))
        (events
         ;; TBD: factor motion/shift handling out (3rd copy here from
@@ -436,10 +445,8 @@
         (let ((armed #f) (armed-at #f) (motion-hyst 15))
           (lambda (rect payload event x y)
             (cond
-             ((eqv? event EVENT_KEYPRESS)
-              (on-key press: (%%guide:legacy-keycode->guide-keycode x)))
-             ((eqv? event EVENT_KEYRELEASE)
-              (on-key release: (%%guide:legacy-keycode->guide-keycode x)))
+             ((or (eqv? press: event) (eqv? release: event))
+              (on-key event x y))
              ((eqv? event EVENT_BUTTON1DOWN)
               (set! armed (vector x y))
               (set! armed-at armed)
@@ -635,11 +642,11 @@
                   (unless ((guide-payload-on-any-event active) rect active event x y)
                     (d1 rect payload event x y)
                     (let ((content (if (procedure? content) (content) content)))
-                      (when (in-pl? content x y)
+                      (when (and (eqv? event EVENT_MOTION) (in-pl? content x y))
                         (set! active #f)
                         (guide-event-dispatch-to-payload rect content event x y)))))
+                 ((d1 rect payload event x y)) ;; dropdown button hit?
                  (else
-                  (d1 rect payload event x y)
                   (guide-event-dispatch-to-payload rect (if (procedure? content) (content) content) event x y)))))))
       (make-guide-payload
        in:
@@ -813,7 +820,7 @@
          (line-height 20)
          (keypad guide-keypad/numeric)
          (on-key
-          (lambda (p/r key) ;; fit's to numeric keyboard
+          (lambda (p/r key mod) ;; fit's to numeric keyboard
             (if (eq? press: p/r)
                 #f ;; ignore press - maybe more
                 (case key
@@ -879,13 +886,13 @@
        (kpd (keypad
              in: (make-x0y0x1y1-interval/coerce xsw ysw xno (round (- yno title-height line-height+border)))
              action:
-             (lambda (p/r key)
-               (let ((key (if on-key (on-key p/r key) key)))
+             (lambda (p/r key mod)
+               (let ((key (if on-key (on-key p/r key mod) key)))
                  (if key
                      (let ((plx (cond
                                  ((char? key) (char->integer key))
                                  (else key))))
-                       (guide-event-dispatch-to-payload in line EVENT_KEYRELEASE plx 0)))))))
+                       (guide-event-dispatch-to-payload in line p/r plx 0)))))))
        (redraw! ;; FIXME: nested vector drawing handlers should be supported too
         (vector-append
          (if title (vector background-view title) (vector background-view))
@@ -897,11 +904,8 @@
            ((or (eqv? event EVENT_BUTTON1DOWN) (eqv? event EVENT_BUTTON1UP))
             (cond
              ((guide-payload-contains/xy? kpd x y) (guide-event-dispatch-to-payload rect kpd event x y))))
-           ((eqv? event EVENT_KEYPRESS)
-            (let ((v (on-key press: (%%guide:legacy-keycode->guide-keycode x))))
-              (if v (guide-event-dispatch-to-payload rect line event x y))))
-           ((eqv? event EVENT_KEYRELEASE)
-            (let ((v (on-key release: (%%guide:legacy-keycode->guide-keycode x))))
+           ((or (eqv? press: event) (eqv? release: event))
+            (let ((v (on-key x y)))
               (if v (guide-event-dispatch-to-payload rect line event x y))))
            (else (mdvector-rect-interval-contains/xy? in x y))))))
     (make-guide-payload
@@ -917,7 +921,7 @@
          (font (guide-select-font height: line-height))
          (keypad guide-keypad/default)
          (on-key
-          (lambda (p/r key)
+          (lambda (p/r key mod)
             (if (eq? press: p/r)
                 #f ;; ignore press - maybe more
                 key)))
@@ -1015,16 +1019,13 @@
              in: (make-x0y0x1y1-interval/coerce
                   xsw ysw
                   xno
-                  (let ((intented (round (- yno title-height border-width edit-area-height))))
+                  (let ((intented (vector-ref edit-position 1)))
                     (if (> intented line-height) intented (+ ysw line-height))))
              action:
-             (lambda (p/r key)
-               (let ((key (if on-key (on-key p/r key) key)))
-                 (if key
-                     (let ((plx (cond
-                                 ((char? key) (char->integer key))
-                                 (else key))))
-                       (guide-event-dispatch-to-payload in lines EVENT_KEYRELEASE plx 0)))))))
+             (lambda (p/r key mod)
+               (let ((key (if on-key (on-key p/r key mod) key)))
+                 (if key (guide-event-dispatch-to-payload in lines p/r key mod))
+                 #t))))
        (redraw! ;; TBD: nested vector drawing handlers should be supported too - aren't they
         (vector-append
          (if title (vector background-view title) (vector background-view))
@@ -1045,12 +1046,9 @@
                 (guide-event-dispatch-to-payload rect lines event x y)))
              ((and lines-control! title (> y (- yno line-height+border)) (eqv? event EVENT_BUTTON1DOWN))
               (lines-control! event x y))))
-           ((eqv? event EVENT_KEYPRESS)
+           ((or (eqv? press: event) (eqv? release: event))
             (guide-focus lines) ;; questionable!
-            (let ((v (on-key press: (%%guide:legacy-keycode->guide-keycode x))))
-              (if v (guide-event-dispatch-to-payload rect lines event x y))))
-           ((eqv? event EVENT_KEYRELEASE)
-            (let ((v (on-key release: (%%guide:legacy-keycode->guide-keycode x))))
+            (let ((v (on-key event x y)))
               (if v (guide-event-dispatch-to-payload rect lines event x y))))
            (else (mdvector-rect-interval-contains/xy? in x y))))))
     (make-guide-payload
@@ -1375,8 +1373,8 @@
         (lambda (rect payload event x y)
           (let ((area (guide-payload-measures payload)))
             (cond
-             ((or (eqv? event EVENT_KEYPRESS) (eqv? event EVENT_KEYRELEASE))
-              (and on-key (on-key press: (%%guide:legacy-keycode->guide-keycode x))))
+             ((or (eqv? press: event) (eqv? release: event))
+              (and on-key (on-key event x y)))
              ((and (eqv? event EVENT_BUTTON1DOWN) (not fixed))
               (set! armed (vector x y))
               (set! armed-at armed)
@@ -1384,7 +1382,7 @@
              ((and (or (eqv? event EVENT_BUTTON1DOWN) (eqv? event EVENT_BUTTON1UP)
                        (eqv? event EVENT_MOTION))
                    (not (mdvector-rect-interval-contains/xy? area x y)))
-              (MATURITY -1 "pointer event outsid of payload" loc: 'ggb-layout)
+              (MATURITY -1 "pointer event outside of payload" loc: 'ggb-layout)
               #f)
              ((and (eqv? event EVENT_BUTTON1UP) (not fixed))
               (cond

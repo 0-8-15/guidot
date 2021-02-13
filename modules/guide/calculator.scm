@@ -220,8 +220,8 @@
                        guide-callback:
                        (lambda (rect payload event x y)
                          (calculator-on-event
-                          rect payload EVENT_KEYRELEASE
-                          (char->integer (if (pair? pattern) (car pattern) pattern)) 0)
+                          rect payload release:
+                          (if (pair? pattern) (car pattern) pattern) 0)
                          #t))))))
              (vector-set! keys idx key))))
         (vector
@@ -247,36 +247,38 @@
                  (else (set! hit (guide-event-dispatch-to-payload rect payload event x y)))))))))))
     (define (calculator-on-event rect payload event x y)
       (cond
-       ((eqv? event EVENT_KEYRELEASE)
-        (cond
-         ((eqv? x EVENT_KEYESCAPE)     (terminate))
-         ((eqv? x (char->integer #\=)) (calculator-evaluate))
-         ((eqv? x (char->integer #\+)) (calculator-push-operation +))
-         ((eqv? x (char->integer #\-)) (calculator-push-operation -))
-         ((eqv? x (char->integer #\*)) (calculator-push-operation *))
-         ((eqv? x (char->integer #\/)) (calculator-push-operation /))
-         ((eqv? x (char->integer #\A)) (calculator-AC))
-         ((eqv? x (char->integer #\C)) (calculator-C))
-         ((eqv? x (char->integer #\M)) (calculator-MC))
-         ((eqv? x (char->integer #\p)) (calculator-M+))
-         ((eqv? x (char->integer #\q)) (calculator-M-))
-         ((eqv? x (char->integer #\m)) (calculator-MR))
-         ((eqv? x (char->integer #\S)) (calculator-sqrt))
-         ((eqv? x (char->integer delchar))
-          (let ((x (calculator-main-display)))
-            (when (number? x)
-              (let ((str (number->string x)))
-                (calculator-main-display
-                 (and (> (string-length str) 1)
-                      (string->number (substring str 0 (- (string-length str) 1))))))))
-          #t)
-         (else
-          (and (memq (integer->char x) '(#\0 #\1 #\2 #\3 #\4 #\5 #\6 #\7 #\8 #\9 #\.))
-               (let* ((d (calculator-main-display))
-                      (n (or (and (number? d) (number->string d)) "")))
-                 (calculator-main-display
-                  (string->number (string-append n (string (integer->char x)))))
-                 #t)))))
+       ((eqv? release: event)
+        (case x
+          ((#\=) (calculator-evaluate))
+          ((#\+) (calculator-push-operation +))
+          ((#\-) (calculator-push-operation -))
+          ((#\*) (calculator-push-operation *))
+          ((#\/) (calculator-push-operation /))
+          ((#\A) (calculator-AC))
+          ((#\C) (calculator-C))
+          ((#\M) (calculator-MC))
+          ((#\p) (calculator-M+))
+          ((#\q) (calculator-M-))
+          ((#\m) (calculator-MR))
+          ((#\S) (calculator-sqrt))
+          (else
+           (cond
+            ((eqv? x EVENT_KEYESCAPE) (terminate))
+            ((eqv? x delchar)
+             (let ((x (calculator-main-display)))
+               (when (number? x)
+                 (let ((str (number->string x)))
+                   (calculator-main-display
+                    (and (> (string-length str) 1)
+                         (string->number (substring str 0 (- (string-length str) 1))))))))
+             #t)
+            (else
+             (and (memq x '(#\0 #\1 #\2 #\3 #\4 #\5 #\6 #\7 #\8 #\9 #\.))
+                  (let* ((d (calculator-main-display))
+                         (n (or (and (number? d) (number->string d)) "")))
+                    (calculator-main-display
+                     (string->number (string-append n (string x))))
+                    #t)))))))
        (else ((vector-ref kpd 1) rect payload event x y))))
 
     (make-guide-payload in: interval widget: #f on-redraw: (vector-ref kpd 0) on-any-event: calculator-on-event)))
