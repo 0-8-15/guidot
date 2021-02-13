@@ -191,9 +191,8 @@
         ((point-d1 (ggb-point lines)))
       (case point-d1
         ((0) ;; return #t if valid
-         (or (not row)
-             (when (eqv? row 0)
-               (ggb-goto! lines row)))))
+         (or (not row) (eqv? row 0)
+             (ggb-goto! lines row))))
       (let ((index-d1 (ggb2d-current-row ggb2d)))
         (cond
          ((not (or row col)) index-d1)
@@ -246,12 +245,9 @@
             (if (>= col (ggb-length cl)) (fail "column out of range" ggb2d-ref row col)
                 (ggb-ref cl col))))))))
 
-(define (ggb2d-reader data #!optional (values values))
-  ;; get the total length and thunk reading values
-  (let* ((lines
-          (let ((lines (ggb2d-lines data)))
-            ;; ensure copy-on-write mode
-            (if (macro-ggb-cow lines) lines (ggb2d-lines (ggb2d-copy data)))))
+(define (ggb2d-reader/immutable data values)
+  ;; assumes immutable data
+  (let* ((lines (ggb2d-lines data))
          (len 0))
     (let ((i0 (ggb2d-current-row data)))
       (when (and i0 (< i0 (ggb-length lines)))
@@ -278,6 +274,14 @@
                  (set! cidx (+ cidx 1))
                  c))))
        len))))
+
+(define (ggb2d-reader data #!optional (values values))
+  ;; get the total length and thunk reading values
+  (ggb2d-reader/immutable
+   ;; ensure copy-on-write mode on data
+   (let ((lines (ggb2d-lines data)))
+     (if (macro-ggb-cow lines) data (ggb2d-copy data)))
+   values))
 
 (define (ggb2d-load-file name #!optional (char-encoding 'UTF-8))
   ;; TBD: try to optimize, loading 40MB takes 30'' wall clock time.

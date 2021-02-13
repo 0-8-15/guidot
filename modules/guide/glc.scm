@@ -1003,7 +1003,7 @@
            (total-length
             (cond
              ((ggb2d? data)
-              (ggb2d-reader data (lambda (reader limit) (set! getnext! reader) limit)))
+              (ggb2d-reader/immutable data (lambda (reader limit) (set! getnext! reader) limit)))
              ((u32vector? data) (u32vector-length data))
              (else (error "invalid argument" guide-linebreak-unicodevector! data)))))
       (do ((i 0 (fx+ i 1)))
