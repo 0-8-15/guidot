@@ -207,24 +207,30 @@
       ;; wait for delay or signal from other thread
       (if (if wakeup-seen
               (begin
-                (mutex-unlock! wait-mutex)
+                (mutex-unlock! wait-mutex) ;; useless now, but harmless
                 #f)
               (let ((moment (if customized-moment
                                 (customized-moment consecutive-redraw-count)
                                 (min frame-period-max-value (* consecutive-redraw-count step)))))
                 (if (or (time? moment) (and (number? moment) (> moment 0)))
-                    (cond-expand
-                     (win32
-                      ;; Work around bug in gambit
-                      (begin (mutex-unlock! wait-mutex wait-cv moment) wakeup-seen))
-                     (else (mutex-unlock! wait-mutex wait-cv moment)))
+                    (begin
+                      (mutex-lock! wait-mutex 0)
+                      (cond-expand
+                       (win32
+                        ;; Work around bug in gambit
+                        (begin (mutex-unlock! wait-mutex wait-cv moment) wakeup-seen))
+                       (else (mutex-unlock! wait-mutex wait-cv moment))))
                     (begin (mutex-unlock! wait-mutex) #t))))
           (reset-wait!)
           (set! consecutive-redraw-count (fx+ consecutive-redraw-count 1))))
+    (define (redraw! rect payload event x y)
+      (glCoreInit)
+      (guide-event-dispatch-to-payload rect payload event x y)
+      (guide-meta-menu-draw!))
     (define (guide-default-event-dispatch/toplevel rect payload event x y)
       (cond
        ((not (and glgui:active app:width app:height))
-        (if (fx= t EVENT_REDRAW)
+        (if (eqv? t EVENT_REDRAW)
             (wait-for-time-or-signal!)
             (if customized-moment
                 (let ((moment (customized-moment 1)))
@@ -235,18 +241,14 @@
                   (reset-wait!)))))
        ((eq? event EVENT_REDRAW)
         ;; (log-status "REDRAW")
-        (if (mutex-lock! wait-mutex 0)
-            (begin
-              (set! wakeup-seen #f)
-              (glCoreInit)
-              (guide-event-dispatch-to-payload rect payload event x y)
-              (guide-meta-menu-draw!)
-              (wait-for-time-or-signal!))
-            (begin
-              (log-warning "ignoring EVENT_REDRAW while handling EVENT_REDRAW")
-              (set! wakeup-seen #t))))
+        (cond-expand
+         (win32 (wait-for-time-or-signal!)) ;; TBD: fix that too.
+         (else #!void))
+        (redraw! rect payload event x y)
+        (set! wakeup-seen #f))
        ((eq? event EVENT_IDLE)
-        (thread-yield!)
+        ;;(thread-yield!)
+        (wait-for-time-or-signal!) ;; maybe only for Linux/Windows?
         #t)
        ((or (eq? event EVENT_KEYPRESS) (eq? event EVENT_KEYRELEASE))
         (set! x (%%guide:legacy-keycode->guide-keycode x))
