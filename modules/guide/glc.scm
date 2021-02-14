@@ -986,18 +986,20 @@
            (ggb-ref lines (max 0 (- (ggb-point lines) 1)))))
          (current-line-width
           ;; TBD: look back in case the last char matches `indicator-space`
-          0 #;(MATURITY-1:utf8string->guide-glyphvector current-line font))
+          0. #;(MATURITY-1:utf8string->guide-glyphvector current-line font))
          (current-word (make-ggb size: 10))
-         (current-word-width 0))
+         (current-word-width 0.))
     (define (push-line!)
       (set! current-line (make-ggb size: cols))
-      (set! current-line-width 0)
+      (set! current-line-width 0.)
       (ggb-insert! lines current-line))
     (define (push-word!)
-      (ggb-for-each current-word (lambda (i c) (ggb-insert! current-line c)))
-      (set! current-line-width (+ current-line-width current-word-width))
+      ;; (ggb-for-each current-word (lambda (i c) (ggb-insert! current-line c)))
+      (ggb-insert-ggb! current-line current-word)
+      (set! current-line-width (fl+ current-line-width current-word-width))
       (ggb-clear! current-word)
-      (set! current-word-width 0))
+      (set! current-word-width 0.))
+    (if (exact? width) (set! width (exact->inexact width)))
     (push-line!)
     (let* ((getnext! #f)
            (total-length
@@ -1021,24 +1023,27 @@
             (push-line!))
            (else
             (let* ((glyph (MATURITY+1:ln-ttf:font-ref font c))
-                   (gw (if glyph (ttf:glyph-advancex glyph) 0))
-                   (next-word-width (+ current-word-width gw)))
+                   (gw (if glyph
+                           (let ((x (ttf:glyph-advancex glyph)))
+                             (if (exact? x) (exact->inexact x) x))
+                           0.))
+                   (next-word-width (fl+ current-word-width gw)))
               (cond
                ((eqv? c indicator-space) ;; space TBD: introduce set of word breaking chars
                 (ggb-insert! current-word c)
                 (set! current-word-width next-word-width)
-                (when (>= (+ current-word-width current-line-width) width)
+                (when (fl>= (fl+ current-word-width current-line-width) width)
                   (push-line!))
                 (push-word!))
                (else
                 (cond
-                 ((>= next-word-width width) ;; unbreakable case
+                 ((fl>= next-word-width width) ;; unbreakable case
                   (push-word!) ;; push what fits
                   (push-line!)
                   (ggb-insert! current-word c)
                   (set! current-word-width gw))
-                 ((>= (+ next-word-width current-line-width) width) ;; soft line break
-                  (unless (eqv? current-line-width 0)
+                 ((fl>= (fl+ next-word-width current-line-width) width) ;; soft line break
+                  (unless (fl< current-line-width 1.)
                     (push-line!)
                     (ggb-insert! current-word c)
                     (set! current-word-width next-word-width)))
