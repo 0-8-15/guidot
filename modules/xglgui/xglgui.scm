@@ -177,7 +177,7 @@
               (source (data)))
           (when (string? source) (set! source (utf8string->u32vector source)))
           (cond
-           ((or (ggb2d? source) (u32vector? source) (ggb? source))
+           ((or (ggb2d? source) (u32vector? source))
             (guide-linebreak-unicodevector! buffer source font text-width))
            (else ;; backward compatible: insert empty row
             (ggb2d-insert-row! buffer)))
@@ -246,7 +246,7 @@
         (lambda ()
           (define row (ggb2d-current-row value-buffer))
           (when (and (not row) (> (ggb2d-length value-buffer) 0))
-            (MATURITY -1 "ggb2d before first line" loc: 'guide-textarea-payload)
+            ;; not really bad (MATURITY -1 "ggb2d before first line" loc: 'guide-textarea-payload)
             (ggb2d-goto! value-buffer position: 'absolute row: 1)
             (set! row (ggb2d-current-row value-buffer)))
           (when row
@@ -264,7 +264,7 @@
               (cond
                ((<= line-point row-display-offset)
                 (set! row-display-offset (max 0 current-line-number)))
-               ((> line-point rows)
+               ((> line-point (+ rows row-display-offset))
                 (set! row-display-offset (max 0 (- line-point rows)))))))))
 
        (cursor-draw #f)
@@ -497,23 +497,25 @@
          ((string) (ggb2d->string/encoding-utf8 value-buffer))
          ((text) (ggb2d-copy value-buffer))
          ((text:)
-          (let ((value
-                 (if (null? more)
-                     (error "argument required to keyword 'text:'" 'textarea-payload)
-                     (car more))))
-            (cond
-             ((or (ggb2d? value) (u32vector? value))
-              (cond
-               ((ggb2d? value) (set! value-buffer value))
-               ((u32vector? value)
-                (let ((buffer (make-ggb2d size: rows)))
-                  (guide-linebreak-unicodevector! buffer value font text-width)
-                  (set! value-buffer buffer))))
-              (update-value-views!)
-              (update-current-line!)
-              (fix-value-draw!)
-              (update-cursor!))
-             (else (error "unhandled text representation" 'textarea-payload text: value)))))
+          (apply
+           (lambda (value #!key (wrap #t))
+             (cond
+              ((or (ggb2d? value) (u32vector? value))
+               (set!
+                value-buffer
+                (if wrap
+                    (let ((buffer (make-ggb2d size: rows)))
+                      (when (ggb2d? value) (ggb2d-goto! value position: 'absolute row: 1 col: 0))
+                      (guide-linebreak-unicodevector! buffer value font text-width)
+                      (ggb2d-goto! buffer position: 'absolute row: 1 col: 0)
+                      buffer)
+                    value))
+               (update-value-views!)
+               (update-current-line!)
+               (fix-value-draw!)
+               (update-cursor!))
+              (else (error "unhandled text representation" 'textarea-payload text: value))))
+           more))
          (else (error "invalid command key" 'guide-textarea-payload key)))))))
 
 (define (make-figure-list-payload
