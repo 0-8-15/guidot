@@ -1179,13 +1179,15 @@
             (update-content!)
             (update-shift!)))))
        (redraw (lambda () (draw-frame)))
-       (events
+       (this-payload #f) ;; letrec
+       (pointer-event
         (let ((armed #f) (armed-at #f) (motion-hyst 15))
           (lambda (rect payload event x y)
             (cond
              ((eqv? event EVENT_BUTTON1DOWN)
               (set! armed (vector x y))
               (set! armed-at armed)
+              (guide-focus this-payload)
               #t)
              ((eqv? event EVENT_BUTTON1UP)
               (cond
@@ -1215,20 +1217,35 @@
                     (shift!))))
                (else #t)))
              (else (debug 'guide-list-select-payload (list event x y)))))))
+       (key-event
+        (lambda (event key modifier)
+          (case key
+            ((PageUp PageDown)
+             (set! y-shift ((if (eq? key 'PageDown) + -) y-shift (* num-visible line-height)))
+             (shift!)
+             #t)
+            (else #f))))
        (events-here
         (lambda (rect payload event x y)
-          (cond
-           ((guide-payload-contains/xy? payload x y)
-            (events rect payload event x y))
-           (else
-            #;(MATURITY
-            -1 "NOT handling event outside, TBD: don't pass here!"
-            loc: 'make-figure-list-payload2)
-            #f)))))
+          (case event
+            ((press: release:)
+             (and (eq? (guide-focus) this-payload) (key-event event x y)))
+            (else
+             (cond
+              ((guide-payload-contains/xy? payload x y)
+               (pointer-event rect payload event x y))
+              (else
+               #;(MATURITY
+               -1 "NOT handling event outside, TBD: don't pass here!"
+               loc: 'make-figure-list-payload2)
+               #f)))))))
     (update-content!)
-    (make-guide-payload
-     in: area-visible on-redraw: redraw on-any-event: events-here
-     name: name lifespan: 'ephemeral widget: #f)))
+    (let ((result
+           (make-guide-payload
+            in: area-visible on-redraw: redraw on-any-event: events-here
+            name: name lifespan: 'ephemeral widget: #f)))
+      (set! this-payload result)
+      result)))
 
 (define (guide-ggb-layout area buffer #!key (direction 0) (fixed #f) (on-key #f))
   (unless (ggb? buffer) (error "arg1 ggb expected" 'guide-ggb-layout buffer))
