@@ -178,7 +178,7 @@
           (when (string? source) (set! source (utf8string->u32vector source)))
           (cond
            ((or (ggb2d? source) (u32vector? source))
-            (guide-linebreak-unicodevector! buffer source font text-width))
+            (guide-linebreak! buffer source font text-width))
            (else ;; backward compatible: insert empty row
             (ggb2d-insert-row! buffer)))
           (ggb2d-goto! buffer position: 'absolute row: 1 col: 0)
@@ -193,7 +193,7 @@
               (let ((lalipo (ggb-point (%%ggb2d-row-ref source row))))
                 (ggb2d-delete-row! next-buffer -1)
                 (ggb2d-goto! source position: 'relative col: 0)
-                (guide-linebreak-unicodevector! next-buffer source font text-width)
+                (guide-linebreak! next-buffer source font text-width)
                 (let* ((rlen (ggb2d-length next-buffer))
                        (row (min row (- rlen 1)))
                        (lalipo (min lalipo (ggb-length (%%ggb2d-row-ref next-buffer row)))))
@@ -498,7 +498,7 @@
          ((text) (ggb2d-copy value-buffer))
          ((text:)
           (apply
-           (lambda (value #!key (wrap #t))
+           (lambda (value #!key (wrap #t) (cols 20))
              (cond
               ((or (ggb2d? value) (u32vector? value))
                (set!
@@ -506,7 +506,7 @@
                 (if wrap
                     (let ((buffer (make-ggb2d size: rows)))
                       (when (ggb2d? value) (ggb2d-goto! value position: 'absolute row: 1 col: 0))
-                      (guide-linebreak-unicodevector! buffer value font text-width)
+                      (guide-linebreak! buffer value font text-width cols: cols)
                       (ggb2d-goto! buffer position: 'absolute row: 1 col: 0)
                       buffer)
                     value))

@@ -958,7 +958,7 @@
           (values gax target shift))
         (values gax #f #f))))
 
-(define (guide-linebreak-unicodevector!
+(define (guide-linebreak!
 ;;; TBD: maybe switch to use glyphvectors here and in textarea
          into ;; receiving ggb2d
          data  ;; vector of codepoints
