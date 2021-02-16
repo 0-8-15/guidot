@@ -404,12 +404,12 @@
    (lambda (#!key
             (name #f)
             (in #f)
-            (widget (make-gtable)) ;; TBD: change default to new style
+            (widget #f) ;; default: not legacy glgui widget
             (lifespan #f) ;; BEWARE: default changed 20210117
             (on-redraw #f)
             (on-any-event events)
-            (gui-before exposed)
-            (gui-after hidden))
+            (gui-before #f)
+            (gui-after #f))
      (unless (mdvector-interval? in)
        (error "make-guide-payload: 'in:' must be an interval" in))
      (unless (or (procedure? on-redraw) (not on-redraw)
@@ -429,7 +429,11 @@
      (cond
       ((or (eq? lifespan #f) (eq? lifespan 'ephemeral))
        (make-guide-payload name in widget on-redraw on-any-event gui-before remove))
-      (else (make-guide-payload name in widget on-redraw on-any-event gui-before gui-after))))))
+      (else
+       (when widget ;; legacy glgui backward compatibility
+         (set! gui-before exposed)
+         (set! gui-after hidden))
+       (make-guide-payload name in widget on-redraw on-any-event gui-before gui-after))))))
 
 (define guide-open-rectangle
   ;; A procedure of zero or one argument.  Without returns the current
@@ -704,7 +708,7 @@
     (view! size: w h)
     ;; finally - in order to not trigger useless recalculations
     (cond
-     ((or (string? label) (glC:image? label))
+     ((or (string? label) (glC:image? label) (vector? label))
       (label! text: label)
       (view! foreground: (label!)))
      ((procedure? label)
@@ -1039,6 +1043,7 @@
          (vertical-align 'center)
          (line-height 20)
          (data (let ((state "n/a")) (case-lambda (() state) ((val) (set! state val)))))
+         (validate #f)
          (size 'small)
          (color (guide-select-color-2))
          (hightlight-color (guide-select-color-4)))
@@ -1083,8 +1088,8 @@
           (guide-wakeup!)
           (let* ((total (%%value-buffer->string value-buffer))
                  (before (%%value-buffer->string value-buffer 0 (ggb-point value-buffer)))
-                 (glv-before (MATURITY+0:utf8string->guide-glyphvector before font))
-                 (glv-total (MATURITY+0:utf8string->guide-glyphvector total font))
+                 (glv-before (MATURITY-1:utf8string->guide-glyphvector before font))
+                 (glv-total (MATURITY-1:utf8string->guide-glyphvector total font))
                  (width-before (if glv-before (MATURITY+0:guide-glypvector-width glv-before) 0))
                  (width-total (if glv-total (MATURITY+0:guide-glypvector-width glv-total) 0))
                  (label! (make-guide-label-view)))
@@ -1124,6 +1129,7 @@
             ((eqv? key EVENT_KEYLEFT) (ggb-goto-left! value-buffer) (update-cursor!))
             ((eqv? key EVENT_KEYBACKSPACE)
              (ggb-delete! value-buffer -1)
+             (when (procedure? validate) (validate value-buffer))
              (value! text: (%%value-buffer->string value-buffer))
              (set! value-draw (value!))
              (update-cursor!))
@@ -1135,10 +1141,11 @@
              (update-cursor!))
             ((char? key)
              (ggb-insert! value-buffer (char->integer key))
+             (when (procedure? validate) (validate value-buffer))
              (value! text: (%%value-buffer->string value-buffer))
              (set! value-draw (value!))
              (update-cursor!))
-            (else (debug "ignored key" 'guide-line-input key))))))
+            (else (debug "ignored key" (list 'guide-line-input key)))))))
        (redraw! (vector
                  (lambda () (and value-draw (value-draw)))
                  (lambda () (cursor-draw))))
@@ -1201,9 +1208,18 @@
     (define guide-toplevel-payload
       (case-lambda
        (() payload)
-       ((obj)
-        (unless (guide-payload? obj) (error "invalid payload" 'guide-toplevel-payload obj))
-        (set! payload obj))))
+       ((new)
+        (unless (guide-payload? new) (error "invalid payload" 'guide-toplevel-payload new))
+        (when payload
+          (let ((after (guide-payload-gui-after payload)))
+            (when after (after payload (guide-payload-measures payload)))))
+        (set! payload new)
+        ;; enforcing a garbace collection as the before/after
+        ;; mechanism is often too weak and may be worth to be removed
+        (##gc)
+        (let ((before (guide-payload-gui-before payload)))
+          (when before (before payload (guide-payload-measures payload))))
+        payload)))
     (define (guide-main
              init #!key
              ;; (events #f)
