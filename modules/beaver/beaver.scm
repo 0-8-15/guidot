@@ -72,7 +72,7 @@ end-of-c-declare
     (let ((x (- id 2000000000000)))
       (and (positive? x) (odd? (bit-count x)) x)))))
 
-(define (beaver-number->string num #!optional (gap "·"))
+(define (beaver-number->string num #!optional (gap (string (integer->char 183)))) ;; "·"
   (let ((str (number->string num)))
     (and
      (fx= (string-length str) 13)
@@ -87,7 +87,7 @@ end-of-c-declare
       gap
       (substring str 10 13)))))
 
-(define (beaver-unit-id->string num #!optional (gap "\xc2;\xb7;")) ;; "·"
+(define (beaver-unit-id->string num #!optional (gap (string (integer->char 183)))) ;; "·"
   (beaver-number->string (beaver-unit-id->beaver-number num) gap))
 
 (define unit-id-string->unit-id
@@ -96,6 +96,21 @@ end-of-c-declare
       (and (string? str)
            (let ((despace (rx-replace/all ignore str)))
              (beaver-number->beaver-unit-id (string->number despace)))))))
+
+(define (beaver-number->unicode-vector num #!optional (gap '#(183))) ;; "·"
+  (let ((str (number->string num)))
+    (and
+     (eqv? (string-length str) 13)
+     (let ((buffer (make-ggb size: 17)))
+       (do ((i 0 (##fx+ i 1)))
+           ((eqv? i 13)
+            (ggb->vector buffer))
+         (ggb-insert! buffer (char->integer (string-ref str i)))
+         (case i
+           ((2 4 7 9) (ggb-insert-sequence! buffer gap))))))))
+
+(define (beaver-unit-id->unicode-vector num #!optional (gap '#(183))) ;; "·"
+  (beaver-number->unicode-vector (beaver-unit-id->beaver-number num) gap))
 
 ;; (define-cond-expand-feature enable-beaver-debug)
 

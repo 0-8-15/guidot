@@ -238,7 +238,7 @@
 
 (define id2phone beaver-unit-id->beaver-number)
 (define phone2id beaver-number->beaver-unit-id)
-(define (chat-number->neatstring num #!optional (gap "\xc2;\xb7;")) ;; "·"
+(define (chat-number->neatstring num #!optional (gap "·"))
   (or (beaver-unit-id->string num gap)
       (string-append "ERROR: illegal beaver number " (number->string num))))
 (define string-chat-address->unit-id unit-id-string->unit-id)
