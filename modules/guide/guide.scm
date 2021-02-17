@@ -902,7 +902,7 @@
     (let ((lw (* w (- 1 label-width)))
           (gap (/ h 5))
           (font (guide-select-font size: size)))
-      (tag! size: (- (* w label-width) gap) h)
+      (tag! size: (- w lw gap) h)
       (label! size: lw h)
       (tag! font: font)
       (label! font: font)
@@ -911,10 +911,10 @@
       (tag! horizontal-align: 'right)
       (label! horizontal-align: 'left)
       (tag! color: color)
-      (label! color: color))
+      (label! color: color)
+      (label! position: (- w lw) 0))
     (tag! text: label)
     (label! text: (if (procedure? value) (value) value))
-    (label! position: (* w (- 1 label-width)) 0)
     (box! size: w h)
     (box! background: (tag!))
     (box! foreground: (label! check! label))
@@ -923,6 +923,7 @@
           (events
            (lambda (rect payload event x y)
              (cond
+              ((or (eqv? press: event) (eqv? release: event)))
               ((guide-figure-contains? box! x y)
                (or (not input) (input rect payload event x y)))
               (else #f)))))
@@ -1052,7 +1053,9 @@
       (ggb-for-each ggb (lambda (i v) (string-set! result i (integer->char v))) start end)
       result))
   (define (input->buffer data)
-    (let* ((initial (utf8string->u32vector (data)))
+    (let* ((initial (utf8string->u32vector
+                     (let ((x (data)))
+                       (if (string? x) x (object->string x)))))
            (buffer (make-ggb size: (u32vector-length initial))))
       (do ((i 0 (fx+ i 1)))
           ((eqv? i (u32vector-length initial)) buffer)
@@ -1080,7 +1083,7 @@
        (value-draw (value!))
 
        (cursor-draw #f)
-       (this-payload 'none)
+       (this-payload #f)
        (update-cursor!
         ;; TBD: this is a bit overly simple and needlessly expensive
         ;; at runtime
@@ -1153,7 +1156,8 @@
         (lambda (rect payload event x y)
           (case event
             ((press: release:) (on-key event x y))
-           (else (mdvector-rect-interval-contains/xy? in x y))))))
+            (else (mdvector-rect-interval-contains/xy? in x y))))))
+    (when (procedure? validate) (validate value-buffer))
     (update-cursor!)
     (let ((result ;; a letrec* on `this-payload`
            (make-guide-payload
