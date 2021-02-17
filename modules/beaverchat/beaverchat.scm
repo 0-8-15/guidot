@@ -532,7 +532,7 @@
       (unless (chat-address) (dial-dialog!))
       (let* ((when-wired
               (lambda ()
-                (chat-ctrl! load: (debug 'updated-chat-messages (chat-messages)))))
+                (chat-ctrl! load: (chat-messages))))
              (toggle! (wire! chat-messages switchable: #t post: when-wired))
              (to-toggle! (wire! chat-address switchable: #t post:
                                 (lambda ()
