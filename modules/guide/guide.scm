@@ -1,6 +1,6 @@
 ;;** Missplaced Code
 
-(include "../../front/apps/glgui/DejaVuSans-14,24,32.scm")
+(include "../../front/apps/guide/DejaVuSans-14,24,32.scm")
 
 ;;;** X11
 
