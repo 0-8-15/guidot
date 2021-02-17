@@ -139,6 +139,14 @@
 
 ;;;* Guide Incubator
 
+(define %%guide-textarea-keyfilter
+  (let ((setting (sre->cset '(or printing (/ #\x7f #\xfffe)))))
+    (lambda (p/r key mod)
+      (and (eq? release: p/r) ;; ignore press - maybe more
+           (or (number? key) ;; legacy special keys
+               (cset-contains? setting key))
+           key))))
+
 (define (guide-textarea-payload
 ;;; TBD: maybe switch to use glyphvectors
 ;;;
@@ -152,6 +160,7 @@
          (rows 3)
          (cols #f)
          (data (let ((state "n/a")) (case-lambda (() state) ((val) (set! state val)))))
+         (on-key %%guide-textarea-keyfilter);; filter characters to handle
          (size 'small)
          (color (guide-select-color-2))
          (hightlight-color (guide-select-color-4)))
@@ -353,7 +362,7 @@
              col: target-column)
             (update-cursor!))))
 
-       (on-key
+       (handle-key
         (lambda (p/r key mod)
           (or
            (eq? press: p/r) ;; ignore press - maybe more
@@ -446,7 +455,9 @@
           (lambda (rect payload event x y)
             (cond
              ((or (eqv? press: event) (eqv? release: event))
-              (on-key event x y))
+              (let ((x (on-key event x y)))
+                (if x (handle-key event x y)))
+              #t)
              ((eqv? event EVENT_BUTTON1DOWN)
               (set! armed (vector x y))
               (set! armed-at armed)
@@ -814,6 +825,53 @@
        )))
    on-key: action))
 
+(define (guide-keypad/de #!key (in (current-guide-gui-interval)) (action #f))
+  (guide-make-keypad
+   in
+   (make-mdvector
+    (range '#(10 4 4))
+    (let ((k-shift (list 'shift label: (apply make-glC:image glgui_keypad_shift.img)))
+          (k-shift-on (list 'shift label: (apply make-glC:image glgui_keypad_shift_on.img)))
+          (k-shift-3 (list 'shift label: "*-+"))
+          (k-shift-4 (list 'shift label: "@#$"))
+          (k-del (list EVENT_KEYBACKSPACE label: (apply make-glC:image glgui_keypad_delete.img)))
+          (k-toggle (list 'toggle label: (apply make-glC:image glgui_keypad_toggle.img)))
+          (k-toggle-3 (list 'toggle label: (apply make-glC:image glgui_keypad_toggleChar.img)))
+          (k-space (list #\space background: %%guide-default-background background-color: (guide-select-color-2)))
+          (k-ret (list EVENT_KEYENTER label: (apply make-glC:image glgui_keypad_return.img)))
+          (k-eu (list (integer->char 8364) label: '#(8364))) ;; €
+          (k-ae (list (integer->char 228) label: '#(228)))
+          (k-oe (list (integer->char 246) label: '#(246)))
+          (k-ue (list (integer->char 252) label: '#(252)))
+          (k-Ae (list (integer->char 196) label: '#(196)))
+          (k-Oe (list (integer->char 214) label: '#(214)))
+          (k-Ue (list (integer->char 220) label: '#(220)))
+          (k-sz (list (integer->char 223) label: '#(223)))
+          (k-pg (list (integer->char 167) label: '#(167))))
+      (vector
+       ;; I   -- lower case characters
+       #\q        #\w #\e #\r #\t #\y #\u  #\i  #\o   #\p
+       #\a        #\s #\d #\f #\g #\h #\j  #\k  #\l   k-del
+       k-shift    #f  #\z #\x #\c #\v #\b  #\n  #\m   #t
+       k-toggle   #f  #\, k-space #f #f #f #\.  k-ret #f
+       ;; II  -- upper case characters
+       #\Q        #\W #\E #\R #\T #\Y #\U  #\I  #\O   #\P
+       #\A        #\S #\D #\F #\G #\H #\J  #\K  #\L   k-del
+       k-shift-on #f  #\Z #\X #\C #\V #\B  #\N  #\M   #t
+       k-toggle   #f  #\, k-space #f #f #f #\.  k-ret #f
+       ;; III -- numeric & lower case graphics
+       #\1        #\2 #\3 #\4 #\5 #\6 #\7  #\8  #\9   #\0
+       #\@        #\# #\$ #\% #\& #\( #\)  k-ue k-sz  k-del
+       k-shift-3  #f  #\~ #\null #\" #\; #\:  k-oe k-ae  #t
+       k-toggle-3 #f  #\< k-space #f #f #f #\> k-ret #f
+       ;; IV  -- upper case other graphics
+       #\!        #\" k-pg #\$ #\% #\& #\/ #\(  #\)   #\?
+       #\^        #\' k-eu #\[ #\] #\{ #\}  k-Ue #\\  k-del
+       k-shift-4  #f  #\* #\- #\+ #\= #\_  k-Oe k-Ae  #t
+       k-toggle-3 #f  #\| k-space #f #f #f #\.  k-ret #f
+       )))
+   on-key: action))
+
 (define (guide-value-edit-dialog
          #!key
          (in (current-guide-gui-interval))
@@ -835,6 +893,7 @@
                     ((eqv? key EVENT_KEYENTER) EVENT_KEYENTER)
                     (else (debug 'ignored key) #f)))))))
          (data (let ((state "n/a")) (case-lambda (() state) ((val) (set! state val)))))
+         (validate #f)
          (size 'small)
          (horizontal-align 'center)
          (vertical-align 'center)
@@ -864,7 +923,7 @@
           (bg! size: w h)
           (bg! position: xsw ysw)
           (bg!)))
-       (title
+       (title!
         (and
          label
          (let ((label! (make-guide-label-view)))
@@ -875,8 +934,16 @@
            (label! size: w line-height)
            (label! position: xsw (- yno line-height+border))
            (label! text: (label-string label))
-           (label!))))
+           label!)))
+       (title (and title! (title!)))
        (title-height (if title line-height+border 0))
+       (check-valid
+        (and (procedure? validate)
+             (lambda (ggb)
+               (let ((valid (validate ggb)))
+                 (when title
+                   (title! color: (if valid hightlight-color color))
+                   (set! title (title!)))))))
        (line (guide-line-input
               in: (make-mdv-rect-interval
                    xsw
@@ -884,35 +951,44 @@
               horizontal-align: horizontal-align vertical-align: vertical-align
               font: font size: size line-height: line-height
               color: color hightlight-color: hightlight-color
-              data: data))
+              data: data
+              validate: check-valid))
        (kpd (keypad
              in: (make-x0y0x1y1-interval/coerce xsw ysw xno (round (- yno title-height line-height+border)))
              action:
              (lambda (p/r key mod)
                (let ((key (if on-key (on-key p/r key mod) key)))
-                 (if key
-                     (let ((plx (cond
-                                 ((char? key) (char->integer key))
-                                 (else key))))
-                       (guide-event-dispatch-to-payload in line p/r plx 0)))))))
+                 (if key (guide-event-dispatch-to-payload in line p/r key 0))))))
        (redraw! ;; FIXME: nested vector drawing handlers should be supported too
         (vector-append
-         (if title (vector background-view title) (vector background-view))
+         (if title
+             (vector background-view (if check-valid (lambda () (title)) title))
+             (vector background-view))
          (guide-payload-on-redraw line)
          (vector (guide-payload-on-redraw kpd))))
+       (this #f)
        (events
         (lambda (rect payload event x y)
+          (when (eq? (guide-focus) this) (guide-focus line))
           (cond
            ((or (eqv? event EVENT_BUTTON1DOWN) (eqv? event EVENT_BUTTON1UP))
             (cond
-             ((guide-payload-contains/xy? kpd x y) (guide-event-dispatch-to-payload rect kpd event x y))))
+             ((guide-payload-contains/xy? kpd x y)
+              (guide-event-dispatch-to-payload rect kpd event x y)
+              #t)
+             (else #f)))
            ((or (eqv? press: event) (eqv? release: event))
-            (let ((v (on-key x y)))
-              (if v (guide-event-dispatch-to-payload rect line event x y))))
+            (let ((v (on-key event x y)))
+              (when v
+                (guide-event-dispatch-to-payload rect line event x y)))
+            #t)
            (else (mdvector-rect-interval-contains/xy? in x y))))))
-    (make-guide-payload
-     name: 'guide-value-edit-dialog in: in widget: #f
-     on-redraw: redraw! on-any-event: events lifespan: 'ephemeral)))
+    (let ((result
+           (make-guide-payload
+            name: 'guide-value-edit-dialog in: in widget: #f
+            on-redraw: redraw! on-any-event: events lifespan: 'ephemeral)))
+      (set! this result)
+      result)))
 
 (define (guide-textarea-edit
          #!key
@@ -922,11 +998,7 @@
          (line-height 16)
          (font (guide-select-font height: line-height))
          (keypad guide-keypad/default)
-         (on-key
-          (lambda (p/r key mod)
-            (if (eq? press: p/r)
-                #f ;; ignore press - maybe more
-                key)))
+         (on-key %%guide-textarea-keyfilter)
          (data (let ((state "n/a")) (case-lambda (() state) ((val) (set! state val)))))
          (control-receiver #f)
          (rows 3)
@@ -992,7 +1064,8 @@
              horizontal-align: horizontal-align vertical-align: vertical-align
              font: font size: size line-height: line-height
              color: color hightlight-color: hightlight-color
-             data: data)
+             data: data
+             on-key: on-key)
           (if control-receiver
               (set! lines-control!
                     (let ((call (control-receiver ctrl)))
@@ -1434,6 +1507,123 @@
      widget: #f lifespan: 'ephemeral ;; TBD: change defaults here!
      on-redraw: redraw!
      on-any-event: events)))
+
+(define (make-chat
+         #!key
+         (in (current-guide-gui-interval))
+         (line-height 20)
+         (size 'small)
+         (font (guide-select-font size: 'small))
+         (keypad guide-keypad/default)
+         (action #f #;(lambda (msg-ggb2d) #f))
+         )
+  (let* ((area in)
+         (xno (mdvector-interval-upper-bound area 0))
+         (chat-message
+          (lambda (data l/r)
+            (receive
+                (pl ctrl)
+                (let ((color-2 (guide-select-color-2))
+                      (color-4 (guide-select-color-4))
+                      (line-count
+                       (cond
+                        ((ggb2d? data) (ggb2d-length data))
+                        ((string? data)
+                         ;; BAD: length!
+                         (length (string-split data #\newline)))
+                        (else 5))))
+                  (when l/r
+                    (let ((t color-2))
+                      (set! color-2 color-4)
+                      (set! color-4 t)))
+                  (guide-textarea-payload
+                   in: (make-mdv-rect-interval 0 0 xno (* line-count line-height))
+                   horizontal-align: (if l/r 'left 'right) vertical-align: 'bottom
+                   font: font
+                   size: size
+                   line-height: (* 2/3 line-height)
+                   color: color-2 hightlight-color: color-4
+                   ;; background: %%guide-default-background
+                   data: (lambda _
+                           (when (ggb2d? data)
+                             (ggb2d-goto! data 'position: 'absolute row: 1 col: 0))
+                           data)))
+              ;; (if control-receiver (control-receiver ctrl) (set! lines-control! ctrl))
+              (guide-button
+               in: (guide-payload-measures pl)
+               guide-callback: (lambda _ (debug 'MSG (if (ggb2d? data) (ggb2d->string data) data)))
+               label: pl))))
+         ;; -- model
+         (messages (make-ggb size: 0))
+         (msg
+          (let ((state ""))
+            (case-lambda
+             (() state)
+             ((val) #!void))))
+         (input-edit #f) ;; catch editor here to enable focus handling
+         ;; CONTRUCTOR (lambda (contructor INTERVAL COL ROW . rest) . rest)
+         ;; CONTRUCTOR+ARGS: (or CONTRUCTOR (CONTRUCTOR . ARGS))
+         (cm (lambda (in col row) (guide-ggb-layout in messages direction: 'vertical)))
+         (ce0
+          (lambda (in col row)
+            (guide-textarea-edit
+             in: in
+             label: "send!"
+             keypad: keypad
+             horizontal-align: 'left
+             label-properties:
+             `((color: ,(guide-select-color-4))
+               (horizontal-align: right))
+             control-receiver:
+             (lambda (ctrl)
+               (lambda _
+                 (cond
+                  ((procedure? action) (action (ctrl 'text)))
+                  (else
+                   (ggb-goto! messages 0)
+                   (let ((msg (ctrl 'text)))
+                     (ggb-insert! messages (chat-message msg #f)))))
+                 (ctrl text: '#u32())
+                 ""))
+             on-key: %%guide-textarea-keyfilter
+             data: msg)))
+         (ce (lambda (in row col)
+               (let ((value (ce0 in row col)))
+                 (set! input-edit value)
+                 value))))
+    (values
+     (case 1
+       ((1)
+        (let ((panel (make-ggb size: 2))
+              (xno (mdvector-interval-upper-bound area 0))
+              (yno (mdvector-interval-upper-bound area 1))
+              (ysw (mdvector-interval-lower-bound area 1))
+              (kph (* 10 line-height)))
+          (ggb-insert! panel (ce (make-mdv-rect-interval 0 0 xno kph) 0 0))
+          (ggb-insert! panel (cm (make-mdv-rect-interval 0 0 xno (+ (- yno ysw) kph)) 0 0))
+          (guide-ggb-layout area panel direction: 'vertical fixed: #t)))
+       (else
+        (make-guide-table
+         (make-mdvector
+          (range '#(1 2))
+          (vector cm ce))
+         in: area name: 'chat
+         border-ratio: 0)))
+     (lambda (key msg)
+       (case key
+         ((msg:) ;; add remote message
+          (unless (equal? msg "")
+            (ggb-goto! messages 0)
+            (ggb-insert! messages (chat-message msg #t))))
+         ((focus:)
+          (guide-focus (and msg input-edit)))
+         ((load:)
+          (ggb-clear! messages)
+          (for-each
+           (lambda (msg)
+             (receive (reference from msg kind) (apply values msg)
+               (ggb-insert! messages (chat-message msg (eqv? kind 0)))))
+           msg)))))))
 
 (define (Xglgui-select gui x y w h #!key (line-height 20) (color (guide-select-color-1)))
   (let ((font (guide-select-font height: line-height)))
