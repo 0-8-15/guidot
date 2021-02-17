@@ -351,6 +351,285 @@ NULL;
         (unit-id-string->unit-id (substring str 1 e))
         (unit-id-string->unit-id (if (fx= e (string-length str)) str (substring str 0 e))))))
 
+;; About
+
+(define (make-about-payload dummy interval)
+  (let*
+      ((xsw (mdvector-interval-lower-bound interval 0))
+       (ysw (mdvector-interval-lower-bound interval 1))
+       (xno (mdvector-interval-upper-bound interval 0))
+       (yno (mdvector-interval-upper-bound interval 1))
+       (w (- xno xsw))
+       (h (- yno ysw))
+       (line-height 16)
+       (line-height-selectable 60)
+       (b1active #t)
+       (b1
+        (let* ((x (/ w 4))
+               (y (/ h 4)))
+          (guide-button
+           in: (make-x0y0x1y1-interval/coerce x y (+ x (/ w 2)) (+ y (/ h 2)))
+           label: "(C) JFW"
+           guide-callback: (lambda (rect payload event x y) (set! b1active #f)))))
+       (b2 (let* ((wb (/ w 5))
+                  (x (- w wb))
+                  (y (* h 0))
+                  (h (/ h 15)))
+             (guide-button
+              in: (make-x0y0x1y1-interval/coerce x y (+ x wb) (+ y h))
+              label: "exit"
+              guide-callback:
+              (lambda (rect payload event x y) (terminate)))))
+       (conv (lambda (v)
+               (case v
+                 ((#f) "no")
+                 ((#t) "yes")
+                 (else
+                  (cond
+                   ((and (number? v) (exact? v)) (beaver-unit-id->unicode-vector v))
+                   ((string? v) v)
+                   (else (object->string v)))))))
+       (info
+        (let* ((rng (range '#(1 3)))
+               (yoff 60)
+               (border-ratio 1/10)
+               (area (make-x0y0x1y1-interval/coerce
+                      xsw (- h yoff (* 4 (+ 1 border-ratio) line-height))
+                      xno (- h yoff)))
+               (constructors
+                (let ((val1 (lambda (p a) p)))
+                  (vector
+                   (lambda (in col row)
+                     (let* ((last (memoize-last conv eqv?))
+                            (check (lambda () (last (chat-own-address)))))
+                       (guide-valuelabel in: in label: "Address" value: check success: val1)))
+                   (lambda (in col row)
+                     (let* ((last (memoize-last conv eqv?))
+                            (check (lambda () (last (kick-style)))))
+                       (guide-valuelabel in: in label: "kick-style" value: check success: val1)))
+                   (lambda (in col row)
+                     (let* ((last (memoize-last conv eq?))
+                            (check (lambda () (last (ot0cli-server)))))
+                       (guide-valuelabel in: in label: "vpn" value: check success: val1)))
+                   ))))
+          (make-guide-table (make-mdvector rng constructors) in: area border-ratio: border-ratio)))
+       (edit-active #f)
+       (dialog-set!
+        (lambda (x)
+          (guide-focus x)
+          (set! edit-active x)
+          #t))
+       (edits
+        (let* ((base (mdvector-interval-lower-bound (guide-payload-measures info) 1))
+               (border-ratio 1/20)
+               (rng (range '#(1 5)))
+               (area (make-x0y0x1y1-interval/coerce xsw (- base (* 3 line-height-selectable)) xno base))
+               (label-width 6/10)
+               (valid-port?
+                (gui-check-ggb/string-pred
+                 (lambda (str)
+                   (or (string-empty? str)
+                       (let ((n (string->number str)))
+                         (and n (< 1000 n #xffff)))))))
+               (constructors
+                (let ((val1 (lambda (p a) p)))
+                  (vector
+                   (lambda (in col row)
+                     (let* ((source beaver-proxy-port-number)
+                            (last (memoize-last object->string eqv?))
+                            (check (lambda () (last (source))))
+                            (label "proxy port"))
+                       (guide-valuelabel
+                        in: in size: 'medium label-width: label-width
+                        label: label value: check success: val1
+                        input:
+                        (lambda (rect payload event x y)
+                          (dialog-set!
+                           (guide-value-edit-dialog
+                            in: interval label: label
+                            keypad: guide-keypad/numeric
+                            validate: valid-port?
+                            data:
+                            (case-lambda
+                             (() (source))
+                             ((val)
+                              (with-exception-catcher
+                               (lambda (exn) #f)
+                               (lambda ()
+                                 (source val)
+                                 (dialog-set! #f)))))))))))
+                   (lambda (in col row)
+                     (let* ((source beaver-socks-port-number)
+                            (last (memoize-last object->string eqv?))
+                            (check (lambda () (last (source))))
+                            (label "socks port"))
+                       (guide-valuelabel
+                        in: in size: 'medium label-width: label-width
+                        label: label value: check success: val1
+                        input:
+                        (lambda (rect payload event x y)
+                          (dialog-set!
+                           (guide-value-edit-dialog
+                            in: interval label: label
+                            keypad: guide-keypad/numeric
+                            validate: valid-port?
+                            data:
+                            (case-lambda
+                             (() (source))
+                             ((val)
+                              (with-exception-catcher
+                               (lambda (exn) #f)
+                               (lambda ()
+                                 (source val)
+                                 (dialog-set! #f)))))))))))
+                   (lambda (in col row)
+                     (let* ((source beaver-socks-forward-addr)
+                            (last (memoize-last
+                                   (lambda (v)
+                                     (cond
+                                      ((string? v) v)
+                                      (else (object->string v))))
+                                   eqv?))
+                            (check (lambda () (last (source))))
+                            (label "forward"))
+                       (guide-valuelabel
+                        in: in size: 'medium label-width: label-width
+                        label: label value: check success: val1
+                        input:
+                        (lambda (rect payload event x y)
+                          (dialog-set!
+                           (guide-value-edit-dialog
+                            in: interval label: label
+                            keypad: beaverchat-keypad/ipv6-or-unit+port
+                            on-key:
+                            (lambda (p/r key mod)
+                              (if (eq? press: p/r)
+                                  #f ;; ignore press - maybe more
+                                  (case key
+                                    ((#\0 #\1 #\2 #\3 #\4 #\5 #\6 #\7 #\8 #\9 #\a #\b #\c #\d #\e #\f
+                                      #\[ #\] #\: #\.) key)
+                                    (else
+                                     (cond
+                                      ((eqv? key EVENT_KEYRIGHT) EVENT_KEYRIGHT)
+                                      ((eqv? key EVENT_KEYLEFT) EVENT_KEYLEFT)
+                                      ((eqv? key EVENT_KEYBACKSPACE) EVENT_KEYBACKSPACE)
+                                      ((eqv? key EVENT_KEYENTER) EVENT_KEYENTER)
+                                      (else (debug 'ignored key) #f))))))
+                            validate:
+                            (gui-check-ggb/string-pred
+                             (lambda (str)
+                               (or (string-empty? str)
+                                   (string-match-ipv6+port? str)
+                                   (string-match-unit-id+port? str))))
+                            data:
+                            (case-lambda
+                             (() (source))
+                             ((val)
+                              (with-exception-catcher
+                               (lambda (exn) #f)
+                               (lambda ()
+                                 (source val)
+                                 (dialog-set! #f)))))))))))
+                   (lambda (in col row)
+                     (guide-button
+                      in: in
+                      label: "Browse Homepage (needs proxy)"
+                      font: (guide-select-font size: 'small)
+                      guide-callback:
+                      (lambda (rect payload event x y)
+                        (if (positive? (beaver-proxy-port-number))
+                            (launch-url
+                             (string-append "http://127.0.0.1:" (number->string (beaver-proxy-port-number)))
+                             via: (if (< x (/ w 2)) 'webview 'extern))))))
+                   (lambda (in col row)
+                     (let* ((last (memoize-last (lambda (v) (number->string (length v))) eq?))
+                            (check (lambda () (last (chat-pending-messages)))))
+                       (guide-valuelabel
+                        in: in size: 'medium label: "Pending" value: check success: val1
+                        input: (lambda (rect payload event x y)
+                                 (chat-pending-messages '())
+                                 #t))))
+                   ))))
+          (make-guide-table (make-mdvector rng constructors) in: area border-ratio: border-ratio)))
+       (inbox
+        (let* ((wb (* w 2/3))
+               (x (+ xsw 15))
+               (y (* h 0))
+               (h (/ h 15))
+               (in (make-x0y0x1y1-interval/coerce x y (+ x wb) (+ y h)))
+               (last (memoize-last (lambda (v) (number->string (length v))) eq?))
+               (check (lambda () (last (chat-inbox-senders)))))
+          (guide-valuelabel
+           in: in label: "Ungesehen:" value: check
+           input:
+           (lambda _
+             (let ((all (chat-inbox-senders)))
+               (or (null? all)
+                   (let* ((data (lambda _ (map chat-partner->neatstring all)))
+                          (sel (lambda (n x)
+                                 (chat-address (list-ref (chat-inbox-senders) n))
+                                 (dialog-set! #f)))
+                          (pl (guide-list-select-payload interval data action: sel)))
+                     (dialog-set! pl))))))))
+       (redraw! (vector
+                 (guide-payload-on-redraw info)
+                 (guide-payload-on-redraw edits)
+                 (let ((d (guide-payload-on-redraw b1))) (lambda () (and b1active (d))))
+                 (cond-expand
+                  (android)
+                  (else (guide-payload-on-redraw b2)))
+                 (guide-payload-on-redraw inbox)
+                 (lambda () (when edit-active (guide-event-dispatch-to-payload/redraw edit-active)))))
+       (events
+        (lambda (rect payload event x y)
+          (cond
+           (edit-active (guide-event-dispatch-to-payload rect edit-active event x y))
+           ((or (eqv? event EVENT_BUTTON1DOWN) (eqv? event EVENT_BUTTON1UP))
+            (cond
+             ((and b1active (guide-payload-contains/xy? b1 x y))
+              (guide-event-dispatch-to-payload rect b1 event x y))
+             ((guide-payload-contains/xy? edits x y) (guide-event-dispatch-to-payload rect edits event x y))
+             ((guide-payload-contains/xy? inbox x y) (guide-event-dispatch-to-payload rect inbox event x y))
+             ((guide-payload-contains/xy? b2 x y)
+              (cond-expand
+               (android)
+               (else (guide-event-dispatch-to-payload rect b2 event x y))))))
+           (else (mdvector-rect-interval-contains/xy? interval x y))))))
+    (make-guide-payload in: interval widget: #f on-redraw: redraw! on-any-event: events lifespan: 'ephemeral)))
+
+(define (init-beaverchat-gui! launch-url beaver-domain)
+
+;;;  (define field_gradient (list (color:shuffle #xe8e9eaff) (color:shuffle #xe8e9eaff) (color:shuffle #xfefefeff) (color:shuffle #xfefefeff)))
+
+  (define (beaverchat-payload-sel number #!optional (area (make-mdv-rect-interval 0 0 320 474)))
+    (foreground-service! #t)
+    (case number
+      ((2 about) (make-about-payload #f area))
+      ((0 calculator) (make-calculator-payload area))
+      ((1) (make-beaverchat-payload launch-url beaver-domain in: area keypad: guide-keypad/de))
+      (else (guide-button in: (make-mdv-rect-interval 0 0 100 100)))))
+
+  ;; No longer: Wired to globals, may now be instanciated more than once.
+  ;;
+  ;; (guide-define-payload "chat" 'once (beaverchat-payload-config launch-url beaver-domain))
+
+  (kick
+   (visible-tl-options '#("calculator" "chat" "about"))
+   (PIN:toplevel-selection 0))
+  (guide-toplevel-payload
+   (let ((area (make-mdv-rect-interval 0 0 320 474))
+         (conversion beaverchat-payload-sel)
+         (options visible-tl-options)
+         (selection PIN:toplevel-selection))
+     ;; content as parameter???
+     (let ((rebuild
+            (lambda ()
+              (guide-toplevel-payload
+               (make-tool-switch-payload/dropdown selection options (conversion (selection) area))))))
+       (wire! selection post: rebuild)
+       (rebuild)
+       (guide-toplevel-payload)))))
+
 ;; Calculator
 
 (define (calculator dir)
@@ -387,6 +666,20 @@ NULL;
      (else (kick/sync! forward-logging-to-daemonian!)))
     (log-status "begin of log for run in \"" dir "\" with arguments " (object->string (args)))
     (thread-start! (make-thread job 'beaver))))
+
+(cond-expand
+ (debug
+  (kick
+   (visible-tl-options '#("calculator" "chat" "about"))
+   (PIN:toplevel-selection 1))
+  (define (avant!)
+    (load "dev.scm")
+    (kick (PIN:toplevel-selection 0))
+    (kick (PIN:toplevel-selection 1)))
+  (thread-start! (make-thread replloop)))
+ (else))
+
+;; command line
 
 (let ()
   (define (load-file-with-arguments file args)
