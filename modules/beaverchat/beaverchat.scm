@@ -100,6 +100,24 @@
   (let ((m (rx "^[[:space:]]*$")))
     (lambda (obj) (and (string? obj) (rx~ m obj) #t))))
 
+(define string-match-ipv6+port?
+  (let ((m (rx '(seq "[" ipv6-address "]:" (+ numeric)))))
+    (lambda (str) (rx~= m str))))
+
+(define string-match-unit-id+port?
+  (let ((pattern
+         (rx '(seq (submatch (** 13 13 (seq numeric (? (or #\. #\- #\space)))))
+                   (? (seq ":" (+ numeric)))))))
+    (lambda (str)
+      (let ((match (rx~= pattern str)))
+        (and match (string-chat-address->unit-id (rxm-ref match 1)))))))
+
+(define (gui-check-ggb/string-pred pred)
+  (lambda (ggb)
+    (let ((str (make-string (ggb-length ggb))))
+      (ggb-for-each ggb (lambda (i v) (string-set! str i (integer->char v))))
+      (pred str))))
+
 (define (gui-forward-address-filter old new)
   (cond
    ((string-empty? new) #f)
@@ -379,6 +397,7 @@
       (kick (chat-address #f)
             (PIN:toplevel-selection 2)))
     (define (callback msg)
+      (set! msg (ggb2d->string msg))
       (cond
        ((equal? msg "")) ;; ingore empty messages
        ((number? (chat-address))
@@ -425,7 +444,9 @@
               pl))
            (dialog #f)
            (nick-dialog-keypad guide-keypad/simplified))
-      (define (dialog-set! payload) (set! dialog payload))
+      (define (dialog-set! payload)
+        (guide-focus payload)
+        (set! dialog payload))
       (define (activate-chat-partner! to)
         (dialog-set! #f)
         (chat-address to))
@@ -509,11 +530,7 @@
          (guide-value-edit-dialog
           in: area label: "dial" data: chat-address/conversion
           font: fnt line-height: line-height-selectable
-          validate:
-          (lambda (ggb)
-            (let ((str (make-string (ggb-length ggb))))
-              (ggb-for-each ggb (lambda (i v) (string-set! str i (integer->char v))))
-              (string-chat-address->unit-id str))))))
+          validate: (gui-check-ggb/string-pred string-chat-address->unit-id))))
       (define (redraw!)
         (cond
          (dialog (guide-event-dispatch-to-payload/redraw dialog))
@@ -547,6 +564,25 @@
         (make-will result (lambda (pl) (to-toggle!) (toggle!)))
         result))))
 
+(define (beaverchat-keypad/ipv6-or-unit+port #!key (in (current-guide-gui-interval)) (action #f))
+  (guide-make-keypad
+   in
+   (make-mdvector
+    (range '#(5 5))
+    (vector
+     #\0 #\1 #\2 #\3 #\[
+     #\4 #\5 #\6 #\7 #\]
+     #\8 #\9 #\a #\b #\:
+     #\c #\d #\e #\f #\.
+     ;; last line
+     (list EVENT_KEYLEFT label: "<-")
+     (list EVENT_KEYRIGHT label: "->")
+     (list EVENT_KEYBACKSPACE label: (apply make-glC:image glgui_keypad_delete.img))
+     (list EVENT_KEYENTER label: (apply make-glC:image glgui_keypad_return.img))
+     #f
+     ))
+   on-key: action))
+
 (define (init-beaverchat-gui! launch-url beaver-domain) ;; Note: this is an once-at-most call!
 
 ;;;  (define field_gradient (list (color:shuffle #xe8e9eaff) (color:shuffle #xe8e9eaff) (color:shuffle #xfefefeff) (color:shuffle #xfefefeff)))
@@ -576,14 +612,15 @@
                (guide-button
                 in: (make-x0y0x1y1-interval/coerce x y (+ x wb) (+ y h))
                 label: "exit"
-                guide-callback: (lambda (rect payload event x y) (terminate)))))
+                guide-callback:
+                (lambda (rect payload event x y) (terminate)))))
          (conv (lambda (v)
                  (case v
                    ((#f) "no")
                    ((#t) "yes")
                    (else
                     (cond
-                     ((and (number? v) (exact? v)) (chat-number->neatstring v))
+                     ((and (number? v) (exact? v)) (beaver-unit-id->unicode-vector v))
                      ((string? v) v)
                      (else (object->string v)))))))
          (info
@@ -611,11 +648,23 @@
                      ))))
             (make-guide-table (make-mdvector rng constructors) in: area border-ratio: border-ratio)))
          (edit-active #f)
+         (dialog-set!
+          (lambda (x)
+            (guide-focus x)
+            (set! edit-active x)
+            #t))
          (edits
           (let* ((base (mdvector-interval-lower-bound (guide-payload-measures info) 1))
-                 (border-ratio 1/10)
+                 (border-ratio 1/20)
                  (rng (range '#(1 5)))
                  (area (make-x0y0x1y1-interval/coerce xsw (- base (* 3 line-height-selectable)) xno base))
+                 (label-width 6/10)
+                 (valid-port?
+                  (gui-check-ggb/string-pred
+                   (lambda (str)
+                     (or (string-empty? str)
+                         (let ((n (string->number str)))
+                           (and n (< 1000 n #xffff)))))))
                  (constructors
                   (let ((val1 (lambda (p a) p)))
                     (vector
@@ -625,14 +674,15 @@
                               (check (lambda () (last (source))))
                               (label "proxy port"))
                          (guide-valuelabel
-                          in: in size: 'medium label: label value: check success: val1
+                          in: in size: 'medium label-width: label-width
+                          label: label value: check success: val1
                           input:
                           (lambda (rect payload event x y)
-                            (set!
-                             edit-active
+                            (dialog-set!
                              (guide-value-edit-dialog
                               in: interval label: label
                               keypad: guide-keypad/numeric
+                              validate: valid-port?
                               data:
                               (case-lambda
                                (() (source))
@@ -641,22 +691,22 @@
                                  (lambda (exn) #f)
                                  (lambda ()
                                    (source val)
-                                   (set! edit-active #f)))))))
-                            #t))))
+                                   (dialog-set! #f)))))))))))
                      (lambda (in col row)
                        (let* ((source beaver-socks-port-number)
                               (last (memoize-last object->string eqv?))
                               (check (lambda () (last (source))))
                               (label "socks port"))
                          (guide-valuelabel
-                          in: in size: 'medium label: label value: check success: val1
+                          in: in size: 'medium label-width: label-width
+                          label: label value: check success: val1
                           input:
                           (lambda (rect payload event x y)
-                            (set!
-                             edit-active
+                            (dialog-set!
                              (guide-value-edit-dialog
                               in: interval label: label
                               keypad: guide-keypad/numeric
+                              validate: valid-port?
                               data:
                               (case-lambda
                                (() (source))
@@ -665,8 +715,7 @@
                                  (lambda (exn) #f)
                                  (lambda ()
                                    (source val)
-                                   (set! edit-active #f)))))))
-                            #t))))
+                                   (dialog-set! #f)))))))))))
                      (lambda (in col row)
                        (let* ((source beaver-socks-forward-addr)
                               (last (memoize-last
@@ -678,21 +727,21 @@
                               (check (lambda () (last (source))))
                               (label "forward"))
                          (guide-valuelabel
-                          in: in size: 'medium label: label value: check success: val1
+                          in: in size: 'medium label-width: label-width
+                          label: label value: check success: val1
                           input:
                           (lambda (rect payload event x y)
-                            (set!
-                             edit-active
+                            (dialog-set!
                              (guide-value-edit-dialog
                               in: interval label: label
-                              keypad: guide-keypad/ipv6
+                              keypad: beaverchat-keypad/ipv6-or-unit+port
                               on-key:
-                              (lambda (p/r key)
+                              (lambda (p/r key mod)
                                 (if (eq? press: p/r)
                                     #f ;; ignore press - maybe more
                                     (case key
                                       ((#\0 #\1 #\2 #\3 #\4 #\5 #\6 #\7 #\8 #\9 #\a #\b #\c #\d #\e #\f
-                                        #\[ #\] #\:) key)
+                                        #\[ #\] #\: #\.) key)
                                       (else
                                        (cond
                                         ((eqv? key EVENT_KEYRIGHT) EVENT_KEYRIGHT)
@@ -700,6 +749,12 @@
                                         ((eqv? key EVENT_KEYBACKSPACE) EVENT_KEYBACKSPACE)
                                         ((eqv? key EVENT_KEYENTER) EVENT_KEYENTER)
                                         (else (debug 'ignored key) #f))))))
+                              validate:
+                              (gui-check-ggb/string-pred
+                               (lambda (str)
+                                 (or (string-empty? str)
+                                     (string-match-ipv6+port? str)
+                                     (string-match-unit-id+port? str))))
                               data:
                               (case-lambda
                                (() (source))
@@ -708,8 +763,7 @@
                                  (lambda (exn) #f)
                                  (lambda ()
                                    (source val)
-                                   (set! edit-active #f)))))))
-                            #t))))
+                                   (dialog-set! #f)))))))))))
                      (lambda (in col row)
                        (guide-button
                         in: in
@@ -731,7 +785,7 @@
                                    #t))))
                      ))))
             (make-guide-table (make-mdvector rng constructors) in: area border-ratio: border-ratio)))
-         (inbox ;; TBD: Re-add selection
+         (inbox
           (let* ((wb (* w 2/3))
                  (x (+ xsw 15))
                  (y (* h 0))
@@ -739,29 +793,41 @@
                  (in (make-x0y0x1y1-interval/coerce x y (+ x wb) (+ y h)))
                  (last (memoize-last (lambda (v) (number->string (length v))) eq?))
                  (check (lambda () (last (chat-inbox-senders)))))
-            (guide-valuelabel in: in label: "Ungesehen:" value: check)))
+            (guide-valuelabel
+             in: in label: "Ungesehen:" value: check
+             input:
+             (lambda _
+               (let ((all (chat-inbox-senders)))
+                 (or (null? all)
+                     (let* ((data (lambda _ (map chat-partner->neatstring all)))
+                            (sel (lambda (n x)
+                                   (chat-address (list-ref (chat-inbox-senders) n))
+                                   (dialog-set! #f)))
+                            (pl (guide-list-select-payload interval data action: sel)))
+                       (dialog-set! pl))))))))
          (redraw! (vector
                    (guide-payload-on-redraw info)
                    (guide-payload-on-redraw edits)
                    (let ((d (guide-payload-on-redraw b1))) (lambda () (and b1active (d))))
-                   (guide-payload-on-redraw b2)
+                   (cond-expand
+                    (android)
+                    (else (guide-payload-on-redraw b2)))
                    (guide-payload-on-redraw inbox)
                    (lambda () (when edit-active (guide-event-dispatch-to-payload/redraw edit-active)))))
          (events
           (lambda (rect payload event x y)
             (cond
              (edit-active (guide-event-dispatch-to-payload rect edit-active event x y))
-             ((eqv? event EVENT_BUTTON1DOWN)
+             ((or (eqv? event EVENT_BUTTON1DOWN) (eqv? event EVENT_BUTTON1UP))
               (cond
                ((and b1active (guide-payload-contains/xy? b1 x y))
                 (guide-event-dispatch-to-payload rect b1 event x y))
                ((guide-payload-contains/xy? edits x y) (guide-event-dispatch-to-payload rect edits event x y))
-               ((guide-payload-contains/xy? b2 x y) (guide-event-dispatch-to-payload rect b2 event x y))))
-             ((eqv? event EVENT_BUTTON1UP)
-              (cond
-               ((and b1active (guide-payload-contains/xy? b1 x y))
-                (guide-event-dispatch-to-payload rect b1 event x y))
-               ((guide-payload-contains/xy? b2 x y) (guide-event-dispatch-to-payload rect b2 event x y))))
+               ((guide-payload-contains/xy? inbox x y) (guide-event-dispatch-to-payload rect inbox event x y))
+               ((guide-payload-contains/xy? b2 x y)
+                (cond-expand
+                 (android)
+                 (else (guide-event-dispatch-to-payload rect b2 event x y))))))
              (else (mdvector-rect-interval-contains/xy? interval x y))))))
       (make-guide-payload in: interval widget: #f on-redraw: redraw! on-any-event: events lifespan: 'ephemeral)))
 
