@@ -1,3 +1,4 @@
+;; (C) 2020, 2021 Jörg F. Wittenberger, GPL
 
 (log-status "initializing chat")
 
@@ -237,7 +238,7 @@
 
 (define id2phone beaver-unit-id->beaver-number)
 (define phone2id beaver-number->beaver-unit-id)
-(define (chat-number->neatstring num #!optional (gap "·"))
+(define (chat-number->neatstring num #!optional (gap "\xc2;\xb7;")) ;; "·"
   (or (beaver-unit-id->string num gap)
       (string-append "ERROR: illegal beaver number " (number->string num))))
 (define string-chat-address->unit-id unit-id-string->unit-id)
@@ -357,171 +358,194 @@
 
 (wire! chat-address post: chat-set-current-partner!)
 
-(define (beaverchat-payload-config launch-url beaver-domain)
-  (define (make-beaverchat-payload rect interval)
-    (let* ((xsw (mdvector-interval-lower-bound interval 0))
-           (ysw (mdvector-interval-lower-bound interval 1))
-           (xno (mdvector-interval-upper-bound interval 0))
-           (yno (mdvector-interval-upper-bound interval 1))
-           (w (- xno xsw))
-           (h (- yno ysw))
-           (gui (guide-rectangle-glgui rect))
-           (bag (glgui-container gui 0 0 w h))
-           (fnt (select-font size: 'small))
-           (cllx 0)
-           (clly (/ h 2))
-           (cw w)
-           (ch (/ h 2))
-           (line-height 20)
-           (line-height-selectable 28)
-           (text-keypad keypad:simplified)
-           (dial-keypad keypad:numeric)
-           (keypad (cond-expand
-                    ((and exclude-this-code android)
-                     (glgui-native-keypad bag 0 0 w (- clly line-height line-height)))
-                    (else (glgui-keypad bag 0 0 w (- clly line-height line-height) fnt)))))
-      (define (callback gui wgt type x y)
-        (debug 'chat-callback y)
-        #f)
-      (define (update-keypad)
-        (glgui-widget-set! bag keypad 'keypad (if (number? (chat-address)) text-keypad dial-keypad)))
-      (update-keypad)
-      ;;(glgui-widget-set! gui bag 'hidden #t)
-      (let* ((illy (- clly line-height))
-             (illx cllx)
-             (iw w)
-             (cwgt (glgui-chat bag cllx clly cw ch line-height (chat-messages) fnt callback))
-             (todisplay (glgui-label bag illx illy iw line-height "" fnt White))
-             (input (glgui-label bag illx (- illy line-height) iw line-height "" fnt White))
-             (nick-dialog #f)
-             (nick-dialog-keypad guide-keypad/simplified)
-             (ponebook-dialog #f))
-        (define (follow-input) (glgui-widget-set! gui cwgt 'list (chat-messages)) (Xtrigger-redraw!))
-        (define (follow-to) (glgui-widget-set! gui todisplay 'label (chat-partner->neatstring (chat-address))) (Xtrigger-redraw!))
-        (define (ask-for-nick to)
-          (set! nick-dialog
-                (guide-value-edit-dialog
-                 in: interval label: (chat-number->neatstring to)
-                 keypad: nick-dialog-keypad
-                 data:
-                 (case-lambda
-                  (() "")
-                  ((to)
-                   (with-exception-catcher
-                    (lambda (exn) #f)
-                    (lambda ()
-                      (unless (string-empty? val) (chat-partner-set! to val))
-                      (chat-address to)
-                      (set! nick-dialog #f))))))))
-        (define (select-from-phonebook)
-          (let ((all
-                 (sort
-                  (map
-                   (lambda (p)
-                     (cons
-                      (if (pair? (cdr p))
-                          (or (cadr p) (chat-number->neatstring (car p)))
-                          (chat-number->neatstring (car p)))
-                      p))
-                   (table->list chat-partners))
-                  (lambda (a b) (string<? (car a) (car b)))))
-                (border (* 0.1 line-height)))
-            (set! ponebook-dialog
-                  ((Xglgui-select
-                    bag border border (- w (* 2 border)) (- h (* 2 border))
-                    line-height: line-height-selectable color: White)
-                   (map car all)
-                   (lambda (sel x)
-                     (if (>= sel 0)
-                         (let ((e (cdr (list-ref all sel))))
-                           (if (cadr e)
-                               (cond
-                                ((< x 1/3)
-                                 (when ponebook-dialog (ponebook-dialog 'close) (set! ponebook-dialog #f))
-                                 (let ((pn (chat-number->neatstring (car e) "-")))
-                                   (launch-url
-                                    (string-append "http://" pn "." (beaver-domain) "/index")
-                                    via: (if (< x 1/4) 'webview 'extern))))
-                                ((> x 2/3)
-                                 (set! nick-dialog
-                                       (guide-value-edit-dialog
-                                        in: interval label: (chat-number->neatstring to)
-                                        keypad: nick-dialog-keypad
-                                        data:
-                                        (case-lambda
-                                         (() (cadr e))
-                                         ((val)
-                                          (with-exception-catcher
-                                           (lambda (exn) #f)
-                                           (lambda ()
-                                             (set! nick-dialog #f)
-                                             (if (string-empty? val)
-                                                 (chat-partner-set! (car e)) ;; remove
-                                                 (begin
-                                                   (chat-address (car e))
-                                                   (chat-partner-set! (car e) val))))))))))
-                                (else (kick (chat-address (car e)))))
-                               (ask-for-nick (car e))))
-                         (when ponebook-dialog (ponebook-dialog 'close) (set! ponebook-dialog #f))))))))
-        (define (close-chat!)
-          (when ponebook-dialog (ponebook-dialog 'close) (set! ponebook-dialog #f))
-          (kick (chat-address #f)
-                (PIN:toplevel-selection 2)))
-        (define (on-event rect pl event x y)
-          (define skip #f)
-          ;;(define gui (guide-rectangle-glgui rect))
+(define (make-beaverchat-payload
+         launch-url beaver-domain
+         #!key
+         (in (current-guide-gui-interval))
+         (keypad guide-keypad/default)
+         )
+  (let* ((area in)
+         (xsw (mdvector-interval-lower-bound area 0))
+         (ysw (mdvector-interval-lower-bound area 1))
+         (xno (mdvector-interval-upper-bound area 0))
+         (yno (mdvector-interval-upper-bound area 1))
+         (w (- xno xsw))
+         (h (- yno ysw))
+         (fnt (select-font size: 'small))
+         (line-height 20)
+         (foreground-color (guide-select-color-2))
+         (line-height-selectable 28))
+    (define (close-chat!)
+      (kick (chat-address #f)
+            (PIN:toplevel-selection 2)))
+    (define (callback msg)
+      (cond
+       ((equal? msg "")) ;; ingore empty messages
+       ((number? (chat-address))
+        (let ((timestamp (inexact->exact (floor (time->seconds (current-time)))))
+              (to (chat-address))
+              (payload (encode-ot0-message-payload `(chat ,msg))))
+          (kick
+           (chat-pending-messages (cons (list to timestamp payload) (chat-pending-messages)))
+           (chat-partner-add-message! (chat-own-address) to timestamp msg 1))
+          (if (not (ot0cli-server))
+              (PIN:toplevel-selection 2) ;; error out into about dialog
+              (chat-post-message! to timestamp payload))))
+       ((not (chat-address))
+        (let ((to (string-chat-address->unit-id msg)))
           (cond
-           ((= event EVENT_KEYRELEASE)
+           (to
+            (if (let ((x (chat-partner-known to)))
+                  (and x (car x)))
+                (chat-address to)
+                (ask-for-nick to)))
+           ((string-empty? msg) (select-from-phonebook))
+           (else
+            (debug 'Missing 'PartnerSelectionError)))))))
+    (let* ((title-area (make-mdv-rect-interval xsw (- yno line-height) xno yno))
+           (to-display #f)
+           (update-to-display!
+            (lambda ()
+              (let* ((addr (chat-address))
+                     (btn (guide-button
+                           in: title-area font: fnt
+                           label: (if addr (chat-partner->neatstring addr) "")
+                           guide-callback: (lambda _ (chat-address #f)  #f))))
+                (set! to-display btn))))
+           (chat-ctrl! #f)
+           (chat-payload
+            (receive (pl ctrl)
+                (make-chat
+                 in: (make-mdv-rect-interval xsw ysw xno (- yno line-height))
+                 font: fnt line-height: line-height
+                 keypad: keypad
+                 action: callback)
+              (set! chat-ctrl! ctrl)
+              (chat-ctrl! load: (chat-messages))
+              pl))
+           (dialog #f)
+           (nick-dialog-keypad guide-keypad/simplified))
+      (define (dialog-set! payload) (set! dialog payload))
+      (define (activate-chat-partner! to)
+        (dialog-set! #f)
+        (chat-address to))
+      (define (nick-dialog to remove-when-empty)
+        (guide-value-edit-dialog
+         in: area label: (chat-number->neatstring to)
+         keypad: nick-dialog-keypad
+         data:
+         (case-lambda
+          (() "")
+          ((val)
+           (with-exception-catcher
+            (lambda (exn) #f)
+            (if remove-when-empty
+                (lambda ()
+                  (dialog-set! #f)
+                  (if (string-empty? val)
+                      (chat-partner-set! to) ;; remove
+                      (begin
+                        (chat-partner-set! to val)
+                        (activate-chat-partner! to))))
+                (lambda ()
+                  (unless (string-empty? val) (chat-partner-set! to val))
+                  (activate-chat-partner! to))))))))
+      (define chat-address/conversion
+        (case-lambda
+         (() (let ((val (chat-address)))
+               (if val (chat-number->neatstring val) "")))
+         ((val)
+          (let ((to (string-chat-address->unit-id val)))
             (cond
-             ((= x EVENT_KEYESCAPE) (set! skip #t) (close-chat!))
-             ((= x EVENT_KEYENTER)
-              (set! skip #t)
-              (Xtrigger-redraw!)
-              (let ((msg (glgui-widget-get bag input 'label)))
-                (glgui-widget-set! bag input 'label "")
-                (glgui-widget-set! gui input 'bgcolor Black)
-                (cond
-                 ((and (chat-address) (equal? msg ""))
-                  (close-chat!))
-                 ((number? (chat-address))
-                  (let ((timestamp (inexact->exact (floor (time->seconds (current-time)))))
-                        (to (chat-address))
-                        (payload (encode-ot0-message-payload `(chat ,msg))))
-                    (kick
-                     (chat-pending-messages (cons (list to timestamp payload) (chat-pending-messages)))
-                     (chat-partner-add-message! (chat-own-address) to timestamp msg 1))
-                    (if (ot0cli-server)
-                        (chat-post-message! to timestamp payload)
-                        (glgui-widget-set! bag input 'label "Error: not connected!"))))
-                 (nick-dialog (guide-event-dispatch-to-payload rect nick-dialog event x y))
-                 ((not (chat-address))
-                  (let ((to (string-chat-address->unit-id msg)))
-                    (cond
-                     (to
-                      (if (let ((x (chat-partner-known to)))
-                            (and x (car x)))
-                          (chat-address to)
-                          (ask-for-nick to)))
-                     ((string-empty? msg) (select-from-phonebook))
-                     (else
-                      (glgui-widget-set! gui input 'bgcolor Red)
-                      (glgui-widget-set! bag input 'label msg))))))
-                #f))))
-           ((and (= event EVENT_KEYPRESS) (= x EVENT_KEYESCAPE)) (set! skip #t)))
-          (or skip (guide-default-event-dispatch/fallback-to-glgui rect pl event x y)))
-        (glgui-widget-set! gui input 'focus #t)
-        (glgui-widget-set! gui input 'enableinput #t)
-        ;;        (glgui-widget-set! gui input 'draw-handle Xglgui:label-draw2)
-        (wire! chat-messages post: follow-input)
-        (wire! chat-address post: update-keypad)
-        (wire! chat-address post: follow-to)
-        ;; Wired to globals, MUST be instanciated once only.
-        (make-guide-payload
-         name: 'beaverchat
-         in: interval widget: gui lifespan: 'once
-         gui-before: #f gui-after: #f
-         on-any-event: on-event))))
-  make-beaverchat-payload)
+             (to
+              (if (let ((x (chat-partner-known to)))
+                    (and x (car x)))
+                  (activate-chat-partner! to)
+                  (dialog-set! (nick-dialog to #f))))
+             ((string-empty? val) (select-from-phonebook))
+             (else
+              (debug 'Missing 'PartnerSelectionError)
+              "invalid phone number"))))))
+      (define (select-from-phonebook)
+        (let ((all
+               (sort!
+                (lambda (a b) (string<? (car a) (car b)))
+                (map
+                 (lambda (p)
+                   (cons
+                    (if (pair? (cdr p))
+                        (or (cadr p) (chat-number->neatstring (car p)))
+                        (chat-number->neatstring (car p)))
+                    p))
+                 (table->list chat-partners))))
+              (border (* 0.1 line-height)))
+          (dialog-set!
+           (guide-list-select-payload
+            area
+            (let ((data (map car all))) (lambda () data))
+            action:
+            (lambda (sel x)
+              (if (>= sel 0)
+                  (let ((e (cdr (list-ref all sel))))
+                    (if (cadr e)
+                        (cond
+                         ((< x 1/3)
+                          (dialog-set! #f)
+                          (let ((pn (chat-number->neatstring (car e) "-")))
+                            (launch-url
+                             (string-append "http://" pn "." (beaver-domain) "/index")
+                             via: (if (< x 1/4) 'webview 'extern))))
+                         ((> x 2/3)
+                          (dialog-set! (nick-dialog (car e) #t)))
+                         (else
+                          (activate-chat-partner! (car e))))
+                        (dialog-set! (nick-dialog (car e) #f))))
+                  (dialog-set! #f)))
+            line-height: line-height-selectable
+            font: (guide-select-font size: 'medium)
+            horizontal-align: 'left))))
+      (define (dial-dialog!)
+        (dialog-set!
+         (guide-value-edit-dialog
+          in: area label: "dial" data: chat-address/conversion
+          font: fnt line-height: line-height-selectable
+          validate:
+          (lambda (ggb)
+            (let ((str (make-string (ggb-length ggb))))
+              (ggb-for-each ggb (lambda (i v) (string-set! str i (integer->char v))))
+              (string-chat-address->unit-id str))))))
+      (define (redraw!)
+        (cond
+         (dialog (guide-event-dispatch-to-payload/redraw dialog))
+         (else
+          (guide-event-dispatch-to-payload/redraw chat-payload)
+          (guide-event-dispatch-to-payload/redraw to-display))))
+      (define (on-event rect pl event x y)
+        (cond
+         (dialog (guide-event-dispatch-to-payload rect dialog event x y))
+         ((case event ((press: release:) #t) (else #f))
+          (guide-event-dispatch-to-payload rect chat-payload event x y))
+         ((guide-payload-contains/xy? to-display x y)
+          (guide-event-dispatch-to-payload rect to-display event x y))
+         (else (guide-event-dispatch-to-payload rect chat-payload event x y))))
+      (update-to-display!)
+      (unless (chat-address) (dial-dialog!))
+      (let* ((when-wired
+              (lambda ()
+                (chat-ctrl! load: (debug 'updated-chat-messages (chat-messages)))))
+             (toggle! (wire! chat-messages switchable: #t post: when-wired))
+             (to-toggle! (wire! chat-address switchable: #t post:
+                                (lambda ()
+                                  (unless (chat-address) (dial-dialog!))
+                                  (update-to-display!))))
+             (result
+              (make-guide-payload
+               name: 'beaverchat
+               in: area lifespan: 'ephemeral
+               on-redraw: redraw!
+               on-any-event: on-event)))
+        (make-will result (lambda (pl) (to-toggle!) (toggle!)))
+        result))))
 
 (define (init-beaverchat-gui! launch-url beaver-domain) ;; Note: this is an once-at-most call!
 
@@ -746,11 +770,12 @@
     (case number
       ((2 about) (make-about-payload #f area))
       ((0 calculator) (make-calculator-payload area))
-      ((1) ((guide-payload-ref "chat") (guide-legacy-make-rect area) area))
+      ((1) (make-beaverchat-payload launch-url beaver-domain in: area keypad: guide-keypad/de))
       (else (guide-button in: (make-mdv-rect-interval 0 0 100 100)))))
 
-  ;; Wired to globals, MUST be instanciated only once.
-  (guide-define-payload "chat" 'once (beaverchat-payload-config launch-url beaver-domain))
+  ;; No longer: Wired to globals, may now be instanciated more than once.
+  ;;
+  ;; (guide-define-payload "chat" 'once (beaverchat-payload-config launch-url beaver-domain))
 
   (kick
    (visible-tl-options '#("calculator" "chat" "about"))
@@ -768,6 +793,18 @@
        (wire! selection post: rebuild)
        (rebuild)
        (guide-toplevel-payload)))))
+
+(cond-expand
+ (debug
+  (kick
+   (visible-tl-options '#("calculator" "chat" "about"))
+   (PIN:toplevel-selection 1))
+  (define (avant!)
+    (load "dev.scm")
+    (kick (PIN:toplevel-selection 0))
+    (kick (PIN:toplevel-selection 1)))
+  (thread-start! (make-thread replloop)))
+ (else))
 
 (log-status "initializing chat completed")
 ;; eof

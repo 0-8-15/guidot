@@ -1,3 +1,7 @@
+;;; (C) 2020, 2021 Jörg F. Wittenberger, GPL2
+;;;
+;;; Bindings to ontierzero, the last GPLed version of zerotier.
+
 (cond-expand
  ((or android-api19)
   (c-declare
@@ -83,7 +87,7 @@ end-of-c-declare
       gap
       (substring str 10 13)))))
 
-(define (beaver-unit-id->string num #!optional (gap "·"))
+(define (beaver-unit-id->string num #!optional (gap "\xc2;\xb7;")) ;; "·"
   (beaver-number->string (beaver-unit-id->beaver-number num) gap))
 
 (define unit-id-string->unit-id
