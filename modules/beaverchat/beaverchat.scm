@@ -62,12 +62,12 @@
 (define-pin beaver-proxy-port-number
   initial: 0
   filter: local-server-port-filter
-  name: "Port number fot HTTP/S proxy to listen on.  If 0: no proxy.")
+  name: "Port number for HTTP/S proxy to listen on.  If 0: no proxy.")
 
 (define-pin beaver-socks-port-number
   initial: 0
   filter: local-server-port-filter
-  name: "Port number fot HTTP/S proxy to listen on.  If 0: no socks.")
+  name: "Port number for SOCKS proxy to listen on.  If 0: no socks.")
 
 (kick
   (wire!
