@@ -220,7 +220,7 @@
               (label! color: color)
               (label! size: text-width line-height)
               (label! position: xsw (round (- yno (* (+ i 1) line-height))))
-              (label! text: "")
+              (label! text: '#())
               (vector-set! vec i label!)))))
        (update-value-views!
         (lambda ()
@@ -278,6 +278,15 @@
 
        (cursor-draw #f)
        (this-payload #f)
+       (cursor-label!
+        (let ((label! (make-guide-label-view)))
+          (label! horizontal-align: horizontal-align)
+          (label! vertical-align: vertical-align)
+          (label! font: font)
+          (label! color: hightlight-color)
+          (label! size: text-width line-height)
+          (label! text: '#(124)) ;; "|"
+          label!))
        (update-cursor!
         (lambda ()
           (guide-wakeup!) ;; ensure timely visual response
@@ -308,17 +317,12 @@
                       (set! width-before 0)
                       (loop 0 (+ count 1)))
                     w))
-                 (label! (make-guide-label-view)))
+                 (label! cursor-label!))
             (begin ;; must come after linebreak-again! and update-current-line!
               (update-value-views!)
               (fix-value-draw!))
             (if (eqv? current-line-length line-point)
                 (set! width-before width-total))
-            (label! horizontal-align: horizontal-align)
-            (label! vertical-align: vertical-align)
-            (label! font: font)
-            (label! color: hightlight-color)
-            (label! size: text-width line-height)
             (label!
              position:
              (round (case horizontal-align
@@ -326,7 +330,6 @@
                       ((center) (+ xsw (* 1/2 (- text-width width-total))))
                       (else (- width-total width-before))))
              (round (+ ysw (* (+ (- (- rows 1) current-line-number) row-display-offset) line-height))))
-            (label! text: "|")
             (let ((draw
                    (if #t ;; blink
                        (let ((on (label!)))
