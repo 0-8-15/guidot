@@ -158,13 +158,14 @@
   (let ((point (+ (macro-ggb-point ggb) 1))
         (rest (macro-ggb-rest ggb))
         (buffer (macro-ggb-buffer ggb))
-        (max-grow-length ;; 4 GB
-         #x40000000))
+        (max-grow-length
+         ;; #x40000000 ;; was 4 GB - which is too large 32bit
+         #x10000000))
     (cond
      ((fx>= (fx+ point size) rest)
       (cond
        ((eqv? rest (##vector-length buffer))
-        (let ((insert (min max-grow-length (max size (##vector-length buffer)))))
+        (let ((insert (min size (max max-grow-length (##vector-length buffer)))))
           (macro-ggb-buffer-set! ggb (vector-append buffer (make-vector insert #f)))
           (if (macro-ggb-cow ggb) (macro-ggb-cow-set! ggb #f))
           (macro-ggb-rest-set! ggb (fx+ rest insert))))
