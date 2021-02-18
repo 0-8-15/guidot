@@ -138,14 +138,10 @@
      (< x (mdvector-ref measures 1 0)))))
 
 (define (guide-rectangle-width obj)
-  ;; FIXME: OVERHEAD
-  (let ((interval (guide-rectangle-measures obj)))
-    (- (mdvector-interval-upper-bound interval 0) (mdvector-interval-lower-bound interval 0))))
+  (mdv-rect-interval-width (guide-rectangle-measures obj)))
 
 (define (guide-rectangle-height obj)
-  ;; FIXME: OVERHEAD
-  (let ((interval (guide-rectangle-measures obj)))
-    (- (mdvector-interval-upper-bound interval 1) (mdvector-interval-lower-bound interval 1))))
+  (mdv-rect-interval-height (guide-rectangle-measures obj)))
 
 (define guide-terminate-on-key (make-parameter EVENT_KEYESCAPE))
 
@@ -247,8 +243,10 @@
         (redraw! rect payload event x y)
         (set! wakeup-seen #f))
        ((eq? event EVENT_IDLE)
-        ;;(thread-yield!)
-        (wait-for-time-or-signal!) ;; maybe only for Linux/Windows?
+        (cond-expand
+         ((or linux win32)
+          (wait-for-time-or-signal!))
+         (else (thread-yield!)))
         #t)
        ((or (eq? event EVENT_KEYPRESS) (eq? event EVENT_KEYRELEASE))
         (set! x (%%guide:legacy-keycode->guide-keycode x))

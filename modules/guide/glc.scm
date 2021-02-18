@@ -177,6 +177,14 @@
        (>= y (mdvector-ref interval 0 1))
        (< y (mdvector-ref interval 1 1))))
 
+(define (mdv-rect-interval-width interval)
+  ;; FIXME: OVERHEAD
+  (- (mdvector-interval-upper-bound interval 0) (mdvector-interval-lower-bound interval 0)))
+
+(define (mdv-rect-interval-height interval)
+  ;; FIXME: OVERHEAD
+  (- (mdvector-interval-upper-bound interval 1) (mdvector-interval-lower-bound interval 1)))
+
 ;;;**
 
 (define (for-range-index! fixnum-range proc!) ;; FIXME: belongs to repetition! (tests)
@@ -890,8 +898,8 @@
          (row-glyph 1)
          (len (range-size rng 0)))
     (do ((i (fx- len 1) (fx- i 1))
-         (above 0.)
-         (below 0.))
+         (above 0)
+         (below 0))
         ((eqv? i -1) (if construct (construct below above) (values below above)))
       (let ((glyph (mdvector-ref vec row-glyph i)))
         (when glyph
@@ -899,7 +907,7 @@
             ;; FIXME: check/defaults into constructor!
             (unless goy
               (MATURITY +2 "glyph without vertical offset" loc: 'glypvectorheight)
-              (set! goy 0.))
+              (set! goy 0))
             (set! above (max above goy))
             (let ((gh (ttf:glyph-height glyph)))
               ;; FIXME: check/defaults into constructor!
@@ -924,14 +932,13 @@
 ;;;** Strings
 
 (define (%%glC:glyphvector-bounds glyphs font)
-  (receive (below above) (guide-glypvector-bounds glyphs)
-    (let ((override (MATURITY+1:ln-ttf:font-ref font (char->integer #\|))))
+  (let ((override (MATURITY+1:ln-ttf:font-ref font (char->integer #\|))))
       ;; note: this path is usually always taken
-      (when override
-        (let ((goy (ttf:glyph-offsety override)))
-          (set! above (max (max above goy) above))
-          (set! below (min (fx- goy (ttf:glyph-height override)) below)))))
-    (values below above)))
+      (if override
+          (let ((goy (ttf:glyph-offsety override))
+                (gh (ttf:glyph-height override)))
+            (values (- goy gh) goy))
+          (guide-glypvector-bounds glyphs))))
 
 (define (glC:rederglyph/xy x y glyph color) ;; --> (advance-x rendering shift)
   (let ((gh (ttf:glyph-height glyph))
