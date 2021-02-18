@@ -16,35 +16,35 @@
     (do ((i 0 (fx+ i 1)))
         ((eqv? i len) result)
       (let* ((c (string-ref str i))
-             (c1 (char->integer c)))
+             (ci (char->integer c)))
         (cond
-         ((fx< c1 #x80) (ggb-insert! result c1))
+         ((fx< ci #x80) (ggb-insert! result ci))
          (else
           (receive (size m1)
             (cond
-             ((fx< c1 #x80) (values 1 #x7f))
-             ((fx< c1 #xe0) (values 2 #x0f))
-             ((fx< c1 #xf0) (values 3 #x0f))
-             ((fx< c1 #xf8) (values 4 #x07))
-             ((fx< c1 #xfc) (values 5 #x03))
+             ((fx< ci #x80) (values 1 #x7f))
+             ((fx< ci #xe0) (values 2 #x0f))
+             ((fx< ci #xf0) (values 3 #x0f))
+             ((fx< ci #xf8) (values 4 #x07))
+             ((fx< ci #xfc) (values 5 #x03))
              (else (values 6 #x01)))
             (let ((limit (fx+ i size)))
-              (let subc ((j (fx+ i 1)) (r (##bitwise-and c1 m1)))
+              (let subc ((j (fx+ i 1)) (ci (##bitwise-and ci m1)))
                 (cond
-                 ((eqv? j limit) (ggb-insert! result c1) (set! i (##fx- j 1)))
+                 ((eqv? j limit) (ggb-insert! result ci) (set! i (##fx- j 1)))
                  ((eqv? j len)
                   (ggb-insert! result (on-encoding-error j))
                   (set! i (##fx- j 1)))
                  (else
                   (let ((cc (##char->integer (##string-ref str j))))
                     (if (or (##fx< cc #x80) (##fx>= cc #xc0))
-                        (let ((r (on-encoding-error j)))
-                          (ggb-insert! result c1)
+                        (let ((ci (on-encoding-error j)))
+                          (ggb-insert! result ci)
                           (set! i (##fx- j 1)))
                         (subc
                          (##fx+ j 1)
                          (##bitwise-ior
-                          (##arithmetic-shift r 6)
+                          (##arithmetic-shift ci 6)
                           (##bitwise-and cc #x3F))))))))))))))))
 
 (define (utf8string->u32vector str)
