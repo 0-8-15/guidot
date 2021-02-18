@@ -1104,7 +1104,7 @@
                          (else 0))
                        (- width-before width-total)))
              (round (+ ysw border-width)))
-            (label! text: "|")
+            (label! text: '#(124)) ;; a vertical bar ("|")
             (let ((draw
                    (if #t ;; blink
                        (let ((on (label!)))
@@ -1133,7 +1133,7 @@
             ((eqv? key EVENT_KEYENTER)
              (data (%%value-buffer->string value-buffer))
              (set! value-buffer (input->buffer data))
-             (value! text: (%%value-buffer->string value-buffer))
+             (value! text: (ggb->vector value-buffer))
              (set! value-draw (value!))
              (update-cursor!))
             ((char? key)
