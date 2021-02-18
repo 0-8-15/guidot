@@ -368,22 +368,20 @@ NULL;
   ;;
   ;; (guide-define-payload "chat" 'once (beaverchat-payload-config launch-url beaver-domain))
 
-  (kick
+  (kick/sync
    (visible-tl-options '#("calculator" "chat" "about"))
    (PIN:toplevel-selection 0))
-  (guide-toplevel-payload
-   (let ((area (make-mdv-rect-interval 0 0 320 474))
-         (conversion beaverchat-payload-sel)
-         (options visible-tl-options)
-         (selection PIN:toplevel-selection))
-     ;; content as parameter???
-     (let ((rebuild
-            (lambda ()
-              (guide-toplevel-payload
-               (make-tool-switch-payload/dropdown selection options (conversion (selection) area))))))
-       (wire! selection post: rebuild)
-       (rebuild)
-       (guide-toplevel-payload)))))
+  (let ((area (make-mdv-rect-interval 0 0 320 474))
+        (conversion beaverchat-payload-sel)
+        (options visible-tl-options)
+        (selection PIN:toplevel-selection))
+    ;; content as parameter???
+    (let ((rebuild
+           (lambda ()
+             (guide-toplevel-payload
+              (make-tool-switch-payload/dropdown selection options (conversion (selection) area))))))
+      (wire! selection post: rebuild)
+      (rebuild))))
 
 ;; Calculator
 
