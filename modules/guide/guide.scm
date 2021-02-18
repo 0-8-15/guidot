@@ -1221,10 +1221,12 @@
     (define (guide-main
              init #!key
              ;; (events #f)
-             (suspend glgui-suspend)
+             (suspend (lambda () #f))
              (resume (lambda ()
-                       (glgui-wakeup!)
-                       (glgui-resume)))
+                       (guide-wakeup!)
+                       (set! glCore:needsinit #t) ;; reinitialize OpenGL pipeline
+                       (thread-sleep! 0.1) ;; this is needed on android??
+                       (log-status "resumed")))
              (terminate (lambda () #t)))
       (let ((gui #f)
             (todo once))
