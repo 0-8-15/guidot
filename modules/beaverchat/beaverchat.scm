@@ -222,6 +222,23 @@
 (let ((orig (unbox ot0cli-on-ot0-received))
       (payload-seen (encode-ot0-message-payload '(chat seen))))
   (define (on-incomming-message type from reference data)
+    (define (sanitized-message msg)
+      (let* ((errors 0)
+             (checked
+              (utf8string->ggb
+               msg
+               (lambda (i)
+                 (set! errors (+ errors 1))
+                 #xfffd))))
+        (if (eqv? errors 0)
+            msg
+            (let ((conversion-buffer (make-ggb2d)))
+              (ggb2d-insert-row! conversion-buffer checked)
+              (string-append
+               "WARNING: The message contained "
+               (number->string errors)
+               "UTF8 encoding errors, sanitized message:\n"
+               (ggb2d->string/encoding-utf8 conversion-buffer))))))
     (case type
       ((request)
        (let ((payload (decode-ot0-message-payload data)))
@@ -229,7 +246,8 @@
           payload
           (('chat (? string? msg))
            (begin
-             (chat-partner-add-message! from (chat-own-address) reference msg 0)
+             (chat-partner-add-message!
+              from (chat-own-address) reference (sanitized-message msg) 0)
              (chat-post-message! from reference payload-seen)))
           (('chat 'seen)
            (pin-filter!
