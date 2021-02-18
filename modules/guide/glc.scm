@@ -47,24 +47,6 @@
                           (##arithmetic-shift ci 6)
                           (##bitwise-and cc #x3F))))))))))))))))
 
-(define (utf8string->u32vector str)
-  ;; convert UTF8 to unicode u32vector
-  (if (eqv? (string-length str) 0) '#u32()
-      (let* ((buffer (utf8string->ggb str #t))
-             (len (ggb-length buffer))
-             (result (make-u32vector len)))
-        (do ((i 0 (##fx+ i 1)))
-            ((eqv? i len) result)
-          (##u32vector-set! result i (ggb-ref buffer i))))))
-
-(define utf8string->u32vector/cache ;; likely caching is no longer useful
-  (let ((cache (make-table test: string=? weak-keys: #t)))
-    (lambda (str)
-      (or (table-ref cache str #f)
-          (let ((result (utf8string->u32vector str)))
-            (table-set! cache str result)
-            result)))))
-
 ;;;** srfi-179 compat
 
 (define mdvector-interval?)
