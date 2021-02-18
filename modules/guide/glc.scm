@@ -914,7 +914,7 @@
 ;;;** Strings
 
 (define (%%glC:glyphvector-bounds glyphs font)
-  (let ((override (MATURITY+1:ln-ttf:font-ref font (char->integer #\|))))
+  (let ((override (MATURITY+1:ln-ttf:font-ref font 124))) ;; (char->integer #\|)
       ;; note: this path is usually always taken
       (if override
           (let ((goy (ttf:glyph-offsety override))
@@ -962,7 +962,7 @@
          )
   ;; TBD: use ggb2d-procedures (which where late in the game).
   (MATURITY -2 "BEWARE DoS: overly expensive, especially for crafted input (e.g., sequences of zeros)"
-            loc: guide-linebreak-unicodevector!)
+            loc: guide-linebreak!)
   (let* ((width
           (- width
              (if padding-right padding-right
@@ -996,14 +996,15 @@
              ((ggb2d? data)
               (ggb2d-reader/immutable data (lambda (reader limit) (set! getnext! reader) limit)))
              ((u32vector? data) (u32vector-length data))
-             (else (error "invalid argument" guide-linebreak-unicodevector! data)))))
+             (else (error "invalid argument" guide-linebreak! data)))))
       (do ((i 0 (fx+ i 1)))
           ((eqv? i total-length)
            (push-word!)
            into)
         (let ((c (cond
+                  (getnext! (getnext!))
                   ((u32vector? data) (u32vector-ref data i))
-                  (else (getnext!)))))
+                  (else (error "invalid" guide-linebreak! data)))))
           (cond
            ((eqv? c indicator-return)) ;; we currently drop return characters
            ((eqv? c indicator-newline)
