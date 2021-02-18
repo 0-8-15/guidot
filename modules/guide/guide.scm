@@ -1051,13 +1051,9 @@
       (ggb-for-each ggb (lambda (i v) (string-set! result i (integer->char v))) start end)
       result))
   (define (input->buffer data)
-    (let* ((initial (utf8string->u32vector
-                     (let ((x (data)))
-                       (if (string? x) x (object->string x)))))
-           (buffer (make-ggb size: (u32vector-length initial))))
-      (do ((i 0 (fx+ i 1)))
-          ((eqv? i (u32vector-length initial)) buffer)
-        (ggb-insert! buffer (u32vector-ref initial i)))))
+    (utf8string->ggb
+     (let ((x (data)))
+       (if (string? x) x (object->string x)))))
   (let*
       ((xsw (mdvector-interval-lower-bound in 0))
        (ysw (mdvector-interval-lower-bound in 1))
