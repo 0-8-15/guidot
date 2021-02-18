@@ -825,6 +825,7 @@
                                    (lambda (v)
                                      (cond
                                       ((string? v) v)
+                                      ((not v) '#())
                                       (else (object->string v))))
                                    eqv?))
                             (check (lambda () (last (source))))
@@ -845,6 +846,12 @@
                       in: in
                       label: "Browse Homepage (needs proxy)"
                       font: (guide-select-font size: 'small)
+                      background-color: (guide-select-color-3)
+                      background:
+                      (make-glC:image
+                       (mdv-rect-interval-width in)
+                       (mdv-rect-interval-height in)
+                       0 0. 1. .7734375 .375)
                       guide-callback:
                       (lambda (rect payload event x y)
                         (if (positive? (beaver-proxy-port-number))
@@ -878,6 +885,7 @@
                    (let* ((data (lambda _ (map chat-partner->neatstring all)))
                           (sel (lambda (n x)
                                  (chat-address (list-ref (chat-inbox-senders) n))
+                                 (PIN:toplevel-selection 1) ;; FIXME: must match menu!
                                  (dialog-set! #f)))
                           (pl (guide-list-select-payload interval data action: sel)))
                      (dialog-set! pl))))))))
