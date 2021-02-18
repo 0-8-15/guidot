@@ -105,9 +105,9 @@
       (let ((fnt (find-font fnt)))
         (do ((i 0 (fx+ i 1))
              (x0 (exact->inexact x))
-             (ccv (utf8string->u32vector txt)))
-            ((fx= i (u32vector-length ccv)))
-          (let* ((charcode (u32vector-ref ccv i))
+             (ccv (ggb->vector (utf8string->ggb txt))))
+            ((eqv? i (vector-length ccv)))
+          (let* ((charcode (vector-ref ccv i))
                  (g (MATURITY+1:ln-ttf:font-ref fnt charcode)))
             (if g
                 (let ((img (ttf:glyph-image g)))
@@ -184,7 +184,11 @@
        (value-buffer
         (let ((buffer (make-ggb2d size: rows))
               (source (data)))
-          (when (string? source) (set! source (utf8string->u32vector source)))
+          (when (string? source)
+            (let ((ggb (utf8string->ggb source)))
+              (set! source (make-ggb2d))
+              (ggb2d-insert-row! source ggb)
+              (ggb2d-goto! source position: 'absolute row: 1 col: 0)))
           (cond
            ((or (ggb2d? source) (u32vector? source))
             (guide-linebreak! buffer source font text-width))
