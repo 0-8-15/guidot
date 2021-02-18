@@ -167,7 +167,7 @@
 
 ;;** Beaver Chat
 
-(define glgui-chat-messages-are-valid?
+(define beaverchat-messages-all-valid?
   ;; pre-check messages before they break the glgui widget
   (cond-expand
    ;; TBD: check only if feature `debug` is enabled.
@@ -181,7 +181,7 @@
 
 (define-pin chat-messages
   initial: '()
-  pred: glgui-chat-messages-are-valid?
+  pred: beaverchat-messages-all-valid?
   name: "Chat messages")
 
 (define-pin chat-messages-limit 30)
