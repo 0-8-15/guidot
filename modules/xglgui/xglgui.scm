@@ -564,11 +564,19 @@
                       (ggb2d-goto! buffer position: 'absolute row: 1 col: 0)
                       buffer)
                     value))
-               (update-value-views!)
-               (update-current-line!)
-               (fix-value-draw!)
                (update-cursor!))
               (else (error "unhandled text representation" 'textarea-payload text: value))))
+           more))
+         ((insert:)
+          (apply
+           (lambda (data)
+             (cond
+              ((string? data)
+               (call-with-input-string
+                data
+                (lambda (port) (ggb2d-insert-port! value-buffer port)))
+               (update-cursor!))
+              (else #f)))
            more))
          (else (error "invalid command key" 'guide-textarea-payload key)))))))
 
@@ -1045,6 +1053,7 @@
 (define (guide-textarea-edit
          #!key
          (in (current-guide-gui-interval))
+         (menu #f)
          (label #f) (label-string (lambda (value) (if (string? value) value (object->string value))))
          label-properties
          (line-height 16)
@@ -1084,23 +1093,33 @@
           (bg! size: width height)
           (bg! position: xsw ysw)
           (bg!)))
-       (title-height (if label line-height+border 0))
+       (title-height (if (or menu label) line-height+border 0))
        (title
-        (and
-         label
-         (let ((label! (make-guide-label-view)))
-           (label! horizontal-align: horizontal-align)
-           (label! vertical-align: vertical-align)
-           (label! font: font)
-           (label! color: color)
-           (label! text: (label-string label))
-           (when (pair? label-properties)
-             (for-each
-              (lambda (setting) (apply label! setting))
-              label-properties))
-           (label! size: width line-height)
-           (label! position: xsw (- yno line-height+border))
-           (label!))))
+        (cond
+         (label
+          (let ((label! (make-guide-label-view)))
+            (label! horizontal-align: horizontal-align)
+            (label! vertical-align: vertical-align)
+            (label! font: font)
+            (label! color: color)
+            (label! text: (label-string label))
+            (when (pair? label-properties)
+              (for-each
+               (lambda (setting) (apply label! setting))
+               label-properties))
+            (label! size: width line-height)
+            (label! position: xsw (- yno line-height+border))
+            (label!)))
+         (menu
+          (let ((label! (make-guide-label-view)))
+            (label! position: xsw (- yno line-height+border))
+            (when (pair? label-properties)
+              (for-each
+               (lambda (setting) (apply label! setting))
+               label-properties))
+            (label! foreground: (guide-payload-on-redraw menu))
+            (label!)))
+         (else #f)))
        (edit-area-height (* rows line-height))
        (edit-position
         (let ((yno (ceiling (- yno title-height))))
@@ -1171,7 +1190,10 @@
               (let ((x (- x (vector-ref edit-position 0)))
                     (y (- y (vector-ref edit-position 1))))
                 (guide-event-dispatch-to-payload rect lines event x y)))
+             ((and menu (> y (- yno line-height+border)))
+              (guide-event-dispatch-to-payload rect menu event x (- y (- yno line-height+border))))
              ((and lines-control! title (> y (- yno line-height+border)) (eqv? event EVENT_BUTTON1DOWN))
+              (MATURITY -1 "obsolete code path taken" loc: guide-textarea-edit)
               (lines-control! event x y))))
            ((or (eqv? press: event) (eqv? release: event))
             (guide-focus lines) ;; questionable!
@@ -1567,8 +1589,7 @@
          (size 'small)
          (font (guide-select-font size: 'small))
          (keypad guide-keypad/default)
-         (action #f #;(lambda (msg-ggb2d) #f))
-         )
+         (action #f #;(lambda (msg-ggb2d) #f)))
   (let* ((area in)
          (xno (mdvector-interval-upper-bound area 0))
          (chat-message
@@ -1618,9 +1639,42 @@
          (cm (lambda (in col row) (guide-ggb-layout in messages direction: 'vertical)))
          (ce0
           (lambda (in col row)
+            (define edit-control!)
+            (define (send! . _)
+              (cond
+               ((procedure? action) (action (edit-control! 'text)))
+               (else
+                (ggb-goto! messages 0)
+                (let ((msg (ctrl 'text)))
+                  (ggb-insert! messages (chat-message msg #f)))))
+              (edit-control! text: '#u32())
+              "")
+            (define menu
+              (let* ((w (mdv-rect-interval-width in))
+                     (menu-area (make-mdv-rect-interval 0 0 w line-height))
+                     (bw (/ w 4))
+                     (menu-color (guide-select-color-4))
+                     (button-area (make-mdv-rect-interval 0 0 bw line-height))
+                     (menu (make-ggb)))
+                (ggb-insert!
+                 menu
+                 (guide-button
+                  in: button-area
+                  label: "paste"
+                  color: menu-color
+                  guide-callback:
+                  (lambda _ (edit-control! insert: (clipboard-paste)) #t)))
+                (ggb-insert!
+                 menu
+                 (guide-button
+                  in: button-area
+                  label: "send!"
+                  color: menu-color
+                  guide-callback: (lambda _ (send!) #t)))
+                (guide-ggb-layout menu-area menu direction: 'horizontal fixed: #t)))
             (guide-textarea-edit
              in: in
-             label: "send!"
+             menu: menu
              keypad: keypad
              horizontal-align: 'left
              label-properties:
@@ -1628,15 +1682,8 @@
                (horizontal-align: right))
              control-receiver:
              (lambda (ctrl)
-               (lambda _
-                 (cond
-                  ((procedure? action) (action (ctrl 'text)))
-                  (else
-                   (ggb-goto! messages 0)
-                   (let ((msg (ctrl 'text)))
-                     (ggb-insert! messages (chat-message msg #f)))))
-                 (ctrl text: '#u32())
-                 ""))
+               (set! edit-control! ctrl)
+               send!)
              on-key: %%guide-textarea-keyfilter
              data: msg)))
          (ce (lambda (in row col)
