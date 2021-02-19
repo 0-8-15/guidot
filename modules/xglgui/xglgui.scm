@@ -1061,7 +1061,7 @@
          (keypad guide-keypad/default)
          (on-key %%guide-textarea-keyfilter)
          (data (let ((state "n/a")) (case-lambda (() state) ((val) (set! state val)))))
-         (control-receiver #f)
+         (results values)
          (rows 3)
          (cols #f)
          (size 'small)
@@ -1137,20 +1137,7 @@
              color: color hightlight-color: hightlight-color
              data: data
              on-key: on-key)
-          (if control-receiver
-              (set! lines-control!
-                    (let ((call (control-receiver ctrl)))
-                      (if (procedure? call) call
-                          (begin
-                            (MATURITY -1 "control-receiver should return #f or procedure"
-                                      loc: guide-textarea-edit call)
-                            #f))))
-              (set! lines-control!
-                    (lambda (event x y)
-                      (let ((in (data)))
-                        (cond
-                         ((string? in) (data (ctrl 'string)))
-                         (else (data (ctrl 'text))))))))
+          (set! lines-control! ctrl)
           pl))
        (edit-area-positioned-draw #f)
        (edit-area-positioned-view
@@ -1193,16 +1180,26 @@
              ((and menu (> y (- yno line-height+border)))
               (guide-event-dispatch-to-payload rect menu event x (- y (- yno line-height+border))))
              ((and lines-control! title (> y (- yno line-height+border)) (eqv? event EVENT_BUTTON1DOWN))
-              (MATURITY -1 "obsolete code path taken" loc: guide-textarea-edit)
               (lines-control! event x y))))
            ((or (eqv? press: event) (eqv? release: event))
             (guide-focus lines) ;; questionable!
             (let ((v (on-key event x y)))
               (if v (guide-event-dispatch-to-payload rect lines event x y))))
            (else (mdvector-rect-interval-contains/xy? in x y))))))
-    (make-guide-payload
-     name: 'guide-textarea-edit in: in widget: #f
-     on-redraw: redraw! on-any-event: events lifespan: 'ephemeral)))
+    (if (eq? results values)
+        (set! lines-control!
+              (let ((ctrl lines-control!))
+                (MATURITY -1 "obsolete code path taken" loc: guide-textarea-edit)
+                (lambda (event x y)
+                  (let ((in (data)))
+                    (cond
+                     ((string? in) (data (ctrl 'string)))
+                     (else (data (ctrl 'text)))))))))
+    (results
+     (make-guide-payload
+      name: 'guide-textarea-edit in: in widget: #f
+      on-redraw: redraw! on-any-event: events lifespan: 'ephemeral)
+     lines-control!)))
 
 (define (guide-list-select-payload
          in content
@@ -1621,7 +1618,6 @@
                            (when (ggb2d? data)
                              (ggb2d-goto! data 'position: 'absolute row: 1 col: 0))
                            data)))
-              ;; (if control-receiver (control-receiver ctrl) (set! lines-control! ctrl))
               (guide-button
                in: (guide-payload-measures pl)
                guide-callback: (lambda _ (debug 'MSG (if (ggb2d? data) (ggb2d->string data) data)))
@@ -1676,16 +1672,16 @@
              in: in
              menu: menu
              keypad: keypad
+             data: msg
              horizontal-align: 'left
              label-properties:
              `((color: ,(guide-select-color-4))
                (horizontal-align: right))
-             control-receiver:
-             (lambda (ctrl)
+             ;; is default: on-key: %%guide-textarea-keyfilter
+             results:
+             (lambda (payload ctrl)
                (set! edit-control! ctrl)
-               send!)
-             on-key: %%guide-textarea-keyfilter
-             data: msg)))
+               payload))))
          (ce (lambda (in row col)
                (let ((value (ce0 in row col)))
                  (set! input-edit value)
