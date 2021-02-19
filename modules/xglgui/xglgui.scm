@@ -163,7 +163,8 @@
          (on-key %%guide-textarea-keyfilter);; filter characters to handle
          (size 'small)
          (color (guide-select-color-2))
-         (hightlight-color (guide-select-color-4)))
+         (hightlight-color (guide-select-color-4))
+         (results values))
   (define (ggb-delete-word! ggb dir)
     (do ()
         ((let ((point (ggb-point ggb)))
@@ -538,7 +539,7 @@
     (update-current-line!)
     (fix-value-draw!)
     (update-cursor!)
-    (values
+    (results
      (let ((result
             (make-guide-payload
              name: 'guide-textarea-payload in: in widget: #f
@@ -1579,6 +1580,20 @@
      on-redraw: redraw!
      on-any-event: events)))
 
+(define %%guide-clipboard-receiver
+  (let ((%%guide-clipboard-receiver
+         (make-pin
+          initial: #f
+          pred: (lambda (obj) (or (not obj) (procedure? obj)))
+          name: "one-ari procedure receiving clipboard value")))
+    (wire!
+     %%guide-clipboard-receiver
+     sequence:
+     (lambda (old new)
+       (when new (new (clipboard-paste))))
+     post: (box (lambda () (%%guide-clipboard-receiver #f))))
+    %%guide-clipboard-receiver))
+
 (define (make-chat
          #!key
          (in (current-guide-gui-interval))
@@ -1659,7 +1674,12 @@
                   label: "paste"
                   color: menu-color
                   guide-callback:
-                  (lambda _ (edit-control! insert: (clipboard-paste)) #t)))
+                  (lambda args
+                    (%%guide-clipboard-receiver
+                     (lambda (data)
+                       (MATURITY +2 "paste from clipboard is REALLY UNSTABLE" loc: make-chat)
+                       (debug 'inserted (edit-control! insert: (debug 'got data)))))
+                    #t)))
                 (ggb-insert!
                  menu
                  (guide-button
