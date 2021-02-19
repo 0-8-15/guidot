@@ -283,6 +283,22 @@
      (if (macro-ggb-cow lines) data (ggb2d-copy data)))
    values))
 
+(define (ggb2d-insert-port! result port)
+  (let* ((initial-line
+          (and (ggb2d-current-row result)
+               (%%ggb2d-row-ref result #t)))
+         (line (or initial-line (make-ggb))))
+    (do ((c (read-char port) (read-char port)))
+        ((eof-object? c)
+         (unless (or (eqv? (ggb-point line) 0) (eqv? line initial-line))
+           (ggb2d-insert-row! result line))
+         result)
+      (unless (eqv? c #\return)
+        (ggb-insert! line (char->integer c)))
+      (when (eqv? c #\newline)
+        (ggb2d-insert-row! result line)
+        (set! line (make-ggb))))))
+
 (define (ggb2d-load-file name #!optional (char-encoding 'UTF-8))
   ;; TBD: try to optimize, loading 40MB takes 30'' wall clock time.
   (call-with-input-file

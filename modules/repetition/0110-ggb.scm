@@ -165,7 +165,9 @@
      ((fx>= (fx+ point size) rest)
       (cond
        ((eqv? rest (##vector-length buffer))
-        (let ((insert (min size (max max-grow-length (##vector-length buffer)))))
+        (let ((insert (min
+                       (max size (##vector-length buffer))
+                       max-grow-length)))
           (macro-ggb-buffer-set! ggb (vector-append buffer (make-vector insert #f)))
           (if (macro-ggb-cow ggb) (macro-ggb-cow-set! ggb #f))
           (macro-ggb-rest-set! ggb (fx+ rest insert))))
