@@ -841,17 +841,13 @@
                             input: check
                             output: source
                             success: (lambda _ (dialog-set! #f))))))))
-                   (lambda (in col row)
+                   (lambda (area col row)
                      (guide-button
-                      in: in
+                      in: area
                       label: "Browse Homepage (needs proxy)"
                       font: (guide-select-font size: 'small)
                       background-color: (guide-select-color-3)
-                      background:
-                      (make-glC:image
-                       (mdv-rect-interval-width in)
-                       (mdv-rect-interval-height in)
-                       0 0. 1. .7734375 .375)
+                      background: (guide-background button: in: area)
                       guide-callback:
                       (lambda (rect payload event x y)
                         (if (positive? (beaver-proxy-port-number))
