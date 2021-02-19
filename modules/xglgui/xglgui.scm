@@ -631,6 +631,28 @@
                guide-callback: selcb)))
         (vector-set! all i payload)))))
 
+(define %%guide-dropdownbox_downarrow.img
+  (glCoreTextureCreate
+   16 16
+   '#u8(
+        0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+        0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+        0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+        0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+        0 63 0 0 0 0 0 0 0 0 0 0 0 0 66 0
+        51 210 170 0 0 0 0 0 0 0 0 0 0 168 206 49
+        201 214 213 172 3 0 0 0 0 0 0 0 174 215 214 201
+        83 218 223 217 179 0 0 0 0 0 0 180 220 219 220 82
+        0 68 212 225 226 184 0 0 0 0 187 219 227 210 69 0
+        0 0 42 214 232 230 216 44 40 217 230 232 217 42 0 0
+        0 0 0 45 219 238 237 218 224 237 234 223 41 0 0 0
+        0 0 0 0 32 195 242 240 239 245 195 29 0 0 0 0
+        0 0 0 0 0 5 195 252 244 198 0 0 0 0 0 0
+        0 0 0 0 0 0 0 203 209 0 0 0 0 0 0 0
+        0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+        0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+        )))
+
 (define (make-tool-switch-payload/dropdown
          selection options content
          #!key
@@ -640,6 +662,8 @@
          (selection-area #|deprecated|# #f)
          ;; non-functional; for debugging:
          (name 'tool-switch-payload/dropdown))
+  (define dropdown.img
+    (make-glC:image 16 16 %%guide-dropdownbox_downarrow.img 0. 1. 1.00000000000000000000 0.))
   (define (in-pl? pl x y) ;; TBD: independent, move elsewhere once stable
     (let ((in (guide-payload-measures pl)))
       (and (> x (mdvector-interval-lower-bound in 0))
@@ -674,12 +698,42 @@
                             ((vector? kind) (vector-ref kind (selection)))
                             ((list? kind) (list-ref kind (selection)))
                             (else "error")))))
-                       ;; current selected label
-                      (curla (if dynamic sel (sel))))
+                      ;; current selected label
+                      (curla (if dynamic sel (sel)))
+                      (line-area (make-mdv-rect-interval
+                                  0 0
+                                  (mdv-rect-interval-width selection-area)
+                                  (mdv-rect-interval-height selection-area)))
+                      (line (make-ggb size: 2)))
+                 (ggb-insert!
+                  line
+                  (guide-button
+                   in: line-area
+                   label: curla
+                   font: selfnt
+                   color: (guide-select-color-1) ;; invert colors
+                   background-color: (guide-select-color-2)
+                   background: (guide-background 'default in: line-area)
+                   vertical-align: 'center
+                   horizontal-align: 'left
+                   guide-callback: b1c))
+                 (ggb-insert!
+                  line
+                  (guide-button
+                   in: line-area
+                   label: dropdown.img
+                   color: (guide-select-color-1) ;; invert colors
+                   background-color: #f
+                   background: 'none
+                   vertical-align: 'center
+                   horizontal-align: 'right
+                   guide-callback: b1c))
                  (guide-button
                   in: selection-area
-                  label: curla
+                  label: (guide-ggb-layout selection-area line direction: 'layer)
                   font: selfnt
+                  color: (guide-select-color-1) ;; invert colors
+                  background-color: (guide-select-color-2)
                   background: (%%glCore:textures-ref selbg #f) ;;??? are texture volatile
                   vertical-align: 'center
                   horizontal-align: 'left

@@ -672,6 +672,19 @@
 (define %%guide-default-background
   (make-glC:image 4 4 (glCoreTextureCreate 4 4 (make-u8vector 16 #xff)) 0.1 0.1 .9 .9))
 
+(define (guide-background
+         key
+         #!key
+         (in (current-guide-gui-interval)))
+  (case key
+    ((button:)
+     (make-glC:image
+      (mdv-rect-interval-width in)
+      (mdv-rect-interval-height in)
+      0 0. 1. .7734375 .375))
+    ((default: default) %%guide-default-background)
+    (else (error "invalid argument" guide-background key))))
+
 (define-macro (macro-guide-default-background) `((lambda () %%guide-default-background)))
 
 (define (guide-button
@@ -723,11 +736,12 @@
     (when background
       (view!
        background:
-       (if (fixnum? background)
-           (begin
-             (MATURITY -1 "background: converting fixnum to texture" loc: location)
-             (%%glCore:textures-ref background #f))
-           background)))
+       (cond
+        ((fixnum? background)
+         (MATURITY -1 "background: converting fixnum to texture" loc: location)
+         (%%glCore:textures-ref background #f))
+        ((eq? background 'none) #f)
+        (else background))))
     (when background-color (view! color: background-color))
     (if position
         (view! position: (vector-ref position 0) (vector-ref position 1))

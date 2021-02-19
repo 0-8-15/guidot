@@ -515,7 +515,7 @@
                      (mdvector-body colors)
                      2 4)))
                  (calc (memoize-last formula eq? eq? eq?)))
-            (lambda () (calc (figure) texcoords (bgcolora))))))
+            (lambda () (and texture (calc (figure) texcoords (bgcolora)))))))
     (define fixed-draw
       (lambda ()
         (if visible ;; TBD: deprecated! use fg+bg pair instead!
@@ -589,6 +589,7 @@
          (if (null? more) background
              (let ((thing (car more)))
                (cond
+                ((not thing) (set! texture #f))
                 ((glC:image? thing)
                  (set! texture (glC:image-t thing))
                  (set! texcoords (glC:image-legacy-texcoords thing)))
