@@ -362,7 +362,7 @@ NULL;
     (case number
       ((2 about) (beaverchat-about-payload #f area))
       ((0 calculator) (make-calculator-payload area))
-      ((1) (make-beaverchat-payload webview-launch-url beaver-domain in: area keypad: guide-keypad/de))
+      ((1) (make-beaverchat-payload launch-url beaver-domain in: area keypad: guide-keypad/de))
       (else (guide-button in: (make-mdv-rect-interval 0 0 100 100)))))
 
   ;; No longer: Wired to globals, may now be instanciated more than once.
