@@ -297,7 +297,8 @@
       (unless (eqv? c #\return)
         (ggb-insert! line (char->integer c)))
       (when (eqv? c #\newline)
-        (ggb2d-insert-row! result line)
+        (unless (eqv? line initial-line)
+          (ggb2d-insert-row! result line))
         (set! line (make-ggb))))))
 
 (define (ggb2d-load-file name #!optional (char-encoding 'UTF-8))
