@@ -1581,18 +1581,22 @@
      on-any-event: events)))
 
 (define %%guide-clipboard-receiver
-  (let ((%%guide-clipboard-receiver
+  ;; Interesting, tricky example how to use likely --- likely should
+  ;; do better at the user facing API!
+  (let ((receiver
          (make-pin
           initial: #f
           pred: (lambda (obj) (or (not obj) (procedure? obj)))
           name: "one-ari procedure receiving clipboard value")))
     (wire!
-     %%guide-clipboard-receiver
+     receiver
      sequence:
      (lambda (old new)
-       (when new (new (clipboard-paste))))
-     post: (box (lambda () (%%guide-clipboard-receiver #f))))
-    %%guide-clipboard-receiver))
+       (when new (new (clipboard-paste)))
+       ;; important: whatever the reveiver returns MUST NOT not leak
+       #f)
+     post: (lambda () (when (receiver) (receiver #f)) #f))
+    receiver))
 
 (define (make-chat
          #!key
