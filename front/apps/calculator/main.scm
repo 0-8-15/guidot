@@ -19,12 +19,13 @@
 (current-maturity-level 0)
 
 ($maturity-tolerance!
- ;;
+ ;; lower bound
  2
+ ;; upper bound Any chance +2 code came here?
+ 1
  ;; FIXME: (##print-maturity-warnings!) not yet seen upon exit, why?
- 0
- ;; Any chance +2 code came here?
- 1)
+ 1 ;; normally 0
+ )
 
 (cond-expand
  ((or #;android debug)
