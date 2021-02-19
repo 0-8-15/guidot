@@ -287,7 +287,8 @@
   (let* ((initial-line
           (and (ggb2d-current-row result)
                (%%ggb2d-row-ref result #t)))
-         (line (or initial-line (make-ggb))))
+         (first-line initial-line)
+         (line (or first-line (make-ggb))))
     (do ((c (read-char port) (read-char port)))
         ((eof-object? c)
          (unless (or (eqv? (ggb-point line) 0) (eqv? line initial-line))
