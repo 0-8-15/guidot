@@ -164,6 +164,23 @@
          (size 'small)
          (color (guide-select-color-2))
          (hightlight-color (guide-select-color-4)))
+  (define (ggb-delete-word! ggb dir)
+    (do ()
+        ((let ((point (ggb-point ggb)))
+           (or (eqv? point (if dir (ggb-length ggb) 0))
+               (not (char-alphabetic? (integer->char (ggb-ref ggb (- point 1))))))))
+      (ggb-delete! ggb (if dir 1 -1))))
+  (define (ggb-goto-word! ggb dir)
+    (do () ;; skip spaces
+        ((let ((point (ggb-point ggb)))
+           (or (eqv? point 0)
+               (char-alphabetic? (integer->char (ggb-ref ggb (- point 1)))))))
+      (if dir (ggb-goto-right! ggb) (ggb-goto-left! ggb)))
+    (do () ;; skip alphabetics
+        ((let ((point (ggb-point ggb)))
+           (or (eqv? point 0)
+               (not (char-alphabetic? (integer->char (ggb-ref ggb (- point 1))))))))
+      (if dir (ggb-goto-right! ggb) (ggb-goto-left! ggb))))
   (unless (and (eqv? (mdvector-interval-lower-bound in 0) 0)
                (eqv? (mdvector-interval-lower-bound in 1) 0))
     (error "area not zero based" guide-textarea-payload))
@@ -375,8 +392,18 @@
            (eq? press: p/r) ;; ignore press - maybe more
            (let ((value! (vector-ref value-views (- current-line-number row-display-offset))))
              (cond
-              ((eqv? key EVENT_KEYRIGHT) (ggb-goto-right! current-line) (update-cursor!))
-              ((eqv? key EVENT_KEYLEFT) (ggb-goto-left! current-line) (update-cursor!))
+              ((eqv? key EVENT_KEYRIGHT)
+               (cond
+                ((eqv? (bitwise-and MODIFIER_ALT mod) MODIFIER_ALT)
+                 (ggb-goto-word! current-line #t))
+                (else (ggb-goto-right! current-line)))
+               (update-cursor!))
+              ((eqv? key EVENT_KEYLEFT)
+               (cond
+                ((eqv? (bitwise-and MODIFIER_ALT mod) MODIFIER_ALT)
+                 (ggb-goto-word! current-line #f))
+                (else (ggb-goto-left! current-line)))
+               (update-cursor!))
               ((or (eqv? key EVENT_KEYUP) (eqv? key EVENT_KEYDOWN))
                (ggb2d-goto! value-buffer position: 'relative row: (if (eqv? key EVENT_KEYUP) -1 1))
                (update-cursor!))
@@ -414,7 +441,11 @@
                        (linebreak-again!)
                        (update-cursor!)))))
                   (else
-                   (ggb-delete! current-line 1)
+                   (cond
+                    ((eqv? (bitwise-and MODIFIER_ALT mod) MODIFIER_ALT)
+                     (ggb-delete! current-line 1)
+                     (ggb-delete-word! current-line #t))
+                    (else (ggb-delete! current-line 1)))
                    (value! text: (ggb->vector current-line))
                    (update-cursor!)))))
               ((eqv? key EVENT_KEYBACKSPACE)
@@ -425,14 +456,22 @@
                   (else
                    (let ((before (%%ggb2d-row-ref value-buffer (- current-line-number 1))))
                      (ggb-goto! before (ggb-length before))
-                     (ggb-delete! before -1)
+                     (cond
+                      ((eqv? (bitwise-and MODIFIER_ALT mod) MODIFIER_ALT)
+                       (ggb-delete! before -1)
+                       (ggb-delete-word! before #f))
+                      (else (ggb-delete! before -1)))
                      (let ((col (ggb-point before)))
                        (ggb-insert-sequence! before (ggb->vector current-line))
                        (ggb-goto! before col))
                      (ggb2d-delete-row! value-buffer -1)
                      (update-cursor!)))))
                 (else
-                 (ggb-delete! current-line -1)
+                 (cond
+                  ((eqv? (bitwise-and MODIFIER_ALT mod) MODIFIER_ALT)
+                   (ggb-delete! current-line -1)
+                   (ggb-delete-word! current-line #f))
+                  (else (ggb-delete! current-line -1)))
                  (value! text: (ggb->vector current-line))
                  (update-cursor!))))
               ((eqv? key EVENT_KEYENTER)
