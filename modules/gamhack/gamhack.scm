@@ -8,6 +8,21 @@
     (display-exception e port))
   #!void)
 
+;;** Once Only Continuations
+
+;; Avoid use of general `call-with-current-continuation` for once
+;; continuations called once only.  Some compilers may have a better
+;; idea than creating a full blown continuation.
+;;
+;; Then name is inherited from `bigloo`.
+
+(define bind-exit call-with-current-continuation)
+
+;;** Delayed Evaluation
+
+(define (promise? obj) ;; widespread available, easy to support
+  (##promise? obj))
+
 ;;** Lowlevel data access
 
 (include "datastructures.scm")
