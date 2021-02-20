@@ -224,8 +224,19 @@
     (cond
      ((eq? row #t)
       (let ((point (ggb-point rows)))
-        (if (eqv? point 0) (fail "point at zero") (ggb-ref rows (- point 1)))))
+        (if (eqv? point 0) (error "point at zero") (ggb-ref rows (- point 1)))))
      (else (ggb-ref rows row)))))
+
+(define-macro (macro-ggb2d-row-ref ggb2d row fail)
+  ;; beware: internal use only - MAY re-evaluate macro arguments
+  (let ((rows (gensym 'rows))
+        (point (gensym 'point)))
+    `(let ((,rows (macro-ggb2d-lines ,ggb2d)))
+       (cond
+        ((eq? ,row #t)
+         (let ((,point (ggb-point ,rows)))
+           (if (eqv? ,point 0) (,fail "point at zero") (ggb-ref ,rows (- ,point 1)))))
+        (else (ggb-ref ,rows ,row))))))
 
 (define (ggb2d-ref ggb2d #!optional (row #f) (col #f) #!key (fail error))
   (cond
@@ -286,7 +297,7 @@
 (define (ggb2d-insert-port! result port)
   (let* ((initial-line
           (and (ggb2d-current-row result)
-               (%%ggb2d-row-ref result #t)))
+               (macro-ggb2d-row-ref result #t NYIE)))
          (first-line initial-line)
          (line (or first-line (make-ggb))))
     (do ((c (read-char port) (read-char port)))
