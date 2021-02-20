@@ -1489,8 +1489,7 @@
       (let ((offset
              (case direction
                ((-2) upper-bound-y)
-               (else 0)))
-            (hit #f))
+               (else 0))))
         (ggb-for-each
          buffer ;; TBD: this pass is almost cacheable
          (lambda (i v)
@@ -1507,35 +1506,36 @@
                  ((2) (set! offset (+ offset height)))
                  ((-2) (set! offset (- offset height)))
                  ((1) (set! offset (+ offset width))))))))
-        (ggb-for-each-rtl
-         buffer
-         (lambda (i v)
-           (when (and (not hit) (guide-payload? v))
-             (let* ((interval (guide-payload-measures v))
-                    (xsw (mdvector-interval-lower-bound interval 0))
-                    (ysw (mdvector-interval-lower-bound interval 1))
-                    (xno (mdvector-interval-upper-bound interval 0))
-                    (yno (mdvector-interval-upper-bound interval 1))
-                    (width (fx- xno xsw))
-                    (height (fx- yno ysw))
-                    (y0 y)
-                    (x (case direction
-                         ((1) (+ lower-bound-x0 (+ width (- x offset))))
-                         (else x)))
-                    (y (case direction
-                         ((2) (- y lower-bound-y (- offset height)))
-                         ((-2)
-                          (+ (- y offset) (- lower-bound-y0 lower-bound-y)))
-                         (else (- y lower-bound-y)))))
-               (when (mdvector-rect-interval-contains/xy? interval x y)
-                 (set! hit #t)
-                 (guide-event-dispatch-to-payload rect v event x y))
-               ;; update running
-               (case direction
-                 ((2) (set! offset (- offset height)))
-                 ((-2) (set! offset (+ offset height)))
-                 ((1) (set! offset (- offset width))))))))
-        #t))
+        (call-with-current-continuation
+         (lambda (return)
+           (ggb-for-each-rtl
+            buffer
+            (lambda (i v)
+              (when (guide-payload? v)
+                (let* ((interval (guide-payload-measures v))
+                       (xsw (mdvector-interval-lower-bound interval 0))
+                       (ysw (mdvector-interval-lower-bound interval 1))
+                       (xno (mdvector-interval-upper-bound interval 0))
+                       (yno (mdvector-interval-upper-bound interval 1))
+                       (width (fx- xno xsw))
+                       (height (fx- yno ysw))
+                       (y0 y)
+                       (x (case direction
+                            ((1) (+ lower-bound-x0 (+ width (- x offset))))
+                            (else x)))
+                       (y (case direction
+                            ((2) (- y lower-bound-y (- offset height)))
+                            ((-2)
+                             (+ (- y offset) (- lower-bound-y0 lower-bound-y)))
+                            (else (- y lower-bound-y)))))
+                  (when (mdvector-rect-interval-contains/xy? interval x y)
+                    (return (guide-event-dispatch-to-payload rect v event x y)))
+                  ;; update running
+                  (case direction
+                    ((2) (set! offset (- offset height)))
+                    ((-2) (set! offset (+ offset height)))
+                    ((1) (set! offset (- offset width))))))))
+           #t))))
     (define events
       ;; TBD: factor motion/shift handling out (copied here from
       ;; `select` already.
