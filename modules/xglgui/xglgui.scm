@@ -1580,7 +1580,8 @@
   (let ((receiver
          (make-pin
           initial: #f
-          pred: (lambda (obj) (or (not obj) (procedure? obj)))
+          pred: (lambda (obj)
+                  (or (not obj) (procedure? obj) (promise? obj)))
           ;; FIXME: in LIKELY !: illegal values make it hang!
           filter: (lambda (old new) (and (procedure? new) new))
           name: "one-ari procedure receiving clipboard value")))
@@ -1594,7 +1595,10 @@
          (check-not-observable-speculative! %%guide-critical-call)
          (check-observable-sequential! %%guide-critical-call))
         (else))
-       (when new (new))
+       (cond
+        ((not new))
+        ((procedure? new) (new))
+        (else (force new)))
        ;; important: whatever the operation returns MUST NOT not leak
        #f)
      post: (lambda () (when (receiver) (receiver #f)) #f))
