@@ -884,15 +884,16 @@
          (and on-key (on-key event x)))
         ((guide-payload-contains/xy? payload x y)
          (do ((i (fx- (vector-length content) 1) (fx- i 1))
+              (result #f)
               (hit #f))
-             ((or hit (eqv? i -1)) #|signal event handled in any case:|# #t)
+             ((or hit (eqv? i -1)) result)
            (let ((payload (vector-ref content i)))
              (and payload
                   (and
                    (guide-payload-contains/xy? payload x y)
                    (begin
                      (set! hit #t)
-                     (guide-event-dispatch-to-payload rect payload event x y)))))))
+                     (set! result (guide-event-dispatch-to-payload rect payload event x y))))))))
         (else (debug 'guide-table:ignored-event event))))
      ;; backward compatibility
      widget: #f lifespan: 'ephemeral)))
