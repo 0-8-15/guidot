@@ -758,13 +758,19 @@
                 ;; TBD: we can't deliver all events everywhere!!!
                 (cond
                  (active
-                  (unless ((guide-payload-on-any-event active) rect active event x y)
-                    (d1 rect payload event x y)
-                    (let ((content (if (procedure? content) (content) content)))
-                      (when (and (eqv? event EVENT_MOTION) (in-pl? content x y))
-                        (set! active #f)
-                        (guide-event-dispatch-to-payload rect content event x y)))))
-                 ((d1 rect payload event x y)) ;; dropdown button hit?
+                  (let ((activity-result
+                         ((guide-payload-on-any-event active) rect active event x y)))
+                    (cond
+                     (activity-result activity-result)
+                     (else
+                      (d1 rect payload event x y)
+                      (let ((content (if (procedure? content) (content) content)))
+                        (cond
+                         ((and (eqv? event EVENT_MOTION) (in-pl? content x y))
+                          (set! active #f)
+                          (guide-event-dispatch-to-payload rect content event x y))
+                         (else #t)))))))
+                 ((d1 rect payload event x y) #t) ;; dropdown button hit?
                  (else
                   (guide-event-dispatch-to-payload rect (if (procedure? content) (content) content) event x y)))))))
       (make-guide-payload
@@ -1580,20 +1586,26 @@
      on-redraw: redraw!
      on-any-event: events)))
 
-(define %%guide-clipboard-receiver
-  ;; Interesting, tricky example how to use likely --- likely should
-  ;; do better at the user facing API!
+(define %%guide-critical-call
   (let ((receiver
          (make-pin
           initial: #f
           pred: (lambda (obj) (or (not obj) (procedure? obj)))
+          ;; FIXME: in LIKELY !: illegal values make it hang!
+          filter: (lambda (old new) (and (procedure? new) new))
           name: "one-ari procedure receiving clipboard value")))
     (wire!
      receiver
-     sequence:
-     (lambda (old new)
-       (when new (new (clipboard-paste)))
-       ;; important: whatever the reveiver returns MUST NOT not leak
+     extern: receiver
+     critical:
+     (lambda (new)
+       (cond-expand
+        (debug
+         (check-not-observable-speculative! %%guide-critical-call)
+         (check-observable-sequential! %%guide-critical-call))
+        (else))
+       (when new (new))
+       ;; important: whatever the operation returns MUST NOT not leak
        #f)
      post: (lambda () (when (receiver) (receiver #f)) #f))
     receiver))
@@ -1679,10 +1691,11 @@
                   color: menu-color
                   guide-callback:
                   (lambda args
-                    (%%guide-clipboard-receiver
-                     (lambda (data)
+                    (%%guide-critical-call
+                     (lambda ()
                        (MATURITY +2 "paste from clipboard is REALLY UNSTABLE" loc: make-chat)
-                       (debug 'inserted (edit-control! insert: (debug 'got data)))))
+                       (check-not-observable-speculative! 'PASTE)
+                       (edit-control! insert: (debug 'got (clipboard-paste)))))
                     #t)))
                 (ggb-insert!
                  menu
