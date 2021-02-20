@@ -1,5 +1,7 @@
 ;;; glgui overrides and refinements
 
+(define-macro (bind-exit x) `(call-with-current-continuation ,x))
+
 ;;;* glcore
 
 ;;;** Strings
@@ -371,7 +373,7 @@
                  (target-line-number (max 0 (min (- line-count 1) (+ in-line row-display-offset))))
                  (target-line (%%ggb2d-row-ref value-buffer target-line-number))
                  (target-column
-                  (call-with-current-continuation
+                  (bind-exit
                    (lambda (return)
                      (let ((w 0))
                        (ggb-for-each
@@ -1425,12 +1427,8 @@
          (lambda (i v)
            (when (guide-payload? v)
              (let* ((interval (guide-payload-measures v))
-                    (xsw (mdvector-interval-lower-bound interval 0))
-                    (ysw (mdvector-interval-lower-bound interval 1))
-                    (xno (mdvector-interval-upper-bound interval 0))
-                    (yno (mdvector-interval-upper-bound interval 1))
-                    (width (fx- xno xsw))
-                    (height (fx- yno ysw))
+                    (width (mdv-rect-interval-width interval))
+                    (height (mdv-rect-interval-height interval))
                     (view! (make-guide-label-view)))
                (view! size: width height)
                (let ((draw (guide-payload-on-redraw v)))
@@ -1495,30 +1493,22 @@
          (lambda (i v)
            (when (guide-payload? v)
              (let* ((interval (guide-payload-measures v))
-                    (xsw (mdvector-interval-lower-bound interval 0))
-                    (ysw (mdvector-interval-lower-bound interval 1))
-                    (xno (mdvector-interval-upper-bound interval 0))
-                    (yno (mdvector-interval-upper-bound interval 1))
-                    (width (fx- xno xsw))
-                    (height (fx- yno ysw)))
+                    (width (mdv-rect-interval-width interval))
+                    (height (mdv-rect-interval-height interval)))
                ;; update running
                (case direction
                  ((2) (set! offset (+ offset height)))
                  ((-2) (set! offset (- offset height)))
                  ((1) (set! offset (+ offset width))))))))
-        (call-with-current-continuation
+        (bind-exit
          (lambda (return)
            (ggb-for-each-rtl
             buffer
             (lambda (i v)
               (when (guide-payload? v)
                 (let* ((interval (guide-payload-measures v))
-                       (xsw (mdvector-interval-lower-bound interval 0))
-                       (ysw (mdvector-interval-lower-bound interval 1))
-                       (xno (mdvector-interval-upper-bound interval 0))
-                       (yno (mdvector-interval-upper-bound interval 1))
-                       (width (fx- xno xsw))
-                       (height (fx- yno ysw))
+                       (width (mdv-rect-interval-width interval))
+                       (height (mdv-rect-interval-height interval))
                        (y0 y)
                        (x (case direction
                             ((1) (+ lower-bound-x0 (+ width (- x offset))))
