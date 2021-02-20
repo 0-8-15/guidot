@@ -2,7 +2,7 @@
 
 (define (check-not-observable-speculative! caller . more)
   ;; Runtime assert (globally) that there is no current-transaction,
-  ;; hence expecting no repoeated invocation here.
+  ;; hence expecting no repeated invocation here.
   (unless (stm-atomic?) (stm-consistency-error "observable NOT atomic" caller more)))
 
 (define (##opportunistic-sequential proc)

@@ -9,6 +9,8 @@
   filter
   )
 
+(define-macro (promise? x) `(##promise? ,x))
+
 (define-macro (%check-observable! obj where)
   `(or (%observable? ,obj) (error "not an observable" ,where ,obj)))
 
@@ -160,10 +162,22 @@
     (display (current-thread) (current-error-port))
     (display #\space (current-error-port))
     (##default-display-exception ex (current-error-port)))
+  (define (check-not-in-transaction)
+    (and #t ;; DEBUG
+         (lambda ()
+           (if (current-transaction)
+               (stm-consistency-error 'make-observable-triggers thunk)))))
   (define (start-async! thunk name check)
     (thread-start!
      (make-thread
       (lambda ()
+        (cond
+         ((not check)
+          (begin
+            (MATURITY -2 "no check requested, checking anyway" loc: make-observable-triggers)
+            (check-not-in-transaction)))
+         ((procedure? check) (check))
+         (else (check-not-in-transaction)))
         (if check (check))
         (case ($async-exceptions)
           ((ignored) (thunk))
@@ -172,6 +186,10 @@
   (define (async-consequence! x)
     (cond
      ((procedure? x) (start-async! (lambda () (kick! x)) 'consequence #f))
+     ((promise? x)
+      (start-async!
+       (lambda () (kick! (lambda () (force x))))
+       'consequence/promise #f))
      ((and (box? x) (let ((t (unbox x))) (and (procedure? t) t))) =>
       (lambda (thunk)
         ;; (stm-log 'atomic-with-consequence " starting new thread" thunk)
@@ -394,29 +412,39 @@
     -> *))
 |#
 (define (connect-dependent-value! value thunk sig params)
+  (define (procedure-or-promise? x)
+    (or (procedure? x) (promise? x)))
   (let ((action (cond
 		 ((not value)
-                  (if (procedure? thunk)
-                      (lambda (tnx) (thunk) (lambda () sig))
-                      (lambda (tnx) (lambda () sig))))
+                  (cond
+                   ((procedure? thunk)
+                    (lambda (tnx) (thunk) (lambda () sig)))
+                   ((promise? thunk)
+                    (lambda (tnx) (force thunk) (lambda () sig)))
+                   (else
+                    (lambda (tnx) (lambda () sig)))))
                  ((procedure? value)
-                  (or (procedure? thunk) (error "value needs constructor"))
+                  (or (procedure? thunk) (promise? thunk)
+                      (error "value needs constructor"))
                   (lambda (tnx)
                     ;; exception will abort here
-                    (let ((prepared (call-with-values thunk value)))
+                    (let ((prepared
+                           (cond
+                            ((procedure? value) (call-with-values thunk value))
+                            (else (thunk (force value))))))
                       (lambda ()
                         ;; STM critical part
-                        (let ((immediate (procedure? prepared)))
+                        (let ((immediate (or (procedure? prepared) (promise? prepared))))
                           (if (or immediate (box? prepared))
                               (let ((additional
                                      (if immediate
-                                         (prepared)
+                                         (if (procedure? prepares) (prepared) (force prepared))
                                          (stm-critical-execute! (unbox prepared)))))
                                 (cond
-                                 ((procedure? additional)
+                                 ((procedure-or-promise? additional)
                                   (cond
                                    ((pair? sig) (cons additional sig))
-                                   ((procedure? sig) (list additional sig))
+                                   ((procedure-or-promise? sig) (list additional sig))
                                    (else additional)))
                                  (else sig)))
                               sig))))))
