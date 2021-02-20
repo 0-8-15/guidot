@@ -223,6 +223,26 @@
       (glCoreInit)
       (guide-event-dispatch-to-payload rect payload event x y)
       (guide-meta-menu-draw!))
+    (define (activate! rect payload event x y)
+      (reset-wait!)
+      (kick!
+       (lambda ()
+         (let ((result (guide-event-dispatch-to-payload rect payload event x y)))
+           (cond ;; debug: check values are acceptable as likely controls
+            ((eq? result #t) #f) ;; nothing to be done.
+            ((not result) #f)    ;; nothing to be done.
+            ((procedure? result) result)
+            ((box? result)
+             (let ((v (unbox result)))
+               (unless (or (procedure? v) (##promise? v))
+                 (error "invalid box returned from" guide-event-dispatch-to-payload (debug "invalid box returned from" result)))
+               (when (##promise? v) (MATURITY +2 "payload returned boxed promise")))
+             result)
+            ((##promise? result)
+             (MATURITY +2 "payload returned promise")
+             result)
+            ((pair? result) result)
+            (else (debug "ignoring invalid result from payload" result) #f))))))
     (define (guide-default-event-dispatch/toplevel rect payload event x y)
       (cond
        ((not (and glgui:active app:width app:height))
@@ -259,14 +279,9 @@
           (terminate))
          ((guide-focus) =>
           (lambda (payload) ;; redirecting to focus payload here
-            (reset-wait!)
-            (kick! (lambda () (guide-event-dispatch-to-payload rect payload event x y)))))
-         (else
-          (reset-wait!)
-          (kick! (lambda () (guide-event-dispatch-to-payload rect payload event x y))))))
-       (else
-        (reset-wait!)
-        (kick! (lambda () (guide-event-dispatch-to-payload rect payload event x y))))))
+            (activate! rect payload event x y)))
+         (else (activate! rect payload event x y))))
+       (else (activate! rect payload event x y))))
     (set! guide-wakeup! wakeup!)
     (set! %%guide-timings-set! timings-set!)
     (set! glgui-wakeup! wakeup!)
