@@ -856,7 +856,7 @@
                       guide-callback:
                       (lambda (rect payload event x y)
                         (if (positive? (beaver-proxy-port-number))
-                            (launch-url
+                            (webview-launch!
                              (string-append "http://127.0.0.1:" (number->string (beaver-proxy-port-number)))
                              via: (if (< x (/ w 2)) 'webview 'extern))))))
                    (lambda (in col row)
