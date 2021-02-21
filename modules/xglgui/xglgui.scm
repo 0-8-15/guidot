@@ -652,7 +652,6 @@
         ;; TBD: this is a bit overly simple and needlessly expensive
         ;; at runtime
         (lambda ()
-          (guide-wakeup!)
           (let* ((total (%%value-buffer->string value-buffer))
                  (before (%%value-buffer->string value-buffer 0 (ggb-point value-buffer)))
                  (glv-before (MATURITY-1:utf8string->guide-glyphvector before font))
@@ -685,7 +684,10 @@
                                         (< (- n0 n0f) 1/2))
                                (on)))))
                        (label!))))
-              (set! cursor-draw draw)))))
+              (set! cursor-draw draw)))
+          (guide-wakeup!)
+          ;; tail position of key handler - return "event handled"
+          #t))
 
        (on-key
         (lambda (p/r key mod)
@@ -1200,14 +1202,12 @@
            ((or (eqv? event EVENT_BUTTON1DOWN) (eqv? event EVENT_BUTTON1UP))
             (cond
              ((guide-payload-contains/xy? kpd x y)
-              (guide-event-dispatch-to-payload rect kpd event x y)
-              #t)
+              (guide-event-dispatch-to-payload rect kpd event x y))
              (else #f)))
            ((or (eqv? press: event) (eqv? release: event))
+            (guide-focus line) ;; questionable?
             (let ((v (on-key event x y)))
-              (when v
-                (guide-event-dispatch-to-payload rect line event x y)))
-            #t)
+              (if v (guide-event-dispatch-to-payload rect line event x y))))
            (else (mdvector-rect-interval-contains/xy? in x y))))))
     (let ((result
            (make-guide-payload
@@ -1350,7 +1350,7 @@
              ((and lines-control! title (> y (- yno line-height+border)) (eqv? event EVENT_BUTTON1DOWN))
               (lines-control! event x y))))
            ((or (eqv? press: event) (eqv? release: event))
-            (guide-focus lines) ;; questionable!
+            (guide-focus lines) ;; questionable?
             (let ((v (on-key event x y)))
               (if v (guide-event-dispatch-to-payload rect lines event x y))))
            (else (mdvector-rect-interval-contains/xy? in x y))))))
