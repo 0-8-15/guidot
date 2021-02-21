@@ -743,11 +743,16 @@
          in content
          #!key
          (font #f)
-         (action #f) (guide-callback #f)
+         (action #f)
+         (guide-callback #f)
          (background (%%glCore:textures-ref (glC:image-t %%guide-default-background) #f))
          ;; non-functional; for debugging:
          (name make-figure-list-payload))
   ;; TBD: Option to catch/display errors in handling content events.
+  (when guide-callback
+    (MATURITY -1 "parameter: guide-callback" loc: 'figure-list-payload)
+    (when action
+      (MATURITY -10 "BOTH GIVEN guide-callback AND action" loc: 'figure-list-payload)))
   (let* ((content (let ((content (content)))
                     (if (vector? content) content (apply vector content))))
          (len (vector-length content))
@@ -756,14 +761,16 @@
          (selh (- (mdvector-interval-upper-bound in 1) sely))
          (selcb
           (lambda (rect payload event x y)
-            (when action
+            (cond
+             (action
               (action
                (floor (/ (- sely y) selh)) ;; selected item
                (let ((xsw (mdvector-interval-lower-bound in 0))
                      (xno (mdvector-interval-upper-bound in 0)))
                  ;; relative width
                  (floor (/ (- x xsw) (- xno xsw))))))
-            (when guide-callback (guide-callback rect payload event x y))))
+             (guide-callback (guide-callback rect payload event x y))
+             (else #t))))
          (redraw
           (lambda ()
             (do ((i 0 (fx+ i 1)))
@@ -777,10 +784,11 @@
             ;; TBD: we can't deliver all events everywhere!!!
             (and (let ((n (floor (/ (- sely y) selh))))
                    (and (>= n 0) (< n len)))
-                 (do ((i 0 (fx+ i 1)))
-                     ((eqv? i len) #t)
+                 (do ((i 0 (fx+ i 1))
+                      (result #f))
+                     ((or result (eqv? i len)) result)
                    (let ((payload (vector-ref all i)))
-                     (guide-event-dispatch-to-payload rect payload event x y)))))))
+                     (set! result (guide-event-dispatch-to-payload rect payload event x y))))))))
     (unless font (set! font (guide-select-font height: selh)))
     (do ((i 0 (fx+ i 1)))
         ((eqv? i len)

@@ -876,11 +876,14 @@
              ((and (eqv? event EVENT_BUTTON1UP) (not fixed))
               (cond
                ((eq? armed armed-at)
-                (pass-event! rect payload EVENT_BUTTON1DOWN x y)
-                (pass-event! rect payload event x y)))
-              (set! armed #f)
-              (set! armed-at #f)
-              #t)
+                (let* ((r1 (pass-event! rect payload EVENT_BUTTON1DOWN x y))
+                       (r2 (pass-event! rect payload event x y)))
+                  (set! armed #f)
+                  (set! armed-at #f)
+                  (cond
+                   ((and r1 r2) (NYIE "ggb layout: two things"))
+                   ((or r1 r2) => identity)
+                   (else #t))))))
              ((and armed (eqv? event EVENT_MOTION))
               (cond
                (armed
