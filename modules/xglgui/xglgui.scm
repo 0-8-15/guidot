@@ -861,7 +861,8 @@
                 (set!
                  active
                  (let ((action (lambda (sel x) (set! active #f) (selection sel))))
-                   (make-figure-list-payload selection-area options font: selfnt action: action)))))))
+                   (make-figure-list-payload selection-area options font: selfnt action: action)))))
+              #t))
            (b1 (let* ((sel
                        (lambda ()
                          (let ((kind (options)))
