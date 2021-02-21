@@ -22,6 +22,12 @@
 
 (include "glc.scm")
 
+(define (current-guide-gui-interval)
+  (let ((w (glgui-width-get))
+        (h (glgui-height-get)))
+    (unless (and w h) (error "width/height invalid" current-guide-gui-interval w h))
+    (make-mdv-rect-interval 0 0 w h)))
+
 ;;;** memoize inline (gambit)
 
 (define-macro (macro-absent)
@@ -113,6 +119,8 @@
       ((symbol? x) x)
       ((%%guide:legacy-special-key? x) x)
       (else (integer->char x))))))
+
+;;** Payload Model
 
 (define-structure guide-widget redraw) ;; temporary helper for type safety
 
@@ -235,7 +243,7 @@
        (else))
       (redraw-required?)
       (with-exception-catcher ;; debugging
-       (lambda args (apply error (debug 'FAIL-SO-BADLY args)))
+       (lambda (exn) (raise (debug 'FAIL-SO-BADLY exn)))
        (lambda ()
         (let loop
           ((finally
@@ -249,7 +257,7 @@
          (else ;; debugging
           (cond
            ((boolean? finally)) ;; OK, expected
-           (else (debug 'ignored-payload-result finally))))))))
+           (else (debug 'ignored-payload-result (list finally payload)))))))))
       ;; not sure what needs to be returned, we are done handling results
       #t)
     (define (guide-default-event-dispatch/toplevel rect payload event x y)
@@ -322,7 +330,7 @@
     (lambda ()
       (%%guide-timings-set! frame-period-custom: wait))))
 
-;;;** Payload
+;;;** Payload (De)Construction
 
 (define (%%guide-make-redraw spec)
   (cond
@@ -496,11 +504,7 @@
             (set! current (switch-over rect current new))))))))
     guide-open-rectangle))
 
-(define (current-guide-gui-interval)
-  (let ((w (glgui-width-get))
-        (h (glgui-height-get)))
-    (unless (and w h) (error "width/height invalid" current-guide-gui-interval w h))
-    (make-mdv-rect-interval 0 0 w h)))
+;;** Legacy Compatibility
 
 (define (guide-make-gui #!optional (content (make-glgui)))
   (MATURITY -2 "replaced by: guide-legacy-make-rect" loc: guide-make-gui)
@@ -699,6 +703,8 @@
 
 ;;** GUI Widgets (payloads)
 
+;;*** Widget Utilities
+
 (define %%guide-default-background
   (make-glC:image 4 4 (glCoreTextureCreate 4 4 (make-u8vector 16 #xff)) 0.1 0.1 .9 .9))
 
@@ -717,88 +723,189 @@
 
 (define-macro (macro-guide-default-background) `((lambda () %%guide-default-background)))
 
-(define (guide-button
-         #!key
-         (in (current-guide-gui-interval))
-         (font (guide-select-font size: 'medium))
-         (accesskey #f)
-         (label "exit")
-         (color (guide-select-color-2))
-         (padding '#(1 1 1 1))
-         (background #f)
-         (background-color (guide-select-color-1))
-         (position #f)
-         (horizontal-align 'center)
-         (vertical-align 'center)
-         (location guide-button)
-         ;; TBD: better interface&name
-         (guide-callback (lambda (rect payload event x y) (terminate))))
-  (let* ((view! (make-guide-figure-view))
-         (label! (make-guide-label-view))
-        ;;; TBD: inline these!
-         (x (mdvector-interval-lower-bound in 0))
-         (y (mdvector-interval-lower-bound in 1))
-         (w (- (mdvector-interval-upper-bound in 0) x))
-         (h (- (mdvector-interval-upper-bound in 1) y)))
-    (label! horizontal-align: horizontal-align)
-    (label! vertical-align: vertical-align)
-    (label! font: (find-font font))
-    (when color (label! color: color))
-    (label! size: w h)
-    (label! padding: padding)
-    (view! size: w h)
-    ;; finally - in order to not trigger useless recalculations
-    (cond
-     ((or (string? label) (glC:image? label) (vector? label))
-      (label! text: label)
-      (view! foreground: (label!)))
-     ((procedure? label)
-      (let* ((cached
-              (macro-memoize:2->1
-               (lambda (update! str)
-                 (update! text: str)
-                 (update!))
-               (macro-alway-true-comparsion) equal?))
-             (check! (lambda (update!) (cached update! (label)))))
-        (view! foreground: (label! check! (list "guide-button" label)))))
-     ((guide-payload? label) (view! foreground: (guide-payload-on-redraw label)))
-     (else (error "invalid label" guide-button label)))
-    (when background
-      (view!
-       background:
-       (cond
-        ((fixnum? background)
-         (MATURITY -1 "background: converting fixnum to texture" loc: location)
-         (%%glCore:textures-ref background #f))
-        ((eq? background 'none) #f)
-        (else background))))
-    (when background-color (view! color: background-color))
-    (if position
-        (view! position: (vector-ref position 0) (vector-ref position 1))
-        (view! position: x y))
-    (let ((events
-           (let ((armed #f))
-             (lambda (rect payload event x y)
-               (case event
-                 ((press: release:)
-                  (and accesskey (eqv? x accesskey)
-                       (guide-callback rect payload event x y)))
+;;*** Widget Composition
+
+;;**** GGB Composition
+
+;; Arranges content (a generic gap buffer) in a direction (x, y, z).
+
+(define (guide-ggb-layout area buffer #!key (direction 0) (fixed #f) (on-key #f))
+  (unless (ggb? buffer) (error "arg1 ggb expected" 'guide-ggb-layout buffer))
+  (let ((direction ;; direction: 0: z, 1: x, y: z...
+         (case direction
+           ((0 1 2 -2) direction)
+           ((layer) 0)
+           ((horizontal) 1)
+           ((vertical) 2)
+           ((topdown) -2)
+           (else (error "unknown direction" 'guide-ggb-layout direction))))
+        (upper-bound-x (mdvector-interval-upper-bound area 0))
+        (lower-bound-x0 (mdvector-interval-lower-bound area 0))
+        (upper-bound-y (mdvector-interval-upper-bound area 1))
+        (lower-bound-y0 (mdvector-interval-lower-bound area 1)))
+    (define lower-bound-x lower-bound-x0)
+    (define lower-bound-y lower-bound-y0)
+    (define (make-drawing)
+      (let ((offset
+             (case direction
+               ((-2) upper-bound-y)
+               (else 0)))
+            (result (make-vector (ggb-length buffer) #f)))
+        (ggb-for-each
+         buffer
+         (lambda (i v)
+           (when (guide-payload? v)
+             (let* ((interval (guide-payload-measures v))
+                    (width (mdv-rect-interval-width interval))
+                    (height (mdv-rect-interval-height interval))
+                    (view! (make-guide-label-view)))
+               (view! size: width height)
+               (let ((draw (guide-payload-on-redraw v)))
+                 (cond
+                  ((procedure? draw) (view! foreground: draw))
+                  ((vector? draw) (view! foreground: (%%guide-make-redraw draw)))
+                  (else
+                   #;(MATURITY -1 "payload has no drawing" log: guide-ggb-layout)
+                   #t)))
+               (case direction
+                 ((0) #f)
+                 ((2)
+                  (let ((y (+ lower-bound-y offset)))
+                    (if (or fixed
+                            (and (>= y lower-bound-y0) (<= (+ y height) upper-bound-y)))
+                        (begin (view! visible: #t) (view! position: 0 y))
+                        (view! visible: #f)))
+                  ;; update running
+                  (set! offset (+ offset height)))
+                 ((-2)
+                  (set! offset (- offset height))
+                  (let ((y (+ lower-bound-y offset)))
+                    (if (or fixed
+                            (and (>= y lower-bound-y0) (<= (+ y height) upper-bound-y)))
+                        (begin (view! visible: #t) (view! position: 0 y))
+                        (view! visible: #f))))
                  (else
-                  (cond
-                   ((eqv? event EVENT_BUTTON1DOWN)
-                    (if (guide-figure-contains? view! x y) (begin (set! armed #t) #t) #f))
-                   ((eqv? event EVENT_BUTTON1UP)
-                    (if (and (guide-figure-contains? view! x y) armed)
-                        (begin
-                          (set! armed #f)
-                          (guide-callback rect payload event x y))
-                        (begin
-                          (set! armed #f)
-                          #f)))
-                   (else (guide-figure-contains? view! x y)))))))))
-      (make-guide-payload
-       in: in name: 'button widget: #f
-       on-redraw: (view!) on-any-event: events lifespan: 'ephemeral))))
+                  (let ((x (+ lower-bound-x0 offset)))
+                    (if (or fixed
+                            (and (>= x lower-bound-x0) (<= (+ x width) upper-bound-x)))
+                        (begin (view! visible: #t) (view! position: x lower-bound-y))
+                        (view! visible: #f)))
+                  ;; update running
+                  (set! offset (+ offset width))))
+               (vector-set! result i (view!))))))
+        (%%guide-make-redraw/check result)))
+    (define redraw!
+      (let ((last-content (ggb->vector buffer))
+            (last-lower-bound-y lower-bound-y)
+            (last (make-drawing)))
+        (lambda ()
+          (let ((changed
+                 (or (not (eqv? last-lower-bound-y lower-bound-y))
+                     (not (eqv? (vector-length last-content) (ggb-length buffer))))))
+            (unless changed
+              (ggb-for-each
+               buffer
+               (lambda (i v)
+                 (unless (eqv? v (vector-ref last-content i))
+                   (set! changed #t)))))
+            (when changed
+              (set! last-content (ggb->vector buffer))
+              (set! last (make-drawing))))
+          (last))))
+    (define (pass-event! rect payload event x y)
+      (let ((offset
+             (case direction
+               ((-2) upper-bound-y)
+               (else 0))))
+        (ggb-for-each
+         buffer ;; TBD: this pass is almost cacheable
+         (lambda (i v)
+           (when (guide-payload? v)
+             (let* ((interval (guide-payload-measures v))
+                    (width (mdv-rect-interval-width interval))
+                    (height (mdv-rect-interval-height interval)))
+               ;; update running
+               (case direction
+                 ((2) (set! offset (+ offset height)))
+                 ((-2) (set! offset (- offset height)))
+                 ((1) (set! offset (+ offset width))))))))
+        (bind-exit
+         (lambda (return)
+           (ggb-for-each-rtl
+            buffer
+            (lambda (i v)
+              (when (guide-payload? v)
+                (let* ((interval (guide-payload-measures v))
+                       (width (mdv-rect-interval-width interval))
+                       (height (mdv-rect-interval-height interval))
+                       (y0 y)
+                       (x (case direction
+                            ((1) (+ lower-bound-x0 (+ width (- x offset))))
+                            (else x)))
+                       (y (case direction
+                            ((2) (- y lower-bound-y (- offset height)))
+                            ((-2)
+                             (+ (- y offset) (- lower-bound-y0 lower-bound-y)))
+                            (else (- y lower-bound-y)))))
+                  (when (mdvector-rect-interval-contains/xy? interval x y)
+                    (return (guide-event-dispatch-to-payload rect v event x y)))
+                  ;; update running
+                  (case direction
+                    ((2) (set! offset (- offset height)))
+                    ((-2) (set! offset (+ offset height)))
+                    ((1) (set! offset (- offset width))))))))
+           #t))))
+    (define events
+      ;; TBD: factor motion/shift handling out (copied here from
+      ;; `select` already.
+      (let ((armed #f) (armed-at #f) (motion-hyst 15))
+        (lambda (rect payload event x y)
+          (let ((area (guide-payload-measures payload)))
+            (cond
+             ((or (eqv? press: event) (eqv? release: event))
+              (and on-key (on-key event x y)))
+             ((and (eqv? event EVENT_BUTTON1DOWN) (not fixed))
+              (set! armed (vector x y))
+              (set! armed-at armed)
+              #t)
+             ((and (or (eqv? event EVENT_BUTTON1DOWN) (eqv? event EVENT_BUTTON1UP)
+                       (eqv? event EVENT_MOTION))
+                   (not (mdvector-rect-interval-contains/xy? area x y)))
+              (MATURITY -1 "pointer event outside of payload" loc: 'ggb-layout)
+              #f)
+             ((and (eqv? event EVENT_BUTTON1UP) (not fixed))
+              (cond
+               ((eq? armed armed-at)
+                (pass-event! rect payload EVENT_BUTTON1DOWN x y)
+                (pass-event! rect payload event x y)))
+              (set! armed #f)
+              (set! armed-at #f)
+              #t)
+             ((and armed (eqv? event EVENT_MOTION))
+              (cond
+               (armed
+                (let* ((dx (- x (vector-ref armed-at 0)))
+                       (dy (- y (vector-ref armed-at 1))))
+                  (when (and (eq? armed armed-at)
+                             (> (sqrt (+ (* dx dx) (* dy dy))) ;; distance
+                                motion-hyst))
+                    (case direction
+                      ((1) (set! armed lower-bound-x))
+                      ((2 -2) (set! armed lower-bound-y))))
+                  (when (number? armed)
+                    (case direction
+                      ((1) (set! lower-bound-x (+ armed dx)))
+                      ((2 -2) (set! lower-bound-y (+ armed dy)))))
+                  #t))
+               (else #t)))
+             (else (pass-event! rect payload event x y)))))))
+    (make-guide-payload
+     in: area name: (vector 'guide-ggb-layout direction)
+     widget: #f lifespan: 'ephemeral ;; TBD: change defaults here!
+     on-redraw: redraw!
+     on-any-event: events)))
+
+;;**** Table Composition
 
 (define (make-guide-table
          ;; CONTRUCTOR (lambda (contructor INTERVAL COL ROW . rest) . rest)
@@ -913,6 +1020,95 @@
      ;; backward compatibility
      widget: #f lifespan: 'ephemeral)))
 
+;;** Basic Payloads
+
+;;*** Button Payload
+
+(define (guide-button
+         #!key
+         (in (current-guide-gui-interval))
+         (font (guide-select-font size: 'medium))
+         (accesskey #f)
+         (label "exit")
+         (color (guide-select-color-2))
+         (padding '#(1 1 1 1))
+         (background #f)
+         (background-color (guide-select-color-1))
+         (position #f)
+         (horizontal-align 'center)
+         (vertical-align 'center)
+         (location guide-button)
+         ;; TBD: better interface&name
+         (guide-callback (lambda (rect payload event x y) (terminate))))
+  (let* ((view! (make-guide-figure-view))
+         (label! (make-guide-label-view))
+        ;;; TBD: inline these!
+         (x (mdvector-interval-lower-bound in 0))
+         (y (mdvector-interval-lower-bound in 1))
+         (w (- (mdvector-interval-upper-bound in 0) x))
+         (h (- (mdvector-interval-upper-bound in 1) y)))
+    (label! horizontal-align: horizontal-align)
+    (label! vertical-align: vertical-align)
+    (label! font: (find-font font))
+    (when color (label! color: color))
+    (label! size: w h)
+    (label! padding: padding)
+    (view! size: w h)
+    ;; finally - in order to not trigger useless recalculations
+    (cond
+     ((or (string? label) (glC:image? label) (vector? label))
+      (label! text: label)
+      (view! foreground: (label!)))
+     ((procedure? label)
+      (let* ((cached
+              (macro-memoize:2->1
+               (lambda (update! str)
+                 (update! text: str)
+                 (update!))
+               (macro-alway-true-comparsion) equal?))
+             (check! (lambda (update!) (cached update! (label)))))
+        (view! foreground: (label! check! (list "guide-button" label)))))
+     ((guide-payload? label) (view! foreground: (guide-payload-on-redraw label)))
+     (else (error "invalid label" guide-button label)))
+    (when background
+      (view!
+       background:
+       (cond
+        ((fixnum? background)
+         (MATURITY -1 "background: converting fixnum to texture" loc: location)
+         (%%glCore:textures-ref background #f))
+        ((eq? background 'none) #f)
+        (else background))))
+    (when background-color (view! color: background-color))
+    (if position
+        (view! position: (vector-ref position 0) (vector-ref position 1))
+        (view! position: x y))
+    (let ((events
+           (let ((armed #f))
+             (lambda (rect payload event x y)
+               (case event
+                 ((press: release:)
+                  (and accesskey (eqv? x accesskey)
+                       (guide-callback rect payload event x y)))
+                 (else
+                  (cond
+                   ((eqv? event EVENT_BUTTON1DOWN)
+                    (if (guide-figure-contains? view! x y) (begin (set! armed #t) #t) #f))
+                   ((eqv? event EVENT_BUTTON1UP)
+                    (if (and (guide-figure-contains? view! x y) armed)
+                        (begin
+                          (set! armed #f)
+                          (guide-callback rect payload event x y))
+                        (begin
+                          (set! armed #f)
+                          #f)))
+                   (else (guide-figure-contains? view! x y)))))))))
+      (make-guide-payload
+       in: in name: 'button widget: #f
+       on-redraw: (view!) on-any-event: events lifespan: 'ephemeral))))
+
+;;*** Labled Value Payload
+
 (define (guide-valuelabel
          #!key
          (in (current-guide-gui-interval))
@@ -985,6 +1181,8 @@
              (label! text: x)
              (box! foreground: (label!))
              #!void)))))))))
+
+;;*** Keypad Payload
 
 (define (guide-make-keypad
          area spec
@@ -1077,135 +1275,13 @@
                  (lambda (rect payload event x y)
                    (guide-event-dispatch-to-payload rect (vector-ref panes current-pane) event x y))))
              (vector-set! panes i (keypane (range-row rng i) (mdvector-body spec) switch))))))
-     (else "unsupported rank for keypad" rng))))
+      (else "unsupported rank for keypad" rng))))
 
-(define (guide-line-input
-         #!key
-         (in (current-guide-gui-interval))
-         (font (guide-select-font size: 'medium))
-         (horizontal-align 'center)
-         (vertical-align 'center)
-         (line-height 20)
-         (data (let ((state "n/a")) (case-lambda (() state) ((val) (set! state val)))))
-         (validate #f)
-         (size 'small)
-         (color (guide-select-color-2))
-         (hightlight-color (guide-select-color-4)))
-  (define (%%value-buffer->string ggb #!optional (start 0) (end (ggb-length ggb)))
-    (let ((result (make-string (- end start))))
-      (ggb-for-each ggb (lambda (i v) (string-set! result i (integer->char v))) start end)
-      result))
-  (define (input->buffer data)
-    (utf8string->ggb
-     (let ((x (data)))
-       (if (string? x) x (object->string x)))))
-  (let*
-      ((xsw (mdvector-interval-lower-bound in 0))
-       (ysw (mdvector-interval-lower-bound in 1))
-       (xno (mdvector-interval-upper-bound in 0))
-       (yno (mdvector-interval-upper-bound in 1))
-       (w (- xno xsw))
-       (h (- yno ysw))
-       (border-width (* h 1/20))
-       (line-height+border (+ border-width line-height))
-       (value-buffer (input->buffer data))
-       (value!
-        (let ((label! (make-guide-label-view)))
-          (label! horizontal-align: horizontal-align)
-          (label! vertical-align: vertical-align)
-          (label! font: font)
-          (label! color: color)
-          (label! size: w line-height)
-          (label! position: xsw (round (+ ysw border-width)))
-          (label! text: (%%value-buffer->string value-buffer))
-          label!))
-       (value-draw (value!))
-
-       (cursor-draw #f)
-       (this-payload #f)
-       (update-cursor!
-        ;; TBD: this is a bit overly simple and needlessly expensive
-        ;; at runtime
-        (lambda ()
-          (guide-wakeup!)
-          (let* ((total (%%value-buffer->string value-buffer))
-                 (before (%%value-buffer->string value-buffer 0 (ggb-point value-buffer)))
-                 (glv-before (MATURITY-1:utf8string->guide-glyphvector before font))
-                 (glv-total (MATURITY-1:utf8string->guide-glyphvector total font))
-                 (width-before (if glv-before (MATURITY+0:guide-glypvector-width glv-before) 0))
-                 (width-total (if glv-total (MATURITY+0:guide-glypvector-width glv-total) 0))
-                 (label! (make-guide-label-view)))
-            (label! horizontal-align: horizontal-align)
-            (label! vertical-align: vertical-align)
-            (label! font: font)
-            (label! color: hightlight-color)
-            (label! size: w line-height)
-            (label!
-             position:
-             (round (+ xsw
-                       (case horizontal-align
-                         ((left) width-total)
-                         ((center) (* 1/2 width-total))
-                         (else 0))
-                       (- width-before width-total)))
-             (round (+ ysw border-width)))
-            (label! text: '#(124)) ;; a vertical bar ("|")
-            (let ((draw
-                   (if #t ;; blink
-                       (let ((on (label!)))
-                         (lambda ()
-                           (let* ((n0 ##now)
-                                  (n0f (floor n0)))
-                             (when (and (eq? (guide-focus) this-payload)
-                                        (< (- n0 n0f) 1/2))
-                               (on)))))
-                       (label!))))
-              (set! cursor-draw draw)))))
-
-       (on-key
-        (lambda (p/r key mod)
-          (or
-           (eq? press: p/r) ;; ignore press - maybe more
-           (cond
-            ((eqv? key EVENT_KEYRIGHT) (ggb-goto-right! value-buffer) (update-cursor!))
-            ((eqv? key EVENT_KEYLEFT) (ggb-goto-left! value-buffer) (update-cursor!))
-            ((eqv? key EVENT_KEYBACKSPACE)
-             (ggb-delete! value-buffer -1)
-             (when (procedure? validate) (validate value-buffer))
-             (value! text: (%%value-buffer->string value-buffer))
-             (set! value-draw (value!))
-             (update-cursor!))
-            ((eqv? key EVENT_KEYENTER)
-             (data (%%value-buffer->string value-buffer))
-             (set! value-buffer (input->buffer data))
-             (value! text: (ggb->vector value-buffer))
-             (set! value-draw (value!))
-             (update-cursor!))
-            ((char? key)
-             (ggb-insert! value-buffer (char->integer key))
-             (when (procedure? validate) (validate value-buffer))
-             (value! text: (%%value-buffer->string value-buffer))
-             (set! value-draw (value!))
-             (update-cursor!))
-            (else (debug "ignored key" (list 'guide-line-input key)))))))
-       (redraw! (vector
-                 (lambda () (and value-draw (value-draw)))
-                 (lambda () (cursor-draw))))
-       (events
-        (lambda (rect payload event x y)
-          (case event
-            ((press: release:) (on-key event x y))
-            (else (mdvector-rect-interval-contains/xy? in x y))))))
-    (when (procedure? validate) (validate value-buffer))
-    (update-cursor!)
-    (let ((result ;; a letrec* on `this-payload`
-           (make-guide-payload
-            name: 'guide-line-input in: in widget: #f
-            on-redraw: redraw! on-any-event: events lifespan: 'ephemeral)))
-      (set! this-payload result)
-      result)))
+;;** Calculator Payload (Example)
 
 (include "calculator.scm")
+
+;;** Lambdanative Driver
 
 ;; LambdaNative glgui frame -- it's a bit tricky to work around that one.
 
