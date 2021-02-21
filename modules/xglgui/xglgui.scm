@@ -313,7 +313,6 @@
           label!))
        (update-cursor!
         (lambda ()
-          (guide-wakeup!) ;; ensure timely visual response
           (update-current-line!)
           (let* ((line-buffer current-line)
                  (line-point (ggb-point line-buffer))
@@ -364,7 +363,11 @@
                                         (< (- n0 n0f) 1/2))
                                (on)))))
                        (label!))))
-              (set! cursor-draw draw)))))
+              (set! cursor-draw draw)))
+          (guide-wakeup!)
+          ;; ensure timely visual response used here in tail position
+          ;; of event handlers, signal successfully handled event.
+          #t))
 
        (set-cursor-position!
         (lambda (x y)
@@ -394,17 +397,28 @@
           (or
            (eq? press: p/r) ;; ignore press - maybe more
            (let ((value! (vector-ref value-views (- current-line-number row-display-offset))))
+             ;; better we check not to incure side effects during
+             ;; speculative execution:
+             (check-not-observable-speculative! 'guide-textarea-payload:handle-key) ;; debug
              (cond
               ((eqv? key EVENT_KEYRIGHT)
                (cond
                 ((eqv? (bitwise-and MODIFIER_ALT mod) MODIFIER_ALT)
                  (ggb-goto-word! current-line #t))
+                ((eqv? (ggb-point current-line)
+                       (if current-line-ends-in-newline
+                           (- current-line-length 1)
+                           current-line-length))
+                 (ggb2d-goto! value-buffer position: 'relative row: 1)
+                 (ggb2d-goto! value-buffer position: 'absolute col: 0))
                 (else (ggb-goto-right! current-line)))
                (update-cursor!))
               ((eqv? key EVENT_KEYLEFT)
                (cond
                 ((eqv? (bitwise-and MODIFIER_ALT mod) MODIFIER_ALT)
                  (ggb-goto-word! current-line #f))
+                ((eqv? (ggb-point current-line) 0)
+                 (ggb2d-goto! value-buffer position: 'relative row: -1 col: 1000))
                 (else (ggb-goto-left! current-line)))
                (update-cursor!))
               ((or (eqv? key EVENT_KEYUP) (eqv? key EVENT_KEYDOWN))
@@ -502,8 +516,7 @@
             (cond
              ((or (eqv? press: event) (eqv? release: event))
               (let ((x (on-key event x y)))
-                (if x (handle-key event x y)))
-              #t)
+                (if x (delay (handle-key event x y)) #t)))
              ((eqv? event EVENT_BUTTON1DOWN)
               (set! armed (vector x y))
               (set! armed-at armed)
@@ -554,6 +567,7 @@
          ((string) (ggb2d->string/encoding-utf8 value-buffer))
          ((text) (ggb2d-copy value-buffer))
          ((text:)
+          (check-not-observable-speculative! 'textarea-mutation key more)
           (apply
            (lambda (value #!key (wrap #t) (cols 20))
              (cond
@@ -571,6 +585,7 @@
               (else (error "unhandled text representation" 'textarea-payload text: value))))
            more))
          ((insert:)
+          (check-not-observable-speculative! 'textarea-mutation key more)
           (apply
            (lambda (data)
              (cond
@@ -1684,20 +1699,14 @@
                   label: "paste"
                   color: menu-color
                   guide-callback:
-                  (lambda args
-                    (%%guide-critical-call
-                     (lambda ()
-                       (MATURITY +2 "paste from clipboard is REALLY UNSTABLE" loc: make-chat)
-                       (check-not-observable-speculative! 'PASTE)
-                       (edit-control! insert: (debug 'got (clipboard-paste)))))
-                    #t)))
+                  (lambda _ (delay (edit-control! insert: (clipboard-paste))))))
                 (ggb-insert!
                  menu
                  (guide-button
                   in: button-area
                   label: "send!"
                   color: menu-color
-                  guide-callback: (lambda _ (send!) #t)))
+                  guide-callback: (lambda _ send!)))
                 (guide-ggb-layout menu-area menu direction: 'horizontal fixed: #t)))
             (guide-textarea-edit
              in: in
@@ -1738,12 +1747,14 @@
      (lambda (key msg)
        (case key
          ((msg:) ;; add remote message
+          (check-not-observable-speculative! 'chat key msg)
           (unless (equal? msg "")
             (ggb-goto! messages 0)
             (ggb-insert! messages (chat-message msg #t))))
          ((focus:)
           (guide-focus (and msg input-edit)))
          ((load:)
+          (check-not-observable-speculative! 'chat key msg)
           (ggb-clear! messages)
           (for-each
            (lambda (msg)

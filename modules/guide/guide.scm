@@ -196,15 +196,18 @@
     (define (wakeup!)
       (set! wakeup-seen #t)
       (condition-variable-signal! wait-cv))
-    (define (reset-wait!)
-      (set! wakeup-seen #f)
-      (set! consecutive-redraw-count 1))
-    (define (wait-for-time-or-signal!)
-      ;; wait for delay or signal from other thread
-      (if (if wakeup-seen
-              (begin
-                (mutex-unlock! wait-mutex) ;; useless now, but harmless
-                #f)
+    (define (redraw-required?)
+      (and
+       wakeup-seen
+       (begin
+         (set! wakeup-seen #f)
+         (set! consecutive-redraw-count 1)
+         #t)))
+    (define (leisure-time-maybe-questionable?)
+      ;; wait for delay time or signal from another thread
+      ;;
+      ;; return: #t -> easy going; #f -> wokeness
+      (if (or wakeup-seen
               (let ((moment (if customized-moment
                                 (customized-moment consecutive-redraw-count)
                                 (min frame-period-max-value (* consecutive-redraw-count step)))))
@@ -217,56 +220,68 @@
                         (begin (mutex-unlock! wait-mutex wait-cv moment) wakeup-seen))
                        (else (mutex-unlock! wait-mutex wait-cv moment))))
                     (begin (mutex-unlock! wait-mutex) #t))))
-          (reset-wait!)
-          (set! consecutive-redraw-count (fx+ consecutive-redraw-count 1))))
+          (redraw-required?)
+          (begin
+            (set! consecutive-redraw-count (fx+ consecutive-redraw-count 1))
+            #f)))
     (define (redraw! rect payload event x y)
       (glCoreInit)
       (guide-event-dispatch-to-payload rect payload event x y)
       (guide-meta-menu-draw!))
     (define (activate! rect payload event x y)
-      (reset-wait!)
-      (kick!
+      (cond-expand
+       (debug
+        (check-not-observable-speculative! guide-default-event-dispatch/toplevel 'activate!))
+       (else))
+      (redraw-required?)
+      (with-exception-catcher ;; debugging
+       (lambda args (apply error (debug 'FAIL-SO-BADLY args)))
        (lambda ()
-         (let ((result (guide-event-dispatch-to-payload rect payload event x y)))
-           (cond ;; debug: check values are acceptable as likely controls
-            ((eq? result #t) #f) ;; nothing to be done.
-            ((not result) #f)    ;; nothing to be done.
-            ((procedure? result) result)
-            ((box? result)
-             (let ((v (unbox result)))
-               (unless (or (procedure? v) (##promise? v))
-                 (error "invalid box returned from" guide-event-dispatch-to-payload (debug "invalid box returned from" result)))
-               (when (##promise? v) (MATURITY +2 "payload returned boxed promise")))
-             result)
-            ((##promise? result)
-             (MATURITY +2 "payload returned promise")
-             result)
-            ((pair? result) result)
-            (else (debug "ignoring invalid result from payload" result) #f))))))
+        (let loop
+          ((finally
+            (kick! (lambda () (guide-event-dispatch-to-payload rect payload event x y)))))
+        (cond
+         ((##promise? finally) (loop (force finally)))
+         ((procedure? finally) (loop (finally)))
+         ((box? finally)
+          (MATURITY -1 "TBD: avoid boxed returns" loc: guide-default-event-dispatch/toplevel:activate!)
+          (loop (unbox (debug 'finally finally))))
+         (else ;; debugging
+          (cond
+           ((boolean? finally)) ;; OK, expected
+           (else (debug 'ignored-payload-result finally))))))))
+      ;; not sure what needs to be returned, we are done handling results
+      #t)
     (define (guide-default-event-dispatch/toplevel rect payload event x y)
       (cond
        ((not (and glgui:active app:width app:height))
+        (debug 'glgui:active glgui:active)
         (if (eqv? t EVENT_REDRAW)
-            (wait-for-time-or-signal!)
+            (leisure-time-maybe-questionable?)
             (if customized-moment
                 (let ((moment (customized-moment 1)))
                   (when (or (time? moment) (and (number? moment) (> moment 0)))
                     (thread-sleep! moment)))
                 (begin
                   (thread-sleep! step)
-                  (reset-wait!)))))
+                  (redraw-required?)))))
        ((eq? event EVENT_REDRAW)
         ;; (log-status "REDRAW")
         (cond-expand
-         (win32 (wait-for-time-or-signal!)) ;; TBD: fix that too.
+         (win32 (leisure-time-maybe-questionable?)) ;; TBD: fix that too.
          (else #!void))
-        (redraw! rect payload event x y)
-        (set! wakeup-seen #f))
+        (redraw! rect payload event x y))
        ((eq? event EVENT_IDLE)
-        (cond-expand
-         ((or linux win32)
-          (wait-for-time-or-signal!))
-         (else (thread-yield!)))
+        (if wakeup-seen
+            (begin
+              (MATURITY +2 "check compatibility with win32 - drawing only upon WM_PAINT"
+                        loc: 'guide-default-event-dispatch/toplevel:EVENT_IDLE)
+              (redraw! rect payload EVENT_REDRAW 0 0)
+              (set! wakeup-seen #f))
+            (cond-expand
+             ((or linux win32)
+              (leisure-time-maybe-questionable?))
+             (else (thread-yield!))))
         #t)
        ((or (eq? event EVENT_KEYPRESS) (eq? event EVENT_KEYRELEASE))
         (set! x (%%guide:legacy-keycode->guide-keycode x))
