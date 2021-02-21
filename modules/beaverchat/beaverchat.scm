@@ -584,7 +584,6 @@
                  keypad: keypad
                  action: callback)
               (set! chat-ctrl! ctrl)
-              (chat-ctrl! load: (chat-messages))
               pl))
            (dialog #f)
            (nick-dialog-keypad guide-keypad/simplified))
@@ -691,10 +690,16 @@
          (else (guide-event-dispatch-to-payload rect chat-payload event x y))))
       (update-to-display!)
       (unless (chat-address) (dial-dialog!))
+      (unless (null? (chat-messages))
+        (if (stm-atomic?) ;; not speculative
+            (chat-ctrl! load: (chat-messages))
+            (%%guide-critical-call (lambda () (chat-ctrl! load: (chat-messages))))))
       (let* ((when-wired
-              (lambda ()
-                (chat-ctrl! load: (chat-messages))))
-             (toggle! (wire! chat-messages switchable: #t post: when-wired))
+              (lambda () (chat-ctrl! load: (chat-messages))))
+             (toggle! (wire! chat-messages
+                             switchable: #t
+                             ;; boxed -> starts non-speculative
+                             post: (box when-wired)))
              (to-toggle! (wire! chat-address switchable: #t post:
                                 (lambda ()
                                   (unless (chat-address) (dial-dialog!))
