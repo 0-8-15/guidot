@@ -1632,12 +1632,15 @@
                in: (guide-payload-measures pl)
                guide-callback:
                (lambda _
-                 (debug 'CB _)
-                 (let ((data (debug 'data (if (ggb2d? data) (ggb2d->string data) data))))
-                   (lambda ()
-                     (with-exception-catcher
-                      (lambda (exn) (debug 'clipboard-copy (clipboard-copy (debug 'EXN (object->string exn)))))
-                      (lambda () (debug 'clipboard-copy (clipboard-copy (debug 'copying data))))))))
+                 (unless
+                     (clipboard-copy
+                      (cond
+                       ((ggb2d? data) (ggb2d->string data))
+                       ((string? data) data)
+                       (else (string-append "UNHANDLED: " (object->string data)))))
+                   (MATURITY -1 "copying to clipboard failed" loc: 'chat))
+                 ;; gui: signal done anyway
+                 #t)
                label: pl))))
          ;; -- model
          (messages (make-ggb size: 0))
