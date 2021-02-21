@@ -149,6 +149,11 @@
                (cset-contains? setting key))
            key))))
 
+(define-macro (%%guide-post-speculative expr)
+  ;; either a thunk or a promise -- promise seems NOT to work under
+  ;; gamit?
+  `(lambda () ,expr))
+
 ;;** Textarea Payload
 
 (define (guide-textarea-payload
@@ -518,7 +523,7 @@
             (cond
              ((or (eqv? press: event) (eqv? release: event))
               (let ((x (on-key event x y)))
-                (if x (delay (handle-key event x y)) #t)))
+                (if x (%%guide-post-speculative (handle-key event x y)) #t)))
              ((eqv? event EVENT_BUTTON1DOWN)
               (set! armed (vector x y))
               (set! armed-at armed)
@@ -1682,7 +1687,7 @@
                   label: "paste"
                   color: menu-color
                   guide-callback:
-                  (lambda _ (delay (edit-control! insert: (clipboard-paste))))))
+                  (lambda _ (%%guide-post-speculative (edit-control! insert: (clipboard-paste))))))
                 (ggb-insert!
                  menu
                  (guide-button
