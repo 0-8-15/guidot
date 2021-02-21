@@ -1562,6 +1562,9 @@
       result)))
 
 (define %%guide-critical-call
+  ;; Guide *Global* Critical Section (GGCS)
+  ;;
+  ;; suspended computation (currently thunk or promise)
   (let ((receiver
          (make-pin
           initial: #f
@@ -1569,7 +1572,7 @@
                   (or (not obj) (procedure? obj) (promise? obj)))
           ;; FIXME: in LIKELY !: illegal values make it hang!
           filter: (lambda (old new) (and (procedure? new) new))
-          name: "one-ari procedure receiving clipboard value")))
+          name: "GGCS (critical section): a suspended computation")))
     (wire!
      receiver
      extern: receiver
