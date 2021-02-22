@@ -1067,7 +1067,8 @@
          (vertical-align 'center)
          (location guide-button)
          ;; TBD: better interface&name
-         (guide-callback (lambda (rect payload event x y) (terminate))))
+         (guide-callback (lambda (rect payload event x y) (terminate)))
+         (name 'button))
   (let* ((view! (make-guide-figure-view))
          (label! (make-guide-label-view))
         ;;; TBD: inline these!
@@ -1132,7 +1133,7 @@
                           #f)))
                    (else (guide-figure-contains? view! x y)))))))))
       (make-guide-payload
-       in: in name: 'button widget: #f
+       in: in name: name widget: #f
        on-redraw: (view!) on-any-event: events lifespan: 'ephemeral))))
 
 ;;*** Labled Value Payload
