@@ -1621,7 +1621,9 @@
          (size 'small)
          (font (guide-select-font size: 'small))
          (keypad guide-keypad/default)
-         (action #f #;(lambda (msg-ggb2d) #f)))
+         (action #f #;(lambda (msg-ggb2d) #f))
+         (results values)
+         ) ;; make-chat: end of keyword parameters
   (let* ((area in)
          (xno (mdvector-interval-upper-bound area 0))
          (chat-message
@@ -1734,7 +1736,7 @@
                (let ((value (ce0 in row col)))
                  (set! input-edit value)
                  value))))
-    (values
+    (results
      (case 1
        ((1)
         (let ((panel (make-ggb size: 2))
