@@ -83,6 +83,7 @@
   make-pin pin? PIN
   (observable-filter-eq filter-eq) (observable-filter-eqv filter-eqv) (observable-filter-equal filter-equal)
   pin-filter!
+  wire-persistent-file!
   ;; Debug & Deprecated
   ;;
   stm-atomic?
