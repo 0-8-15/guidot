@@ -1619,6 +1619,7 @@
          (in (current-guide-gui-interval))
          (line-height 20)
          (size 'small)
+         (rows 3)
          (font (guide-select-font size: 'small))
          (keypad guide-keypad/default)
          (action #f #;(lambda (msg-ggb2d) #f))
@@ -1691,7 +1692,7 @@
                   (action data)))
                (else
                 (ggb-goto! messages 0)
-                (let ((msg (ctrl 'text)))
+                (let ((msg (edit-control! 'text)))
                   (ggb-insert! messages (chat-message msg #f)))
                 (edit-control! text: '#u32())
                 #t)))
@@ -1728,6 +1729,7 @@
              `((color: ,(guide-select-color-4))
                (horizontal-align: right))
              ;; is default: on-key: %%guide-textarea-keyfilter
+             rows: rows
              results:
              (lambda (payload ctrl)
                (set! edit-control! ctrl)
