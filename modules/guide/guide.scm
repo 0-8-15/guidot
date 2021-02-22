@@ -746,7 +746,14 @@
 
 ;; Arranges content (a generic gap buffer) in a direction (x, y, z).
 
-(define (guide-ggb-layout area buffer #!key (direction 0) (fixed #f) (on-key #f))
+(define (guide-ggb-layout
+         area buffer
+         #!key
+         (direction 0)
+         (fixed #f)
+         (on-key #f)
+         (shrink-to-content #t)
+         )
   (unless (ggb? buffer) (error "arg1 ggb expected" 'guide-ggb-layout buffer))
   (let ((direction ;; direction: 0: z, 1: x, y: z...
          (case direction
@@ -871,7 +878,9 @@
                     ((2) (set! offset (- offset height)))
                     ((-2) (set! offset (+ offset height)))
                     ((1) (set! offset (- offset width))))))))
-           #t))))
+           (cond ;; no hit
+            (shrink-to-content #f)
+            (else #t))))))
     (define events
       ;; TBD: factor motion/shift handling out (copied here from
       ;; `select` already.
