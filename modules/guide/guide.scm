@@ -188,7 +188,7 @@
 (define %%guide-timings-set!) ;; deprecated
 
 (define guide-default-event-dispatch/toplevel
-  (let ((frame-period-max-value 0.5) ;; How long to sleep at most in redraw.
+  (let ((frame-period-max-value 0.2) ;; How long to sleep at most in redraw.
         (step 0.05) ;; delay increase
         (consecutive-redraw-count 1)
         (customized-moment #f) ;; may be a procedure returning the wait time/moment
