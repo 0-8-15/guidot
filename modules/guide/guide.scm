@@ -406,6 +406,18 @@
        ((not handler) (MATURITY -1 "no event handler " loc: guide-event-dispatch-to-payload))
        (else (MATURITY -10 "invalid event handler" loc: guide-event-dispatch-to-payload)))))))
 
+(cond-expand
+ (debug
+  (set! guide-event-dispatch-to-payload
+        (let ((guide-event-dispatch-to-payload guide-event-dispatch-to-payload))
+          (lambda (rect payload event x y)
+            (let ((result (guide-event-dispatch-to-payload rect payload event x y)))
+              (cond
+               ((eqv? event EVENT_REDRAW)) ;; returns void
+               ((eqv? result #!void) (error "void returned" payload event x y)))
+              result)))))
+ (else))
+
 (set!
  make-guide-payload
  (let ((make-guide-payload make-guide-payload)
@@ -725,6 +737,11 @@
 
 ;;*** Widget Composition
 
+(define-macro (%%guide-post-speculative expr)
+  ;; either a thunk or a promise -- promise seems NOT to work under
+  ;; gamit?
+  `(lambda () ,expr))
+
 ;;**** GGB Composition
 
 ;; Arranges content (a generic gap buffer) in a direction (x, y, z).
@@ -876,14 +893,22 @@
              ((and (eqv? event EVENT_BUTTON1UP) (not fixed))
               (cond
                ((eq? armed armed-at)
-                (let* ((r1 (pass-event! rect payload EVENT_BUTTON1DOWN x y))
-                       (r2 (pass-event! rect payload event x y)))
-                  (set! armed #f)
-                  (set! armed-at #f)
-                  (cond
-                   ((and r1 r2) (NYIE "ggb layout: two things"))
-                   ((or r1 r2) => identity)
-                   (else #t))))))
+                (set! armed #f)
+                (set! armed-at #f)
+                (%%guide-post-speculative
+                 (let ((handle
+                        (lambda (x)
+                          (cond
+                           ((boolean? x) x)
+                           ((procedure? x) (x))
+                           ((promise? x) (force x))
+                           (else (error "invalid return" x))))))
+                   (handle (pass-event! rect payload EVENT_BUTTON1DOWN x y))
+                   (handle (pass-event! rect payload event x y)))))
+               (else
+                (set! armed #f)
+                (set! armed-at #f)
+                #t)))
              ((and armed (eqv? event EVENT_MOTION))
               (cond
                (armed
@@ -1006,7 +1031,7 @@
      (lambda (rect payload event x y)
        (cond
         ((or (eqv? press: event) (eqv? release: event))
-         (and on-key (on-key event x)))
+         (if on-key (on-key event x y) #t))
         ((guide-payload-contains/xy? payload x y)
          (do ((i (fx- (vector-length content) 1) (fx- i 1))
               (result #f)
@@ -1203,13 +1228,12 @@
      ((fixnum? key)
       (if (procedure? on-key)
           (on-key release: key modifiers)
-          (event-push EVENT_KEYRELEASE key modifiers)))
+          (%%guide-post-speculative (event-push EVENT_KEYRELEASE key modifiers))))
      ((char? key)
       (if (procedure? on-key)
           (on-key release: key modifiers)
-          (event-push EVENT_KEYRELEASE (char->integer key) modifiers)))
-     (else (error "invalid key" %%guide-post-key-event key)))
-    #t)
+          (%%guide-post-speculative (event-push EVENT_KEYRELEASE (char->integer key) modifiers))))
+     (else (error "invalid key" %%guide-post-key-event key))))
   (define (post-key pat)
     (lambda (rect payload event x y)
       (%%guide-post-key-event pat)))

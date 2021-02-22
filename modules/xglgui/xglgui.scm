@@ -747,7 +747,7 @@
          (guide-callback #f)
          (background (%%glCore:textures-ref (glC:image-t %%guide-default-background) #f))
          ;; non-functional; for debugging:
-         (name make-figure-list-payload))
+         (name 'figure-list-payload))
   ;; TBD: Option to catch/display errors in handling content events.
   (when guide-callback
     (MATURITY -1 "parameter: guide-callback" loc: 'figure-list-payload)
@@ -781,14 +781,16 @@
                        (and draw (draw))))))))
          (events
           (lambda (rect payload event x y)
-            ;; TBD: we can't deliver all events everywhere!!!
-            (and (let ((n (floor (/ (- sely y) selh))))
-                   (and (>= n 0) (< n len)))
-                 (do ((i 0 (fx+ i 1))
-                      (result #f))
-                     ((or result (eqv? i len)) result)
-                   (let ((payload (vector-ref all i)))
-                     (set! result (guide-event-dispatch-to-payload rect payload event x y))))))))
+            (cond
+             ((or (eqv? press: event) (eqv? release: event)) #t)
+             (else
+              (and (let ((n (floor (/ (- sely y) selh))))
+                     (and (>= n 0) (< n len)))
+                   (do ((i 0 (fx+ i 1))
+                        (result #f))
+                       ((or result (eqv? i len)) result)
+                     (let ((payload (vector-ref all i)))
+                       (set! result (guide-event-dispatch-to-payload rect payload event x y))))))))))
     (unless font (set! font (guide-select-font height: selh)))
     (do ((i 0 (fx+ i 1)))
         ((eqv? i len)
@@ -868,7 +870,7 @@
                (else
                 (set!
                  active
-                 (let ((action (lambda (sel x) (set! active #f) (selection sel))))
+                 (let ((action (lambda (sel x) (set! active #f) (selection sel) #t)))
                    (make-figure-list-payload selection-area options font: selfnt action: action)))))
               #t))
            (b1 (let* ((sel
@@ -1221,7 +1223,11 @@
            ((or (eqv? press: event) (eqv? release: event))
             (guide-focus line) ;; questionable?
             (let ((v (on-key event x y)))
-              (if v (guide-event-dispatch-to-payload rect line event x y))))
+              (if v
+                  (guide-event-dispatch-to-payload rect line event x y)
+                  (begin
+                    (debug 'value-edit-ignored-key x)
+                    #f))))
            (else (mdvector-rect-interval-contains/xy? in x y))))))
     (let ((result
            (make-guide-payload
@@ -1339,8 +1345,7 @@
              action:
              (lambda (p/r key mod)
                (let ((key (if on-key (on-key p/r key mod) key)))
-                 (if key (guide-event-dispatch-to-payload in lines p/r key mod))
-                 #t))))
+                 (if key (guide-event-dispatch-to-payload in lines p/r key mod) #t)))))
        (redraw! ;; TBD: nested vector drawing handlers should be supported too - aren't they
         (vector-append
          (if title (vector background-view title) (vector background-view))
@@ -1362,11 +1367,12 @@
              ((and menu (> y (- yno line-height+border)))
               (guide-event-dispatch-to-payload rect menu event x (- y (- yno line-height+border))))
              ((and lines-control! title (> y (- yno line-height+border)) (eqv? event EVENT_BUTTON1DOWN))
-              (lines-control! event x y))))
+              (lines-control! event x y))
+             (else (mdvector-rect-interval-contains/xy? in x y))))
            ((or (eqv? press: event) (eqv? release: event))
             (guide-focus lines) ;; questionable?
             (let ((v (on-key event x y)))
-              (if v (guide-event-dispatch-to-payload rect lines event x y))))
+              (if v (guide-event-dispatch-to-payload rect lines event x y) v)))
            (else (mdvector-rect-interval-contains/xy? in x y))))))
     (if (eq? results values)
         (set! lines-control!
@@ -1505,7 +1511,9 @@
             (set! y-shift (remainder y-shift line-height))
             (set! content-offset (max 0 (fx- content-offset 2)))
             (update-content!)
-            (update-shift!)))))
+            (update-shift!)))
+          ;; tail in event handler
+          #t))
        (redraw (lambda () (draw-frame)))
        (this-payload #f) ;; letrec
        (pointer-event
@@ -1675,13 +1683,16 @@
             (define edit-control!)
             (define (send! . _)
               (cond
-               ((procedure? action) (action (edit-control! 'text)))
+               ((procedure? action)
+                (let ((data (edit-control! 'text)))
+                  (edit-control! text: '#u32())
+                  (action data)))
                (else
                 (ggb-goto! messages 0)
                 (let ((msg (ctrl 'text)))
-                  (ggb-insert! messages (chat-message msg #f)))))
-              (edit-control! text: '#u32())
-              "")
+                  (ggb-insert! messages (chat-message msg #f)))
+                (edit-control! text: '#u32())
+                #t)))
             (define menu
               (let* ((w (mdv-rect-interval-width in))
                      (menu-area (make-mdv-rect-interval 0 0 w line-height))
