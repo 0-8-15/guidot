@@ -732,7 +732,7 @@
           (guide-button
            in: (make-x0y0x1y1-interval/coerce x y (+ x (/ w 2)) (+ y (/ h 2)))
            label: "(C) JFW"
-           guide-callback: (lambda (rect payload event x y) (set! b1active #f)))))
+           guide-callback: (lambda (rect payload event x y) (set! b1active #f) #t))))
        (b2 (let* ((wb (/ w 5))
                   (x (- w wb))
                   (y (* h 0))
