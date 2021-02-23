@@ -513,7 +513,7 @@
                (ggb-insert! current-line (char->integer key))
                (value! text: (ggb->vector current-line))
                (update-cursor!))
-              (else (debug "ignored key" (list 'guide-textarea-payload key))))))))
+              (else (debug "ignored key" (list 'guide-textarea-payload key)) #t))))))
        (redraw! (lambda () (value-draw) (cursor-draw)))
        (events
         ;; TBD: factor motion/shift handling out (3rd copy here from
@@ -597,6 +597,7 @@
            (lambda (data)
              (cond
               ((string? data)
+               (guide-focus this-payload)
                (continuation-capture
                 (lambda (cont)
                   (with-exception-catcher
@@ -1787,7 +1788,7 @@
               (xno (mdvector-interval-upper-bound area 0))
               (yno (mdvector-interval-upper-bound area 1))
               (ysw (mdvector-interval-lower-bound area 1))
-              (kph (* 10 line-height)))
+              (kph (* (+ rows 4) line-height)))
           (ggb-insert! panel (ce (make-mdv-rect-interval 0 0 xno kph) 0 0))
           (ggb-insert! panel (cm (make-mdv-rect-interval 0 0 xno (+ (- yno ysw) kph)) 0 0))
           (guide-ggb-layout area panel direction: 'vertical fixed: #t)))
