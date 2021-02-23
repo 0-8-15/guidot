@@ -589,10 +589,12 @@
            (nick-dialog-keypad guide-keypad/simplified))
       (define (dialog-set! payload)
         (guide-focus payload)
-        (set! dialog payload))
+        (set! dialog payload)
+        ;; tail in handler
+        #t)
       (define (activate-chat-partner! to)
-        (dialog-set! #f)
-        (chat-address to))
+        (chat-address to)
+        (dialog-set! #f))
       (define (nick-dialog to remove-when-empty)
         (guide-value-edit-dialog
          in: area label: (chat-number->neatstring to)
@@ -608,7 +610,9 @@
                 (lambda ()
                   (dialog-set! #f)
                   (if (string-empty? val)
-                      (chat-partner-set! to) ;; remove
+                      (begin
+                        (chat-partner-set! to) ;; remove
+                        #t)
                       (begin
                         (chat-partner-set! to val)
                         (activate-chat-partner! to))))
@@ -650,22 +654,26 @@
             (let ((data (map car all))) (lambda () data))
             action:
             (lambda (sel x)
-              (if (>= sel 0)
-                  (let ((e (cdr (list-ref all sel))))
-                    (if (cadr e)
-                        (cond
-                         ((< x 1/3)
-                          (dialog-set! #f)
-                          (let ((pn (chat-number->neatstring (car e) "-")))
-                            (launch-url
-                             (string-append "http://" pn "." (beaver-domain) "/index")
-                             via: (if (< x 1/4) 'webview 'extern))))
-                         ((> x 2/3)
-                          (dialog-set! (nick-dialog (car e) #t)))
-                         (else
-                          (activate-chat-partner! (car e))))
-                        (dialog-set! (nick-dialog (car e) #f))))
-                  (dialog-set! #f)))
+              (cond
+               ((>= sel 0)
+                (let ((e (cdr (list-ref all sel))))
+                  (cond
+                   ((cadr e)
+                    (cond
+                     ((< x 1/3)
+                      (dialog-set! #f)
+                      (let* ((pn (chat-number->neatstring (car e) "-"))
+                             (url (string-append "http://" pn "." (beaver-domain) "/index"))
+                             (via (if (< x 1/4) 'webview 'extern)))
+                        (case 2
+                        ((1)
+                         (%%guide-critical-call (delay (launch-url url via: via)))
+                         #t)
+                        (else (%%guide-post-speculative (future (launch-url url via: via)))))))
+                     ((> x 2/3) (dialog-set! (nick-dialog (car e) #t)))
+                     (else (activate-chat-partner! (car e)))))
+                   (else (dialog-set! (nick-dialog (car e) #f))))))
+               (else (dialog-set! #f))))
             line-height: line-height-selectable
             font: (guide-select-font size: 'medium)
             horizontal-align: 'left))))
