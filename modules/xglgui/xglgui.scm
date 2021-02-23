@@ -620,7 +620,8 @@
          (validate #f)
          (size 'small)
          (color (guide-select-color-2))
-         (hightlight-color (guide-select-color-4)))
+         (hightlight-color (guide-select-color-4))
+         (name 'guide-line-input))
   (define (%%value-buffer->string ggb #!optional (start 0) (end (ggb-length ggb)))
     (let ((result (make-string (- end start))))
       (ggb-for-each ggb (lambda (i v) (string-set! result i (integer->char v))) start end)
@@ -691,7 +692,7 @@
                        (label!))))
               (set! cursor-draw draw)))
           (guide-wakeup!)
-          ;; tail position of key handler - return "event handled"
+          ;; no longer: tail position of key handler - return "event handled"
           #t))
 
        (on-key
@@ -708,7 +709,7 @@
              (set! value-draw (value!))
              (update-cursor!))
             ((eqv? key EVENT_KEYENTER)
-             (data (%%value-buffer->string value-buffer))
+             ;; (data (%%value-buffer->string value-buffer))
              (set! value-buffer (input->buffer data))
              (value! text: (ggb->vector value-buffer))
              (set! value-draw (value!))
@@ -726,13 +727,18 @@
        (events
         (lambda (rect payload event x y)
           (case event
-            ((press: release:) (on-key event x y))
+            ((press: release:)
+             (cond
+              ((eqv? x EVENT_KEYENTER)
+               (data (%%value-buffer->string value-buffer)) ;; speculative
+               (%%guide-post-speculative (on-key event x y)))
+              (else (%%guide-post-speculative (on-key event x y)))))
             (else (mdvector-rect-interval-contains/xy? in x y))))))
     (when (procedure? validate) (validate value-buffer))
     (update-cursor!)
     (let ((result ;; a letrec* on `this-payload`
            (make-guide-payload
-            name: 'guide-line-input in: in widget: #f
+            name: name in: in widget: #f
             on-redraw: redraw! on-any-event: events lifespan: 'ephemeral)))
       (set! this-payload result)
       result)))
@@ -748,6 +754,8 @@
          (background (%%glCore:textures-ref (glC:image-t %%guide-default-background) #f))
          ;; non-functional; for debugging:
          (name 'figure-list-payload))
+  ;; TBD: reconsile with list-selection - why both?
+  ;;
   ;; TBD: Option to catch/display errors in handling content events.
   (when guide-callback
     (MATURITY -1 "parameter: guide-callback" loc: 'figure-list-payload)
@@ -763,12 +771,21 @@
           (lambda (rect payload event x y)
             (cond
              (action
-              (action
-               (floor (/ (- sely y) selh)) ;; selected item
-               (let ((xsw (mdvector-interval-lower-bound in 0))
-                     (xno (mdvector-interval-upper-bound in 0)))
-                 ;; relative width
-                 (floor (/ (- x xsw) (- xno xsw))))))
+              (receive results
+                  (action
+                   (floor (/ (- sely y) selh)) ;; selected item
+                   (let ((xsw (mdvector-interval-lower-bound in 0))
+                         (xno (mdvector-interval-upper-bound in 0)))
+                     ;; relative width
+                     (floor (/ (- x xsw) (- xno xsw)))))
+                (cond
+                 ((null? results) #t)
+                 (else
+                  (let ((r1 (car results)))
+                    (cond
+                     ((procedure? r1) r1)
+                     ((promise? r1) r1)
+                    (else #t)))))))
              (guide-callback (guide-callback rect payload event x y))
              (else #t))))
          (redraw
@@ -1202,7 +1219,7 @@
              action:
              (lambda (p/r key mod)
                (let ((key (if on-key (on-key p/r key mod) key)))
-                 (if key (guide-event-dispatch-to-payload in line p/r key 0))))))
+                 (if key (guide-event-dispatch-to-payload in line p/r key 0) #t)))))
        (redraw! ;; FIXME: nested vector drawing handlers should be supported too
         (vector-append
          (if title
@@ -1403,7 +1420,7 @@
          (vertical-align 'center)
          (line-height 35)
          ;; non-functional; for debugging:
-         (name make-list-select-payload))
+         (name 'list-select-payload))
   (unless font (set! font (guide-select-font height: line-height)))
   (let*
       ((content (let ((content (content)))
@@ -1531,14 +1548,25 @@
                 (let* ((dx (- x (vector-ref armed 0)))
                        (dy (- y (vector-ref armed 1)))
                        (in-sel (floor (/ (- yno y) selh))))
-                  (when action
-                    (action
-                     (+ content-offset in-sel) ;; selected item
-                     (/ (- x xsw) (- xno xsw)))) ;; relative width
-                  (when guide-callback (guide-callback rect payload event x y)))))
-              (set! armed #f)
-              (set! armed-at #f)
-              #t)
+                  (set! armed #f)
+                  (set! armed-at #f)
+                  (cond
+                   (action
+                    (receive results
+                        (action
+                         (+ content-offset in-sel)  ;; selected item
+                         (/ (- x xsw) (- xno xsw))) ;; relative width
+                      (cond
+                       ((null? results) #t)
+                       (else
+                        (let ((r1 (car results)))
+                          (cond
+                           ((procedure? r1) r1)
+                           ((promise? r1) r1)
+                           (else #t)))))))
+                   (guide-callback (guide-callback rect payload event x y))
+                   (else #t))))
+               (else #f)))
              ((eqv? event EVENT_MOTION)
               (cond
                (armed
@@ -1548,9 +1576,11 @@
                              (> (sqrt (+ (* dx dx) (* dy dy))) ;; distance
                                 motion-hyst))
                     (set! armed y-shift))
-                  (when (number? armed)
+                  (cond
+                   ((number? armed)
                     (set! y-shift (+ armed dy))
-                    (shift!))))
+                    (shift!))
+                   (else #t))))
                (else #t)))
              (else (debug 'guide-list-select-payload (list event x y)))))))
        (key-event
@@ -1558,8 +1588,7 @@
           (case key
             ((PageUp PageDown)
              (set! y-shift ((if (eq? key 'PageDown) + -) y-shift (* num-visible line-height)))
-             (shift!)
-             #t)
+             (shift!))
             (else #f))))
        (events-here
         (lambda (rect payload event x y)

@@ -597,9 +597,10 @@
         (guide-value-edit-dialog
          in: area label: (chat-number->neatstring to)
          keypad: nick-dialog-keypad
+         on-key: %%guide-textarea-keyfilter
          data:
          (case-lambda
-          (() "")
+          (() (if (chat-partner-known to) (chat-partner->neatstring to) ""))
           ((val)
            (with-exception-catcher
             (lambda (exn) #f)

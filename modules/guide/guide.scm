@@ -1273,7 +1273,10 @@
                      (and switch
                           (apply
                            guide-button in: in
-                           guide-callback: (let ((key (car pat))) (lambda (rect payload event x y) (switch key)))
+                           guide-callback:
+                           (let ((key (car pat)))
+                             (lambda (rect payload event x y)
+                               (%%guide-post-speculative (switch key))))
                            color: color font: font
                            background: background background-color: background-color
                            (cdr pat))))
