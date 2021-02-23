@@ -154,6 +154,20 @@
   ;; gamit?
   `(lambda () ,expr))
 
+(define-macro (macro-guide-sanitize-payload-result expr)
+  ;; TBD: sanitize in debug mode only and then maybe use it always.
+  (let ((results (gensym 'results))
+        (obj (gensym 'obj)))
+    `(receive ,results ,expr
+       (cond
+        ((null? ,results) #t)
+        (else
+         (let ((,obj (car ,results)))
+           (cond
+            ((procedure? ,obj) ,obj)
+            ((promise? ,obj) ,obj)
+            (else #t))))))))
+
 ;;** Textarea Payload
 
 (define (guide-textarea-payload
@@ -768,9 +782,11 @@
          (background (%%glCore:textures-ref (glC:image-t %%guide-default-background) #f))
          ;; non-functional; for debugging:
          (name 'figure-list-payload))
-  ;; TBD: reconsile with list-selection - why both?
+  ;; TBD: merge into successor `list-selection` - anything here we loose
   ;;
   ;; TBD: Option to catch/display errors in handling content events.
+  (MATURITY -1 "make-figure-list-payload: was precursor of list-selection"
+            loc: make-figure-list-payload)
   (when guide-callback
     (MATURITY -1 "parameter: guide-callback" loc: 'figure-list-payload)
     (when action
@@ -785,22 +801,16 @@
           (lambda (rect payload event x y)
             (cond
              (action
-              (receive results
-                  (action
-                   (floor (/ (- sely y) selh)) ;; selected item
-                   (let ((xsw (mdvector-interval-lower-bound in 0))
-                         (xno (mdvector-interval-upper-bound in 0)))
-                     ;; relative width
-                     (floor (/ (- x xsw) (- xno xsw)))))
-                (cond
-                 ((null? results) #t)
-                 (else
-                  (let ((r1 (car results)))
-                    (cond
-                     ((procedure? r1) r1)
-                     ((promise? r1) r1)
-                    (else #t)))))))
-             (guide-callback (guide-callback rect payload event x y))
+              (macro-guide-sanitize-payload-result
+               (action
+                (floor (/ (- sely y) selh)) ;; selected item
+                (let ((xsw (mdvector-interval-lower-bound in 0))
+                      (xno (mdvector-interval-upper-bound in 0)))
+                  ;; relative width
+                  (floor (/ (- x xsw) (- xno xsw)))))))
+             (guide-callback
+              (macro-guide-sanitize-payload-result
+               (guide-callback rect payload event x y)))
              (else #t))))
          (redraw
           (lambda ()
@@ -1566,19 +1576,13 @@
                   (set! armed-at #f)
                   (cond
                    (action
-                    (receive results
-                        (action
-                         (+ content-offset in-sel)  ;; selected item
-                         (/ (- x xsw) (- xno xsw))) ;; relative width
-                      (cond
-                       ((null? results) #t)
-                       (else
-                        (let ((r1 (car results)))
-                          (cond
-                           ((procedure? r1) r1)
-                           ((promise? r1) r1)
-                           (else #t)))))))
-                   (guide-callback (guide-callback rect payload event x y))
+                    (let ((selected-item (+ content-offset in-sel))
+                          (relative-width (/ (- x xsw) (- xno xsw))))
+                      (macro-guide-sanitize-payload-result
+                       (action selected-item relative-width))))
+                   (guide-callback
+                    (macro-guide-sanitize-payload-result
+                     (guide-callback rect payload event x y)))
                    (else #t))))
                (else #f)))
              ((eqv? event EVENT_MOTION)
@@ -1665,9 +1669,16 @@
          (rows 3)
          (font (guide-select-font size: 'small))
          (keypad guide-keypad/default)
+         (mode #t)
+         (right-side-offset line-height)
          (action #f #;(lambda (msg-ggb2d) #f))
          (results values)
          ) ;; make-chat: end of keyword parameters
+  (set! mode
+        (case mode
+          ((server #t) #t)
+          ((client #f) #f)
+          (else (error "invalid mode" 'guide-chat mode))))
   (let* ((area in)
          (xno (mdvector-interval-upper-bound area 0))
          (chat-message
@@ -1676,6 +1687,7 @@
                 (pl ctrl)
                 (let ((color-2 (guide-select-color-2))
                       (color-4 (guide-select-color-4))
+                      (horizontal-align 'left)
                       (line-count
                        (cond
                         ((ggb2d? data) (ggb2d-length data))
@@ -1689,7 +1701,8 @@
                       (set! color-4 t)))
                   (guide-textarea-payload
                    in: (make-mdv-rect-interval 0 0 xno (* line-count line-height))
-                   horizontal-align: (if l/r 'left 'right) vertical-align: 'bottom
+                   horizontal-align: horizontal-align
+                   vertical-align: 'bottom
                    font: font
                    size: size
                    line-height: (* 2/3 line-height)
@@ -1701,6 +1714,7 @@
                            data)))
               (guide-button
                in: (guide-payload-measures pl)
+               position: (and (not mode) (vector right-side-offset 0))
                guide-callback:
                (lambda _
                  (unless
@@ -1732,11 +1746,11 @@
                ((procedure? action)
                 (let ((data (edit-control! 'text)))
                   (edit-control! text: '#u32())
-                  (action data)))
+                  (macro-guide-sanitize-payload-result (action data))))
                (else
                 (ggb-goto! messages 0)
                 (let ((msg (edit-control! 'text)))
-                  (ggb-insert! messages (chat-message msg #f)))
+                  (ggb-insert! messages (chat-message msg mode)))
                 (edit-control! text: '#u32())
                 #t)))
             (define menu
@@ -1805,7 +1819,7 @@
           (check-not-observable-speculative! 'chat key msg)
           (unless (equal? msg "")
             (ggb-goto! messages 0)
-            (ggb-insert! messages (chat-message msg #t))))
+            (ggb-insert! messages (chat-message msg (not mode)))))
          ((focus:)
           (guide-focus (and msg input-edit)))
          ((load:)
