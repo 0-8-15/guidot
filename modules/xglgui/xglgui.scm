@@ -597,10 +597,23 @@
            (lambda (data)
              (cond
               ((string? data)
-               (call-with-input-string
-                data
-                (lambda (port) (ggb2d-insert-port! value-buffer port)))
-               (update-cursor!))
+               (continuation-capture
+                (lambda (cont)
+                  (with-exception-catcher
+                   (lambda (exn)
+                     (log-error
+                      "textarea insert failed:\n"
+                      (debug
+                       "textarea insert failed\n"
+                       (call-with-output-string
+                        (lambda (port)
+                          (display-exception-in-context exn cont port)
+                          (display-continuation-backtrace cont port))))))
+                   (lambda ()
+                     (call-with-input-string
+                      data
+                      (lambda (port) (ggb2d-insert-port! value-buffer port)))
+                     (update-cursor!))))))
               (else #f)))
            more))
          (else (error "invalid command key" 'guide-textarea-payload key)))))))
