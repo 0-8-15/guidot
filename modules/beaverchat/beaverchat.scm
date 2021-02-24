@@ -413,6 +413,25 @@
 
 ;; GUI
 
+(define-macro (%%guide-post-speculative expr)
+  ;; either a thunk or a promise -- promise seems NOT to work under
+  ;; gamit?
+  `(lambda () ,expr))
+
+(define-macro (macro-guide-sanitize-payload-result expr)
+  ;; TBD: sanitize in debug mode only and then maybe use it always.
+  (let ((results (gensym 'results))
+        (obj (gensym 'obj)))
+    `(receive ,results ,expr
+       (cond
+        ((null? ,results) #t)
+        (else
+         (let ((,obj (car ,results)))
+           (cond
+            ((procedure? ,obj) ,obj)
+            ((promise? ,obj) ,obj)
+            (else #t))))))))
+
 (define (beaverchat-required-key-parameter key location)
   (error "required key parameter" key location))
 
@@ -703,7 +722,9 @@
       (unless (null? (chat-messages))
         (if (stm-atomic?) ;; not speculative
             (chat-ctrl! load: (chat-messages))
-            (%%guide-critical-call (lambda () (chat-ctrl! load: (chat-messages))))))
+            (and
+             (%%guide-critical-call (lambda () (chat-ctrl! load: (chat-messages))))
+             #t)))
       (let* ((when-wired
               (lambda () (chat-ctrl! load: (chat-messages))))
              (toggle! (wire! chat-messages
@@ -865,10 +886,13 @@
                       background: (guide-background button: in: area)
                       guide-callback:
                       (lambda (rect payload event x y)
-                        (if (positive? (beaver-proxy-port-number))
-                            (webview-launch!
-                             (string-append "http://127.0.0.1:" (number->string (beaver-proxy-port-number)))
-                             via: (if (< x (/ w 2)) 'webview 'extern))))))
+                        (cond
+                         ((positive? (beaver-proxy-port-number))
+                          (let ((url (string-append "http://127.0.0.1:" (number->string (beaver-proxy-port-number))))
+                                (via (if (< x (/ w 2)) 'webview 'extern)))
+                            (%%guide-critical-call (lambda () (webview-launch! url via: via)))
+                            #t))
+                         (else #t)))))
                    (lambda (in col row)
                      (let* ((last (memoize-last (lambda (v) (number->string (length v))) eq?))
                             (check (lambda () (last (chat-pending-messages)))))
