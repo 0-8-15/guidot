@@ -1717,6 +1717,8 @@
                     (length (string-split data #\newline)))
                    (else 5)))
                  ;; II. reformat text
+                 ;;
+                 ;; TBD: this is quite slow.
                  (data-len (cond
                             ((ggb2d? data) (ggb2d-total-length data))
                             ((string? data) (string-length data))
@@ -1844,7 +1846,7 @@
               (xno (mdvector-interval-upper-bound area 0))
               (yno (mdvector-interval-upper-bound area 1))
               (ysw (mdvector-interval-lower-bound area 1))
-              (kph (* (+ rows 4) line-height)))
+              (kph (* (+ rows 10) (guide-font-height font))))
           (ggb-insert! panel (ce (make-mdv-rect-interval 0 0 xno kph) 0 0))
           (ggb-insert! panel (cm (make-mdv-rect-interval 0 0 xno (+ (- yno ysw) kph)) 0 0))
           (guide-ggb-layout area panel direction: 'vertical fixed: #t)))
