@@ -735,12 +735,26 @@
 
 (define-macro (macro-guide-default-background) `((lambda () %%guide-default-background)))
 
-;;*** Widget Composition
-
 (define-macro (%%guide-post-speculative expr)
   ;; either a thunk or a promise -- promise seems NOT to work under
   ;; gamit?
   `(lambda () ,expr))
+
+(define-macro (macro-guide-sanitize-payload-result expr)
+  ;; TBD: sanitize in debug mode only and then maybe use it always.
+  (let ((results (gensym 'results))
+        (obj (gensym 'obj)))
+    `(receive ,results ,expr
+       (cond
+        ((null? ,results) #t)
+        (else
+         (let ((,obj (car ,results)))
+           (cond
+            ((procedure? ,obj) ,obj)
+            ((promise? ,obj) ,obj)
+            (else #t))))))))
+
+;;*** Widget Composition
 
 ;;**** GGB Composition
 
@@ -1127,7 +1141,8 @@
                (case event
                  ((press: release:)
                   (and accesskey (eqv? x accesskey)
-                       (guide-callback rect payload event x y)))
+                       (macro-guide-sanitize-payload-result
+                        (guide-callback rect payload event x y))))
                  (else
                   (cond
                    ((eqv? event EVENT_BUTTON1DOWN)
@@ -1136,7 +1151,8 @@
                     (if (and (guide-figure-contains? view! x y) armed)
                         (begin
                           (set! armed #f)
-                          (guide-callback rect payload event x y))
+                          (macro-guide-sanitize-payload-result
+                           (guide-callback rect payload event x y)))
                         (begin
                           (set! armed #f)
                           #f)))
