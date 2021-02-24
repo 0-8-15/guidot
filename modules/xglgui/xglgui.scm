@@ -16,6 +16,14 @@
           (set! below (min (fx- goy (ttf:glyph-height override)) below)))))
     (+ above below)))
 
+(define (guide-font-height font)
+  (let ((override (MATURITY+1:ln-ttf:font-ref font (char->integer #\|))))
+    (cond
+     (override (ttf:glyph-height override))
+     (else
+      (MATURITY -2 "failed to find font heigt" loc: guide-font-height)
+      40))))
+
 (define (MATURITY+0:glC:draw-text-left x y w h label fnt color) ;; -> #!void
   (MATURITY -2 "WASTEFUL, working, looks correct; mimics behavior" loc: 'glC:draw-text-left)
   (let* ((font (find-font fnt))
@@ -182,6 +190,7 @@
          (font (guide-select-font height: line-height))
          (rows 3)
          (cols #f)
+         (wrap #t)
          (data (let ((state "n/a")) (case-lambda (() state) ((val) (set! state val)))))
          (on-key %%guide-textarea-keyfilter);; filter characters to handle
          (size 'small)
@@ -231,28 +240,32 @@
               (ggb2d-insert-row! source ggb)
               (ggb2d-goto! source position: 'absolute row: 1 col: 0)))
           (cond
-           ((or (ggb2d? source) (u32vector? source))
-            (guide-linebreak! buffer source font text-width))
+           ((ggb2d? source)
+            (cond
+             (wrap (guide-linebreak! buffer source font text-width))
+             (else (set! buffer (ggb2d-copy source)))))
+           ((u32vector? source) (guide-linebreak! buffer source font text-width))
            (else ;; backward compatible: insert empty row
             (ggb2d-insert-row! buffer)))
           (ggb2d-goto! buffer position: 'absolute row: 1 col: 0)
           buffer))
        (linebreak-again!
         (lambda ()
-          (let* ((source0 value-buffer)
-                 (source (ggb2d-copy source0))
-                 (next-buffer (ggb2d-copy source 0 'point reserve: (ggb2d-length value-buffer)))
-                 (row (ggb2d-current-row next-buffer)))
-            (when row
-              (let ((lalipo (ggb-point (%%ggb2d-row-ref source row))))
-                (ggb2d-delete-row! next-buffer -1)
-                (ggb2d-goto! source position: 'relative col: 0)
-                (guide-linebreak! next-buffer source font text-width)
-                (let* ((rlen (ggb2d-length next-buffer))
-                       (row (min row (- rlen 1)))
-                       (lalipo (min lalipo (ggb-length (%%ggb2d-row-ref next-buffer row)))))
-                  (ggb2d-goto! next-buffer position: 'absolute row: (+ row 1) col: lalipo))))
-            (set! value-buffer next-buffer))))
+          (when wrap
+            (let* ((source0 value-buffer)
+                   (source (ggb2d-copy source0))
+                   (next-buffer (ggb2d-copy source 0 'point reserve: (ggb2d-length value-buffer)))
+                   (row (ggb2d-current-row next-buffer)))
+              (when row
+                (let ((lalipo (ggb-point (%%ggb2d-row-ref source row))))
+                  (ggb2d-delete-row! next-buffer -1)
+                  (ggb2d-goto! source position: 'relative col: 0)
+                  (guide-linebreak! next-buffer source font text-width)
+                  (let* ((rlen (ggb2d-length next-buffer))
+                         (row (min row (- rlen 1)))
+                         (lalipo (min lalipo (ggb-length (%%ggb2d-row-ref next-buffer row)))))
+                    (ggb2d-goto! next-buffer position: 'absolute row: (+ row 1) col: lalipo))))
+              (set! value-buffer next-buffer)))))
 
        (value-views
         (let ((vec (make-vector rows #f)))
@@ -1674,47 +1687,76 @@
          (action #f #;(lambda (msg-ggb2d) #f))
          (results values)
          ) ;; make-chat: end of keyword parameters
-  (set! mode
-        (case mode
-          ((server #t) #t)
-          ((client #f) #f)
-          (else (error "invalid mode" 'guide-chat mode))))
-  (let* ((area in)
+  (let* ((mode
+             (case mode
+               ((server #t) #t)
+               ((client #f) #f)
+               (else (error "invalid mode" 'guide-chat mode))))
+         (area in)
          (xno (mdvector-interval-upper-bound area 0))
          (chat-message
           (lambda (data l/r)
-            (receive
-                (pl ctrl)
-                (let ((color-2 (guide-select-color-2))
-                      (color-4 (guide-select-color-4))
-                      (horizontal-align 'left)
-                      (line-count
-                       (cond
-                        ((ggb2d? data) (ggb2d-length data))
-                        ((string? data)
-                         ;; BAD: length!
-                         (length (string-split data #\newline)))
-                        (else 5))))
-                  (when l/r
-                    (let ((t color-2))
-                      (set! color-2 color-4)
-                      (set! color-4 t)))
+            (let*
+                (;; I. general
+                 (color-2 (guide-select-color-2))
+                 (color-4 (guide-select-color-4))
+                 (horizontal-align
+                  (begin
+                    (when l/r
+                      (let ((t color-2))
+                        (set! color-2 color-4)
+                        (set! color-4 t)))
+                    'left))
+                 (size size)
+                 (line-height (guide-font-height font))
+                 (line-count
+                  (cond
+                   ((ggb2d? data) (ggb2d-length data))
+                   ((string? data)
+                    ;; BAD: length!
+                    (length (string-split data #\newline)))
+                   (else 5)))
+                 ;; II. reformat text
+                 (data-len (cond
+                            ((ggb2d? data) (ggb2d-total-length data))
+                            ((string? data) (string-length data))
+                            (else 2)))
+                 (linebroken #f)
+                 (formatted-payload
                   (guide-textarea-payload
-                   in: (make-mdv-rect-interval 0 0 xno (* line-count line-height))
+                   in: (make-mdv-rect-interval 0 0 xno (* data-len line-height))
                    horizontal-align: horizontal-align
                    vertical-align: 'bottom
                    font: font
                    size: size
-                   line-height: (* 2/3 line-height)
+                   line-height: line-height
                    color: color-2 hightlight-color: color-4
-                   ;; background: %%guide-default-background
+                   ;; background: #f
                    data: (lambda _
                            (when (ggb2d? data)
                              (ggb2d-goto! data 'position: 'absolute row: 1 col: 0))
-                           data)))
+                           data)
+                   results: (lambda (pl ctrl)
+                              (set! linebroken (ctrl 'text))
+                              ;;(ggb2d-goto! linebroken 'position: 'absolute row: 1 col: 0)
+                              pl)))
+                 ;; III. re-size
+                 (resized-payload
+                  (guide-textarea-payload
+                   in: (make-mdv-rect-interval 0 0 xno (* (ggb2d-length linebroken) line-height))
+                   horizontal-align: horizontal-align
+                   vertical-align: 'bottom
+                   font: font
+                   size: size
+                   line-height: line-height
+                   color: color-2 hightlight-color: color-4
+                   ;; background: %%guide-default-background
+                   wrap: #f
+                   data: (lambda _ linebroken)
+                   results: (lambda (pl ctrl) pl))))
               (guide-button
-               in: (guide-payload-measures pl)
-               position: (and (not mode) (vector right-side-offset 0))
+               in: (guide-payload-measures resized-payload)
+               position: (and (not l/r) (vector right-side-offset 0))
                guide-callback:
                (lambda _
                  (unless
@@ -1726,7 +1768,7 @@
                    (MATURITY -1 "copying to clipboard failed" loc: 'chat))
                  ;; gui: signal done anyway
                  #t)
-               label: pl))))
+               label: resized-payload))))
          ;; -- model
          (messages (make-ggb size: 0))
          (msg
