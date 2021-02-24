@@ -1400,9 +1400,14 @@
              ;; (events #f)
              (suspend (lambda () #f))
              (resume (lambda ()
-                       (guide-wakeup!)
                        (set! glCore:needsinit #t) ;; reinitialize OpenGL pipeline
-                       (thread-sleep! 0.1) ;; this is needed on android??
+                       (guide-wakeup!)
+                       ;; this helps android to ALMOST SURE sit in
+                       ;;
+                       ;; W GLSurfaceView: Warning, !readyToDraw() but waiting for draw finished!
+                       ;; Early reporting draw finished.
+                       ;;
+                       ;; (thread-sleep! 0.2)
                        (log-status "resumed")))
              (terminate (lambda () #t)))
       (let ((gui #f)
