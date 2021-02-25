@@ -738,6 +738,8 @@
 (define-macro (%%guide-post-speculative expr)
   ;; either a thunk or a promise -- promise seems NOT to work under
   ;; gamit?
+  ;;
+  ;; MUST NOT block, SHOULD RETURN ASAP!
   `(lambda () ,expr))
 
 (define-macro (macro-guide-sanitize-payload-result expr)
@@ -753,6 +755,26 @@
             ((procedure? ,obj) ,obj)
             ((promise? ,obj) ,obj)
             (else #t))))))))
+
+(define-macro (macro-guide-execute-payload-result expr)
+  ;; TBD: sanitize in debug mode only and then maybe use it always.
+  (let ((results (gensym 'results))
+        (obj (gensym 'obj)))
+    `(receive ,results ,expr
+       (let ((,obj (car ,results)))
+         (cond
+          ((procedure? ,obj) (,obj))
+          ((promise? ,obj) (force ,obj)))))))
+
+(define-macro (%%guide-post-speculative/async expr)
+  ;; either a thunk or a promise -- promise seems NOT to work under
+  ;; gamit?
+  ;;
+  ;; does not block, returns asap.
+  `(%%guide-post-speculative
+    (begin
+      (kick! (box (lambda () (macro-guide-execute-payload-result ,expr))))
+      #t)))
 
 ;;*** Widget Composition
 
