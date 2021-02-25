@@ -422,7 +422,7 @@ NULL;
     (thread-start! (make-thread job 'beaver))))
 
 (cond-expand
- (debug
+ ((and debug (not android))
   (kick
    (visible-tl-options '#("calculator" "chat" "about"))
    (PIN:toplevel-selection 1))
