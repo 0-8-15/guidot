@@ -282,7 +282,7 @@
        ((eq? event EVENT_IDLE)
         (if wakeup-seen
             (begin
-              (MATURITY +2 "check compatibility with win32 - drawing only upon WM_PAINT"
+              #;(MATURITY +2 "check compatibility with win32 - drawing only upon WM_PAINT"
                         loc: 'guide-default-event-dispatch/toplevel:EVENT_IDLE)
               (redraw! rect payload EVENT_REDRAW 0 0)
               (set! wakeup-seen #f))
@@ -810,7 +810,7 @@
                  ((2)
                   (let ((y (+ lower-bound-y offset)))
                     (if (or fixed
-                            (and (>= y lower-bound-y0) (<= (+ y height) upper-bound-y)))
+                            (or (>= y lower-bound-y0) (<= (+ y height) upper-bound-y)))
                         (begin (view! visible: #t) (view! position: 0 y))
                         (view! visible: #f)))
                   ;; update running
@@ -819,7 +819,7 @@
                   (set! offset (- offset height))
                   (let ((y (+ lower-bound-y offset)))
                     (if (or fixed
-                            (and (>= y lower-bound-y0) (<= (+ y height) upper-bound-y)))
+                            (or (>= y lower-bound-y0) (<= (+ y height) upper-bound-y)))
                         (begin (view! visible: #t) (view! position: 0 y))
                         (view! visible: #f))))
                  (else
@@ -831,7 +831,12 @@
                   ;; update running
                   (set! offset (+ offset width))))
                (vector-set! result i (view!))))))
-        (%%guide-make-redraw/check result)))
+        #;(%%guide-make-redraw/check result)
+        (%%guide-make-redraw/check
+         ;; NOT nice but works
+         (case direction
+           ((2) (apply vector (reverse! (vector->list result))))
+           (else result)))))
     (define redraw!
       (let ((last-content (ggb->vector buffer))
             (last-lower-bound-y lower-bound-y)
