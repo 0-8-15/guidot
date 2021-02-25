@@ -214,6 +214,7 @@
          (cols #f)
          (wrap #t)
          (data (let ((state "n/a")) (case-lambda (() state) ((val) (set! state val)))))
+         (readonly #f)
          (on-key %%guide-textarea-keyfilter);; filter characters to handle
          (size 'small)
          (color (guide-select-color-2))
@@ -571,8 +572,14 @@
           (lambda (rect payload event x y)
             (cond
              ((or (eqv? press: event) (eqv? release: event))
-              (let ((x (on-key event x y)))
-                (if x (%%guide-post-speculative/async (handle-key event x y)) #t)))
+              (cond
+               (readonly
+                ;; TBD: This throws the chcld out with the bathtube.
+                ;; SHOULD exclude mutation, but handle navigation.
+                #f)
+               (else
+                (let ((x (on-key event x y)))
+                  (if x (%%guide-post-speculative/async (handle-key event x y)) #t)))))
              ((eqv? event EVENT_BUTTON1DOWN)
               (set! armed (vector x y))
               (set! armed-at armed)
