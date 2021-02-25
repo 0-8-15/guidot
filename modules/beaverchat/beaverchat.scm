@@ -948,7 +948,9 @@
                (android #t)
                (else (guide-event-dispatch-to-payload rect b2 event x y))))))
            (else (mdvector-rect-interval-contains/xy? interval x y))))))
-    (make-guide-payload in: interval widget: #f on-redraw: redraw! on-any-event: events lifespan: 'ephemeral)))
+    (make-guide-payload
+     name: 'beaverchat-about
+     in: interval widget: #f on-redraw: redraw! on-any-event: events lifespan: 'ephemeral)))
 
 ;; (log-status "initializing chat completed")
 ;; eof
