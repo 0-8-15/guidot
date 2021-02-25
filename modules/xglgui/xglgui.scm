@@ -1715,6 +1715,7 @@
          (right-side-offset line-height)
          (action #f #;(lambda (msg-ggb2d) #f))
          (results values)
+         (name 'chat)
          ) ;; make-chat: end of keyword parameters
   (let* ((mode
              (case mode
@@ -1799,7 +1800,7 @@
                        ((ggb2d? data) (ggb2d->string data))
                        ((string? data) data)
                        (else (string-append "UNHANDLED: " (object->string data)))))
-                   (MATURITY -1 "copying to clipboard failed" loc: 'chat))
+                   (MATURITY -1 "copying to clipboard failed" loc: (list 'chat name)))
                  ;; gui: signal done anyway
                  #t)
                label: resized-payload))))
@@ -1831,27 +1832,35 @@
                 #t)))
             (define menu
               (let* ((w (mdv-rect-interval-width in))
-                     (menu-area (make-mdv-rect-interval 0 0 w line-height))
-                     (bw (/ w 4))
-                     (menu-color (guide-select-color-4))
-                     (button-area (make-mdv-rect-interval 0 0 bw line-height))
-                     (menu (make-ggb)))
-                (ggb-insert!
-                 menu
-                 (guide-button
-                  in: button-area
-                  label: "paste"
-                  color: menu-color
-                  guide-callback:
-                  (lambda _ (%%guide-post-speculative/async (edit-control! insert: (clipboard-paste))))))
-                (ggb-insert!
-                 menu
-                 (guide-button
-                  in: button-area
-                  label: "send!"
-                  color: menu-color
-                  guide-callback: (lambda _ send!)))
-                (guide-ggb-layout menu-area menu direction: 'horizontal fixed: #t)))
+                     (area (make-mdv-rect-interval 0 0 w line-height))
+                     (color (guide-select-color-4))
+                     (background-color (guide-select-color-3)))
+                (make-guide-table
+                 (make-mdvector
+                  (range '#(2 1))
+                  (vector
+                   ;; paste
+                   (let ((action
+                          (lambda _
+                            (%%guide-post-speculative/async
+                             (edit-control! insert: (clipboard-paste))))))
+                     (lambda (in row col)
+                       (guide-button
+                        in: in
+                        label: "paste"
+                        color: color
+                        background-color: background-color
+                        guide-callback: action)))
+                   (lambda (in row col)
+                     (guide-button
+                      in: in
+                      label: "send!"
+                      color: color
+                      background-color: background-color
+                      guide-callback: (lambda _ send!)))))
+                 in: area
+                 name: name
+                 border-ratio: 1/10)))
             (guide-textarea-edit
              in: in
              menu: menu
@@ -1887,24 +1896,24 @@
          (make-mdvector
           (range '#(1 2))
           (vector cm ce))
-         in: area name: 'chat
+         in: area name: name
          border-ratio: 0)))
      (lambda (key msg)
        (case key
          ((msg:) ;; add remote message
-          (check-not-observable-speculative! 'chat key msg)
+          (check-not-observable-speculative! name key msg)
           (unless (equal? msg "")
             (ggb-goto! messages 0)
             (ggb-insert! messages (chat-message msg (not mode)))))
          ((sent:) ;; add local message
-          (check-not-observable-speculative! 'chat key msg)
+          (check-not-observable-speculative! name key msg)
           (unless (equal? msg "")
             (ggb-goto! messages 0)
             (ggb-insert! messages (chat-message msg mode))))
          ((focus:)
           (guide-focus (and msg input-edit)))
          ((load:)
-          (check-not-observable-speculative! 'chat key msg)
+          (check-not-observable-speculative! name key msg)
           (ggb-clear! messages)
           (for-each
            (lambda (msg)
