@@ -1726,7 +1726,8 @@
                  (linebroken #f)
                  (formatted-payload
                   (guide-textarea-payload
-                   in: (make-mdv-rect-interval 0 0 xno (* data-len line-height))
+                   in: (make-mdv-rect-interval 0 0 xno (* 2 line-height))
+                   rows: data-len
                    horizontal-align: horizontal-align
                    vertical-align: 'bottom
                    font: font
@@ -1744,18 +1745,20 @@
                               pl)))
                  ;; III. re-size
                  (resized-payload
-                  (guide-textarea-payload
-                   in: (make-mdv-rect-interval 0 0 xno (* (ggb2d-length linebroken) line-height))
-                   horizontal-align: horizontal-align
-                   vertical-align: 'bottom
-                   font: font
-                   size: size
-                   line-height: line-height
-                   color: color-2 hightlight-color: color-4
-                   ;; background: %%guide-default-background
-                   wrap: #f
-                   data: (lambda _ linebroken)
-                   results: (lambda (pl ctrl) pl))))
+                  (let ((rows (ggb2d-length linebroken)))
+                    (guide-textarea-payload
+                     in: (make-mdv-rect-interval 0 0 xno (* rows line-height))
+                     rows: rows
+                     horizontal-align: horizontal-align
+                     vertical-align: 'bottom
+                     font: font
+                     size: size
+                     line-height: line-height
+                     color: color-2 hightlight-color: color-4
+                     ;; background: %%guide-default-background
+                     wrap: #f
+                     data: (lambda _ linebroken)
+                     results: (lambda (pl ctrl) pl)))))
               (guide-button
                in: (guide-payload-measures resized-payload)
                position: (and (not l/r) (vector right-side-offset 0))
@@ -1864,6 +1867,11 @@
           (unless (equal? msg "")
             (ggb-goto! messages 0)
             (ggb-insert! messages (chat-message msg (not mode)))))
+         ((sent:) ;; add local message
+          (check-not-observable-speculative! 'chat key msg)
+          (unless (equal? msg "")
+            (ggb-goto! messages 0)
+            (ggb-insert! messages (chat-message msg mode))))
          ((focus:)
           (guide-focus (and msg input-edit)))
          ((load:)
