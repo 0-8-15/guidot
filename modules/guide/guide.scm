@@ -1105,7 +1105,7 @@
 (define (guide-button
          #!key
          (in (current-guide-gui-interval))
-         (font (guide-select-font size: 'medium))
+         (font #f)
          (accesskey #f)
          (label "exit")
          (color (guide-select-color-2))
@@ -1119,6 +1119,10 @@
          ;; TBD: better interface&name
          (guide-callback (lambda (rect payload event x y) (terminate)))
          (name 'button))
+  ;; I. find additional default values
+  (unless font
+    (set! font (guide-select-font height: (mdv-rect-interval-height in))))
+  ;; II. go for it
   (let* ((view! (make-guide-figure-view))
          (label! (make-guide-label-view))
         ;;; TBD: inline these!
