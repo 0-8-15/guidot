@@ -219,7 +219,8 @@
          (size 'small)
          (color (guide-select-color-2))
          (hightlight-color (guide-select-color-4))
-         (results values))
+         (results values)
+         (name 'guide-textarea-payload))
   (define (ggb-delete-word! ggb dir)
     (do ()
         ((let ((point (ggb-point ggb)))
@@ -357,6 +358,31 @@
                ((> line-point (+ rows row-display-offset))
                 (set! row-display-offset (max 0 (- line-point rows)))))))))
 
+       (check-linebreak!
+        (lambda ()
+          (update-current-line!)
+          (let* ((line-buffer current-line)
+                 (line-point (ggb-point line-buffer)))
+            (let loop ((w 0) (count 0))
+              (ggb-for-each
+               line-buffer
+               (lambda (i c)
+                 (let ((glyph (MATURITY+1:ln-ttf:font-ref font c)))
+                   (if glyph (set! w (+ w (ttf:glyph-advancex glyph)))))))
+              (when (and (>= w text-width) (eqv? count 0))
+                (linebreak-again!)
+                (update-current-line!)
+                (let ((new-curlinlen (ggb-length current-line)))
+                  (when (> line-point new-curlinlen) ;; current word was wrapped
+                    (ggb2d-goto! value-buffer position: 'relative row: 1)
+                    (ggb2d-goto!
+                     value-buffer position: 'absolute
+                     col: (- line-point new-curlinlen))
+                    (update-current-line!)))
+                (set! line-buffer current-line)
+                (set! line-point (ggb-point line-buffer))
+                (loop 0 (+ count 1)))))))
+
        (cursor-draw #f)
        (this-payload #f)
        (cursor-label!
@@ -368,34 +394,29 @@
           (label! size: text-width line-height)
           (label! text: '#(124)) ;; "|"
           label!))
+
+       (cursor-update-required #t)
        (update-cursor!
+        (lambda ()
+          (check-linebreak!)
+          (set! cursor-update-required #t)
+          (guide-wakeup!)
+          #t))
+
+       (really-update-cursor!
         (lambda ()
           (update-current-line!)
           (let* ((line-buffer current-line)
                  (line-point (ggb-point line-buffer))
                  (width-before 0)
                  (width-total
-                  (let loop ((w 0) (count 0))
+                  (let ((w 0))
                     (ggb-for-each
                      line-buffer
                      (lambda (i c)
                        (if (eqv? i line-point) (set! width-before w))
                        (let ((glyph (MATURITY+1:ln-ttf:font-ref font c)))
                          (if glyph (set! w (+ w (ttf:glyph-advancex glyph)))))))
-                    (when (and (>= w text-width) (eqv? count 0))
-                      (linebreak-again!)
-                      (update-current-line!)
-                      (let ((new-curlinlen (ggb-length current-line)))
-                        (when (> line-point new-curlinlen) ;; current word was wrapped
-                          (ggb2d-goto! value-buffer position: 'relative row: 1)
-                          (ggb2d-goto!
-                           value-buffer position: 'absolute
-                           col: (- line-point new-curlinlen))
-                          (update-current-line!)))
-                      (set! line-buffer current-line)
-                      (set! line-point (ggb-point line-buffer))
-                      (set! width-before 0)
-                      (loop 0 (+ count 1)))
                     w))
                  (label! cursor-label!))
             (begin ;; must come after linebreak-again! and update-current-line!
@@ -403,29 +424,50 @@
               (fix-value-draw!))
             (if (eqv? current-line-length line-point)
                 (set! width-before width-total))
-            (label!
-             position:
-             (round (case horizontal-align
-                      ((left) (+ xsw width-before))
-                      ((center) (+ xsw (* 1/2 (- text-width width-total))))
-                      (else (- width-total width-before))))
-             (round (+ ysw (* (+ (- (- rows 1) current-line-number) row-display-offset) line-height))))
-            (let ((draw
-                   (if #t ;; blink
-                       (let ((on (label!)))
-                         (lambda ()
-                           (let* ((n0 ##now)
-                                  (n0f (floor n0)))
-                             (when (and (eq? (guide-focus) this-payload)
-                                        (< (- n0 n0f) 1/2))
-                               (on)))))
-                       (label!))))
-              (set! cursor-draw draw)))
-          (guide-wakeup!)
+            (unless readonly
+              (label!
+               position:
+               (round (case horizontal-align
+                        ((left) (+ xsw width-before))
+                        ((center) (+ xsw (* 1/2 (- text-width width-total))))
+                        (else (- width-total width-before))))
+               (round (+ ysw (* (+ (- (- rows 1) current-line-number) row-display-offset) line-height))))
+              (let ((draw
+                     (if #t ;; blink
+                         (let ((on (label!)))
+                           (lambda ()
+                             (let* ((n0 ##now)
+                                    (n0f (floor n0)))
+                               (when (and (eq? (guide-focus) this-payload)
+                                          (< (- n0 n0f) 1/2))
+                                 (on)))))
+                         (label!))))
+                (set! cursor-draw draw))))
+          (set! cursor-update-required #f)
+          ;;(guide-wakeup!)
           ;; ensure timely visual response used here in tail position
           ;; of event handlers, signal successfully handled event.
           #t))
 
+       (delayed-update-cursor!
+        (lambda ()
+          (or (not cursor-update-required)
+              (really-update-cursor!))))
+#|
+       (no-update-cursor!
+        (lambda ()
+          (cond
+           (readonly
+            (update-current-line!)
+            (when wrap
+              (linebreak-again!)
+              (update-current-line!))
+            (update-value-views!)
+            (fix-value-draw!)
+            (guide-wakeup!)
+            #t)
+           (else (really-update-cursor!)))))
+|#
        (set-cursor-position!
         (lambda (x y)
           (let* ((in-line (floor (/ (- yno y) line-height)))
@@ -448,6 +490,18 @@
              row: (+ target-line-number 1)
              col: target-column)
             (update-cursor!))))
+
+       (insert-newline!
+        (lambda ()
+          (let ((point (ggb-point current-line)))
+            (let ((nextline (make-ggb size: cols)))
+              (cond
+               ((< point current-line-length)
+                (ggb-insert-sequence! nextline (ggb->vector current-line point current-line-length))
+                (ggb-goto! nextline 0)
+                (ggb-delete! current-line (- current-line-length point))))
+              (ggb-insert! current-line newline-indicator)
+              (ggb2d-insert-row! value-buffer nextline)))))
 
        (handle-key
         (lambda (p/r key mod)
@@ -481,8 +535,21 @@
               ((or (eqv? key EVENT_KEYUP) (eqv? key EVENT_KEYDOWN))
                (ggb2d-goto! value-buffer position: 'relative row: (if (eqv? key EVENT_KEYUP) -1 1))
                (update-cursor!))
-              ((eqv? key EVENT_KEYHOME) (ggb-goto! current-line 0) (update-cursor!))
-              ((eqv? key EVENT_KEYEND) (ggb-goto! current-line current-line-length) (update-cursor!))
+              ((eqv? key EVENT_KEYHOME)
+               (cond
+                ((eqv? (bitwise-and MODIFIER_CTRL mod) MODIFIER_CTRL)
+                 (ggb2d-goto! value-buffer position: 'absolute row: 0 col: 0))
+                (else (ggb-goto! current-line 0)))
+               (update-cursor!))
+              ((eqv? key EVENT_KEYEND)
+               (cond
+                ((eqv? (bitwise-and MODIFIER_CTRL mod) MODIFIER_CTRL)
+                 (ggb2d-goto!
+                  value-buffer position: 'absolute
+                  row: (ggb2d-length value-buffer) col: 1000)
+                 (ggb2d-goto! value-buffer position: 'relative col: 1000))
+                (else (ggb-goto! current-line current-line-length)))
+               (update-cursor!))
               ((or (eq? key 'PageDown) (eq? key 'PageUp))
                (let ((delta
                       (case key
@@ -492,6 +559,7 @@
                  (ggb2d-goto! value-buffer position: 'relative row: delta)
                  (ggb2d-goto! value-buffer position: 'absolute col: 0))
                (update-cursor!))
+              (readonly #t) ;; rest is mutation
               ((eqv? key EVENT_KEYDELETE)
                (let ((line-point (ggb-point current-line)))
                  (cond
@@ -549,22 +617,16 @@
                  (value! text: (ggb->vector current-line))
                  (update-cursor!))))
               ((eqv? key EVENT_KEYENTER)
-               (let ((point (ggb-point current-line)))
-                 (let ((nextline (make-ggb size: cols)))
-                   (ggb-insert-sequence! nextline (ggb->vector current-line point current-line-length))
-                   (ggb-goto! nextline 0)
-                   (ggb-delete! current-line (- current-line-length point))
-                   (ggb-insert! current-line newline-indicator)
-                   (ggb->vector current-line)
-                   (ggb->vector nextline)
-                   (ggb2d-insert-row! value-buffer nextline)))
+               (insert-newline!)
                (update-cursor!))
               ((char? key)
                (ggb-insert! current-line (char->integer key))
                (value! text: (ggb->vector current-line))
                (update-cursor!))
               (else (debug "ignored key" (list 'guide-textarea-payload key)) #t))))))
-       (redraw! (lambda () (value-draw) (cursor-draw)))
+       (redraw! (lambda ()
+                  (delayed-update-cursor!)
+                  (value-draw) (cursor-draw)))
        (events
         ;; TBD: factor motion/shift handling out (3rd copy here from
         ;; `select` already).
@@ -573,10 +635,7 @@
             (cond
              ((or (eqv? press: event) (eqv? release: event))
               (cond
-               (readonly
-                ;; TBD: This throws the chcld out with the bathtube.
-                ;; SHOULD exclude mutation, but handle navigation.
-                #f)
+               (readonly #f) ;; throws the baby out with the bathtube: no navigation
                (else
                 (let ((x (on-key event x y)))
                   (if x (%%guide-post-speculative/async (handle-key event x y)) #t)))))
@@ -585,7 +644,8 @@
               (set! armed-at armed)
               #t)
              ((eqv? event EVENT_BUTTON1UP)
-              (when (eq? armed armed-at) ;; set cursor position
+              (when (and (not readonly)
+                         (eq? armed armed-at)) ;; set cursor position
                 (set-cursor-position! x y))
               (set! armed #f)
               (set! armed-at #f)
@@ -602,25 +662,30 @@
                   (let* ((delta (floor (/ dy line-height)))
                          (cr (ggb2d-current-row value-buffer))
                          (new-position
-                          (min (max 0 (+ row-display-offset delta))
-                               (- (ggb2d-length value-buffer) rows))))
+                          (max 0 (min (+ row-display-offset delta)
+                                      (- (ggb2d-length value-buffer) rows)))))
                     (set! row-display-offset new-position)
                     (cond
                      ((< current-line-number row-display-offset)
                       (ggb2d-goto! value-buffer position: 'absolute row: row-display-offset))
                      ((> current-line-number (+ row-display-offset rows))
                       (ggb2d-goto! value-buffer position: 'absolute row: (+ row-display-offset rows)))))
+                  ;; TBD: update only if things have changed
                   (update-cursor!))
                 #t))
              (else (mdvector-rect-interval-contains/xy? in x y)))))))
-    (update-value-views!)
     (update-current-line!)
-    (fix-value-draw!)
-    (update-cursor!)
+    (cond
+     (readonly
+      (update-value-views!)
+      (update-current-line!)
+      (fix-value-draw!)
+      (set! cursor-draw (lambda () #t)))
+     (else (update-cursor!)))
     (results
      (let ((result
             (make-guide-payload
-             name: 'guide-textarea-payload in: in widget: #f
+             name: name in: in widget: #f
              on-redraw: redraw! on-any-event: events lifespan: 'ephemeral)))
        (set! this-payload result)
        result)
@@ -632,12 +697,12 @@
          ((text:)
           (check-not-observable-speculative! 'textarea-mutation key more)
           (apply
-           (lambda (value #!key (wrap #t) (cols 20))
+           (lambda (value #!key (wrap wrap) (cols 20))
              (cond
               ((or (ggb2d? value) (u32vector? value))
                (set!
                 value-buffer
-                (if wrap
+                (if (or wrap (u32vector? value)) ;; FIXME
                     (let ((buffer (make-ggb2d size: rows)))
                       (when (ggb2d? value) (ggb2d-goto! value position: 'absolute row: 1 col: 0))
                       (guide-linebreak! buffer value font text-width cols: cols)
@@ -650,8 +715,14 @@
          ((insert:)
           (check-not-observable-speculative! 'textarea-mutation key more)
           (apply
-           (lambda (data)
+           (lambda (data #!key (wrap wrap))
              (cond
+              ((char? data)
+               (guide-focus this-payload)
+               (cond
+                ((char=? data #\newline) (insert-newline!))
+                (else (ggb-insert! current-line (char->integer data))))
+               (update-cursor!))
               ((string? data)
                (guide-focus this-payload)
                (continuation-capture
@@ -1028,7 +1099,10 @@
                          (else #t)))))))
                  ((d1 rect payload event x y) #t) ;; dropdown button hit?
                  (else
-                  (guide-event-dispatch-to-payload rect (if (procedure? content) (content) content) event x y)))))))
+                  (let ((res (guide-event-dispatch-to-payload rect (if (procedure? content) (content) content) event x y)))
+                    (when (eq? res #!void)
+                      (debug event (if (procedure? content) (content) content)))
+                    (macro-guide-sanitize-payload-result res))))))))
       (make-guide-payload
        in:
        (make-mdv-rect-interval
