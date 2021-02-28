@@ -789,6 +789,8 @@
          (fixed #f)
          (on-key #f)
          (shrink-to-content #t)
+         (results (lambda (payload control) payload))
+         (name (vector 'guide-ggb-layout direction))
          )
   (unless (ggb? buffer) (error "arg1 ggb expected" 'guide-ggb-layout buffer))
   (let ((direction ;; direction: 0: z, 1: x, y: z...
@@ -832,7 +834,8 @@
                  ((2)
                   (let ((y (+ lower-bound-y offset)))
                     (if (or fixed
-                            (or (>= y lower-bound-y0) (<= (+ y height) upper-bound-y)))
+                            (and (>= (+ y height) lower-bound-y0)
+                                 (<= y upper-bound-y)))
                         (begin (view! visible: #t) (view! position: 0 y))
                         (view! visible: #f)))
                   ;; update running
@@ -841,7 +844,8 @@
                   (set! offset (- offset height))
                   (let ((y (+ lower-bound-y offset)))
                     (if (or fixed
-                            (or (>= y lower-bound-y0) (<= (+ y height) upper-bound-y)))
+                            (and (>= (+ y height) lower-bound-y0)
+                                 (<= y upper-bound-y)))
                         (begin (view! visible: #t) (view! position: 0 y))
                         (view! visible: #f))))
                  (else
@@ -875,6 +879,7 @@
                    (set! changed #t)))))
             (when changed
               (set! last-content (ggb->vector buffer))
+              (set! last-lower-bound-y lower-bound-y)
               (set! last (make-drawing))))
           (last))))
     (define (pass-event! rect payload event x y)
@@ -977,11 +982,19 @@
                   #t))
                (else #t)))
              (else (pass-event! rect payload event x y)))))))
-    (make-guide-payload
-     in: area name: (vector 'guide-ggb-layout direction)
-     widget: #f lifespan: 'ephemeral ;; TBD: change defaults here!
-     on-redraw: redraw!
-     on-any-event: events)))
+    (results
+     (make-guide-payload
+      in: area name: name
+      widget: #f lifespan: 'ephemeral ;; TBD: change defaults here!
+      on-redraw: redraw!
+      on-any-event: events)
+     (lambda (key val . more)
+       (case key
+        ((position:)
+         (cond
+          ((null? more) (set! lower-bound-x val) (set! lower-bound-y val))
+          (else #f)))
+        (else (error "unhandled" name key)))))))
 
 ;;**** Table Composition
 

@@ -1970,9 +1970,13 @@
              (() state)
              ((val) #!void))))
          (input-edit #f) ;; catch editor here to enable focus handling
+         (message-display-control! #f)
          ;; CONTRUCTOR (lambda (contructor INTERVAL COL ROW . rest) . rest)
          ;; CONTRUCTOR+ARGS: (or CONTRUCTOR (CONTRUCTOR . ARGS))
-         (cm (lambda (in col row) (guide-ggb-layout in messages direction: 'vertical)))
+         (cm (lambda (in col row)
+               (guide-ggb-layout
+                in messages direction: 'vertical
+                results: (lambda (pl ctrl) (set! message-display-control! ctrl) pl))))
          (ce0
           (lambda (in col row)
             (define edit-control!)
@@ -2073,6 +2077,7 @@
           (guide-focus (and msg input-edit)))
          ((load:)
           (check-not-observable-speculative! name key msg)
+          (message-display-control! position: 0)
           (ggb-clear! messages)
           (for-each
            (lambda (msg)
