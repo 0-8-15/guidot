@@ -145,6 +145,12 @@
      (>= x (mdvector-ref measures 0 0))
      (< x (mdvector-ref measures 1 0)))))
 
+(define (guide-payload-width obj)
+  (mdv-rect-interval-width (guide-payload-measures obj)))
+
+(define (guide-payload-height obj)
+  (mdv-rect-interval-height (guide-payload-measures obj)))
+
 (define (guide-rectangle-width obj)
   (mdv-rect-interval-width (guide-rectangle-measures obj)))
 

@@ -515,7 +515,7 @@
                         ((left) (+ xsw width-before))
                         ((center) (+ xsw (* 1/2 (- text-width width-total))))
                         (else (- width-total width-before))))
-               (round (+ ysw (* (+ (- (- rows 1) current-line-number) row-display-offset) line-height))))
+               (floor (- yno (* (+ (- current-line-number row-display-offset) 1) line-height))))
               (let ((draw
                      (if #t ;; blink
                          (let ((on (label!)))
@@ -1522,7 +1522,7 @@
           (bg!)))
        (title-height
         (cond
-         ((guide-payload? menu) (guide-rectangle-height menu))
+         ((guide-payload? menu) (guide-payload-height menu))
          (label line-height+border)
          (else 0)))
        (title
@@ -1543,7 +1543,7 @@
             (label!)))
          (menu
           (let ((label! (make-guide-label-view)))
-            (label! position: xsw (- yno line-height+border))
+            (label! position: xsw (- yno title-height))
             (when (pair? label-properties)
               (for-each
                (lambda (setting) (apply label! setting))
@@ -1866,9 +1866,9 @@
 (define (make-chat
          #!key
          (in (current-guide-gui-interval))
+         (font (guide-select-font size: 'small))
          (line-height (ceiling (* 12/10 (guide-font-height font))))
          (rows 3)
-         (font (guide-select-font size: 'small))
          (keypad guide-keypad/default)
          (mode #t)
          (right-side-offset line-height)
