@@ -19,7 +19,7 @@
 (define (guide-font-height font)
   (let ((override (MATURITY+1:ln-ttf:font-ref font (char->integer #\|))))
     (cond
-     (override (ttf:glyph-height override))
+     (override (+ 2 (ttf:glyph-height override))) ;; +2 is garbage
      (else
       (MATURITY -2 "failed to find font heigt" loc: guide-font-height)
       40))))
@@ -293,10 +293,9 @@
          (rows 3)
          (cols #f)
          (wrap #t)
-         (data (let ((state "n/a")) (case-lambda (() state) ((val) (set! state val)))))
+         (data (let ((state #f)) (case-lambda (() state) ((val) (set! state val)))))
          (readonly #f)
          (on-key %%guide-textarea-keyfilter);; filter characters to handle
-         (size 'small)
          (color (guide-select-color-2))
          (hightlight-color (guide-select-color-4))
          (results values)
@@ -351,7 +350,7 @@
              (wrap (guide-linebreak! buffer source font text-width))
              (else (set! buffer (ggb2d-copy source)))))
            ((u32vector? source) (guide-linebreak! buffer source font text-width))
-           (else ;; backward compatible: insert empty row
+           (else ;; clear buffer, one empty row
             (ggb2d-insert-row! buffer)))
           (ggb2d-goto! buffer position: 'absolute row: 1 col: 0)
           buffer))
@@ -374,7 +373,8 @@
               (set! value-buffer next-buffer)))))
 
        (value-views
-        (let ((vec (make-vector rows #f)))
+        (let ((vec (make-vector rows #f))
+              (label-height (guide-font-height font)))
           (do ((i 0 (+ i 1)))
               ((eqv? i rows) vec)
             (let ((label! (make-guide-label-view)))
@@ -382,8 +382,8 @@
               (label! vertical-align: vertical-align)
               (label! font: font)
               (label! color: color)
-              (label! size: text-width line-height)
-              (label! position: xsw (round (- yno (* (+ i 1) line-height))))
+              (label! size: text-width label-height)
+              (label! position: xsw (floor (- yno (* (+ i 1) line-height))))
               (label! text: '#())
               (vector-set! vec i label!)))))
        (update-value-views!
@@ -506,7 +506,9 @@
               (fix-value-draw!))
             (if (eqv? current-line-length line-point)
                 (set! width-before width-total))
-            (unless readonly
+            (cond
+             (readonly (set! cursor-draw (lambda () #t)))
+             (else
               (label!
                position:
                (round (case horizontal-align
@@ -524,7 +526,7 @@
                                           (< (- n0 n0f) 1/2))
                                  (on)))))
                          (label!))))
-                (set! cursor-draw draw))))
+                (set! cursor-draw draw)))))
           (set! cursor-update-required #f)
           ;;(guide-wakeup!)
           ;; ensure timely visual response used here in tail position
@@ -756,14 +758,7 @@
                   (update-cursor!))
                 #t))
              (else (mdvector-rect-interval-contains/xy? in x y)))))))
-    (update-current-line!)
-    (cond
-     (readonly
-      (update-value-views!)
-      (update-current-line!)
-      (fix-value-draw!)
-      (set! cursor-draw (lambda () #t)))
-     (else (update-cursor!)))
+    (really-update-cursor!)
     (results
      (let ((result
             (make-guide-payload
@@ -791,6 +786,11 @@
                       (ggb2d-goto! buffer position: 'absolute row: 1 col: 0)
                       buffer)
                     value))
+               (update-cursor!))
+              ((not value)
+               (let ((buffer (make-ggb2d)))
+                 (ggb2d-insert-row! buffer)
+                 (set! value-buffer buffer))
                (update-cursor!))
               (else (error "unhandled text representation" 'textarea-payload text: value))))
            more))
@@ -1094,7 +1094,7 @@
              (let* ((x0 (mdvector-interval-lower-bound in 0))
                     (x1 (mdvector-interval-upper-bound in 0))
                     (y0 (mdvector-interval-upper-bound in 1)))
-               (make-mdv-rect-interval x0 y0 x1 (+ y0 height)))))
+               (make-mdv-rect-interval x0 y0 x1 (ceiling (+ y0 height))))))
         (selbg (glC:image-t %%guide-default-background))
         (selfnt (guide-select-font height: height)))
     ;; volatile:
@@ -1520,7 +1520,11 @@
           (bg! size: width height)
           (bg! position: xsw ysw)
           (bg!)))
-       (title-height (if (or menu label) line-height+border 0))
+       (title-height
+        (cond
+         ((guide-payload? menu) (guide-rectangle-height menu))
+         (label line-height+border)
+         (else 0)))
        (title
         (cond
          (label
@@ -1560,7 +1564,7 @@
              in: edit-area
              rows: rows cols: cols
              horizontal-align: horizontal-align vertical-align: vertical-align
-             font: font size: size line-height: line-height
+             font: font line-height: line-height
              color: color hightlight-color: hightlight-color
              data: data
              on-key: on-key)
@@ -1862,17 +1866,17 @@
 (define (make-chat
          #!key
          (in (current-guide-gui-interval))
-         (line-height 20)
-         (size 'small)
+         (line-height (ceiling (* 12/10 (guide-font-height font))))
          (rows 3)
          (font (guide-select-font size: 'small))
          (keypad guide-keypad/default)
          (mode #t)
          (right-side-offset line-height)
-         (action #f #;(lambda (msg-ggb2d) #f))
+         (action #f #;(lambda (ctrl) #f))
          (results values)
          (name 'chat)
          ) ;; make-chat: end of keyword parameters
+  (set! line-height (inexact->exact (ceiling line-height))) ;; just to be sure
   (let* ((mode
              (case mode
                ((server #t) #t)
@@ -1893,8 +1897,6 @@
                         (set! color-2 color-4)
                         (set! color-4 t)))
                     'left))
-                 (size size)
-                 (line-height (guide-font-height font))
                  (line-count
                   (cond
                    ((ggb2d? data) (ggb2d-length data))
@@ -1912,12 +1914,12 @@
                  (linebroken #f)
                  (formatted-payload
                   (guide-textarea-payload
-                   in: (make-mdv-rect-interval 0 0 xno (* 2 line-height))
+                   readonly: #t
+                   in: (make-mdv-rect-interval 0 0 xno (* data-len line-height))
                    rows: data-len
                    horizontal-align: horizontal-align
                    vertical-align: 'bottom
                    font: font
-                   size: size
                    line-height: line-height
                    color: color-2 hightlight-color: color-4
                    ;; background: #f
@@ -1933,12 +1935,12 @@
                  (resized-payload
                   (let ((rows (ggb2d-length linebroken)))
                     (guide-textarea-payload
+                     readonly: #t
                      in: (make-mdv-rect-interval 0 0 xno (* rows line-height))
                      rows: rows
                      horizontal-align: horizontal-align
                      vertical-align: 'bottom
                      font: font
-                     size: size
                      line-height: line-height
                      color: color-2 hightlight-color: color-4
                      ;; background: %%guide-default-background
@@ -1977,19 +1979,17 @@
             (define (send! . _)
               (cond
                ((procedure? action)
-                (let ((data (edit-control! 'text)))
-                  (edit-control! text: '#u32())
-                  (macro-guide-sanitize-payload-result (action data))))
+                (macro-guide-sanitize-payload-result (action edit-control!)))
                (else
                 (ggb-goto! messages 0)
                 (let ((msg (edit-control! 'text)))
                   (ggb-insert! messages (chat-message msg mode)))
-                (edit-control! text: '#u32())
+                (edit-control! text: #f)
                 #t)))
             (define menu
               (let* ((w (mdv-rect-interval-width in))
                      (font (guide-select-font size: 'medium))
-                     (area (make-mdv-rect-interval 0 0 w (* 8/5 (guide-font-height font))))
+                     (area (make-mdv-rect-interval 0 0 w (round (* 8/5 (guide-font-height font)))))
                      (color (guide-select-color-4))
                      (background-color (guide-select-color-3)))
                 (make-guide-table

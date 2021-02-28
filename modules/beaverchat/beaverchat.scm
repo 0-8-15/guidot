@@ -553,14 +553,15 @@
          (w (- xno xsw))
          (h (- yno ysw))
          (fnt (guide-select-font size: 'small))
-         (line-height 20)
+         (line-height (ceiling (* 11/10 (guide-font-height fnt))))
          (foreground-color (guide-select-color-2))
          (line-height-selectable 28))
     (define (close-chat!)
       (kick (chat-address #f)
             (PIN:toplevel-selection 2)))
-    (define (callback msg)
-      (set! msg (ggb2d->string msg))
+    (define (callback ctrl)
+      (define msg (ctrl 'string))
+      (ctrl text: #f)
       (cond
        ((equal? msg "")) ;; ingore empty messages
        ((number? (chat-address))
@@ -689,7 +690,9 @@
                         ((1)
                          (%%guide-critical-call (delay (launch-url url via: via)))
                          #t)
-                        (else (%%guide-post-speculative (future (launch-url url via: via)))))))
+                        (else
+                         (%%guide-post-speculative
+                          (kick! (box (lambda () (launch-url url via: via)))))))))
                      ((> x 2/3) (dialog-set! (nick-dialog (car e) #t)))
                      (else (activate-chat-partner! (car e)))))
                    (else (dialog-set! (nick-dialog (car e) #f))))))
