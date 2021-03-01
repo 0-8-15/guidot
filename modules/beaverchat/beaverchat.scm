@@ -88,23 +88,40 @@
   filter: local-server-port-filter
   name: "Port number for SOCKS proxy to listen on.  If 0: no socks.")
 
+(cond-expand
+ (android
+  (define (on-android-set-webview-proxy v)
+    (cond
+     ((or (not v) (eqv? v 0))
+      (lnjscheme-eval
+       `(begin
+          (webview-set-proxy! 'http #f #f)
+          (webview-set-proxy! 'https #f #f))))
+     (else
+      (log-status "requesting proxy setting to port " v)
+      (lnjscheme-eval
+       `(begin
+          (webview-set-proxy! 'http "127.0.0.1" ,(number->string v))
+          (webview-set-proxy! 'https "127.0.0.1" ,(number->string v))))
+      (log-status "proxy setting completed")))))
+ (else (define-macro (on-android-set-webview-proxy . x) '(begin))))
+
+(define-pin beaverchat-webview-proxy-automatic
+  initial: #f
+  pred: boolean?
+  name: "Automatically set webview proxy when proxy is enabled.")
+
 (kick
   (wire!
    beaver-proxy-port-number post:
    (lambda ()
+     (cond-expand
+      (android
+       (when (beaverchat-webview-proxy-automatic)
+         (on-android-set-webview-proxy v)))
+      (else #f))
      (let ((v (beaver-proxy-port-number))
            (names '("http_proxy" "https_proxy")))
-       (cond-expand
-        (android
-         (lnjscheme-eval
-          (if (= v 0)
-              `(begin
-                 (webview-set-proxy! 'http #f #f)
-                 (webview-set-proxy! 'https #f #f))
-              `(begin
-                 (webview-set-proxy! 'http "127.0.0.1" ,(number->string v))
-                 (webview-set-proxy! 'https "127.0.0.1" ,(number->string v))))))
-        (else #f))
        (if (= v 0) (for-each setenv names)
            (let ((v (string-append "http://127.0.0.1:" (number->string v))))
              (for-each (lambda (n) (setenv n v)) names))))))
