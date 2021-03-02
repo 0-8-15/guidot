@@ -169,6 +169,11 @@
 
 (register-command! "beaver" beaver-process-commands)
 
+(define-macro (%%guide-post-speculative expr)
+  ;; either a thunk or a promise -- promise seems NOT to work under
+  ;; gamit?
+  `(lambda () ,expr))
+
 (define (beaver-about-page-content-constructors)
   (define conv
     (lambda (v)
@@ -191,37 +196,101 @@
         guide-callback: (lambda (rect payload event xsw ysw) (active #f) #t)))
      (lambda (area buffer active)
        (guide-valuelabel in: area label: "Version" value: (system-appversion)))
-     (let* ((last (memoize-last conv eqv?))
-            (check (lambda () (last (kick-style)))))
-       (lambda (area buffer active)
-         (guide-valuelabel
-          in: area size: size label: "kick-style"
-          value: check
-          input:
-          (lambda (rect payload event xsw ysw)
-            (cond
-             ((eqv? event EVENT_BUTTON1DOWN)
-              (kick-style
-               (case (kick-style)
-                 ((async) 'sync)
-                 ((sync) 'async)
-                 (else #f)))))
-            #t))))
-     (let* ((last (memoize-last conv eq?))
-            (check (lambda () (last (ot0cli-server)))))
-       (lambda (area buffer active)
-         (guide-valuelabel in: area size: size label: "vpn" value: check success: val1)))
+     (lambda (area buffer active)
+       (guide-valuelabel
+        in: area size: size label: "kick-style"
+        value: kick-style
+        value-equal: eq?
+        value-display: conv
+        input:
+        (lambda (rect payload event xsw ysw)
+          (cond
+           ((eqv? event EVENT_BUTTON1DOWN)
+            (kick-style
+             (case (kick-style)
+               ((async) 'sync)
+               ((sync) 'async)
+               (else #f)))))
+          #t)))
+     (lambda (area buffer active)
+       (guide-valuelabel
+        in: area size: size label: "async exceptions"
+        value: $async-exceptions
+        value-equal: eq? value-display: object->string))
+     (lambda (area buffer active)
+       (guide-valuelabel
+        in: area size: size label: "vpn"
+        value: ot0cli-server
+        value-equal: eq? value-display: conv))
+     (lambda (area buffer active)
+       (guide-valuelabel
+        in: area size: size label: "context directory" value: ot0-context))
+     ;; ot0cli-origin
+     (lambda (area buffer active)
+       (guide-valuelabel
+        in: area size: size label: "onetierzero"
+        value: ot0-online
+        value-equal: eq? value-display: conv))
+     (lambda (area buffer active)
+       (guide-valuelabel
+        in: area size: size label: "lwIP"
+        value: lwIP
+        value-equal: eq? value-display: conv))
+     (lambda (area buffer active)
+       (guide-valuelabel
+        in: area size: size label: "beaver id"
+        value: beaver-local-unit-id
+        value-equal: eq? value-display: object->string))
+     (lambda (area buffer active)
+       (guide-valuelabel
+        in: area size: size label: "beaver number"
+        value: beaver-local-unit-id
+        value-equal: eq? value-display: (lambda (x) (if x (beaver-number->unicode-vector x) '#()))))
+     (lambda (area buffer active)
+       (guide-valuelabel
+        in: area size: size label: "use deamonize"
+        value: beaver-use-daemonize
+        value-equal: eq?
+        value-display: conv
+        input:
+        (lambda (rect payload event xsw ysw)
+          (cond
+           ((eqv? event EVENT_BUTTON1DOWN)
+            (%%guide-post-speculative (beaver-use-daemonize (not (beaver-use-daemonize)))))
+           (else #t)))))
+     #;(lambda (area buffer active)
+       (guide-valuelabel
+        in: area size: size label: "fossils directory"
+        value: fossils-directory
+        value-equal: eq? value-display: (lambda (x) (or x "n/a"))))
+     (lambda (area buffer active)
+       (guide-valuelabel
+        in: area size: size label: "code maturity level"
+        value: current-maturity-level
+        value-equal: eq? value-display: object->string))
+     (lambda (area buffer active)
+       (guide-valuelabel
+        in: area size: size label: "memoize active"
+        value: $memoize-active
+        value-equal: eqv? value-display: conv
+        input:
+        (lambda (rect payload event xsw ysw)
+          (cond
+           ((eqv? event EVENT_BUTTON1DOWN)
+            (%%guide-post-speculative ($memoize-active (not ($memoize-active)))))
+           (else #t)))))
      ;; end of content
      ))
   content)
 
-(define (guide-page-payload
+(define (guide-div/lineheight-payload
          #!key
          (in (current-guide-gui-interval))
          (line-height 16)
          (line-height-selectable 60)
          ;;
          ;; ;; not yet: (results values)
+         (direction 'topdown)
          (name 'page)
          #!rest content-constructors
          )
@@ -269,7 +338,7 @@
                content-constructors)
               buffer)) ;; MUST return a GGB for `guide-ggb-layout` at this position
           fixed: #f ;; better #t if known that no scrolling required
-          direction: 'topdown ;; depends on local usability
+          direction: direction
           ))))
     ;; finally
     (active result) ;; ...don't touch the "(C)"... line
@@ -281,7 +350,7 @@
 
 (define (make-about-payload #!key in)
   (apply
-   guide-page-payload name: 'about in: in
+   guide-div/lineheight-payload name: 'about in: in
    line-height: 32
    (beaver-about-page-content-constructors)))
 
