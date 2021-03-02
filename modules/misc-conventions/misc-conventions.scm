@@ -277,7 +277,7 @@
                   (set! last-arg3 arg3)
                   (set! last-arg4 arg4)))
               (apply values last-vals))
-            (f arg1 arg2 arg3 arg3)))))))
+            (f arg1 arg2 arg3 arg4)))))))
 
 ;;;* Utilities
 
