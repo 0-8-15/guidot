@@ -175,16 +175,14 @@
   `(lambda () ,expr))
 
 (define (beaver-about-page-content-constructors)
+  (define (beaver-number-display x) (if x (beaver-number->unicode-vector x) '#()))
+  (define (beaver+guide-boolean-display x) (if x "yes" "no"))
   (define conv
     (lambda (v)
-      (case v
-        ((#f) "no")
-        ((#t) "yes")
-        (else
-         (cond
-          ((and (number? v) (exact? v)) (beaver-unit-id->unicode-vector v))
-          ((string? v) v)
-          (else (object->string v)))))))
+      (cond
+       ((string? v) v)
+       ((boolean? v) (beaver+guide-boolean-display v))
+       (else (object->string v)))))
   (define val1 (lambda (a1 . more) a1))
   (define size 'medium)
   (define content
@@ -221,37 +219,39 @@
        (guide-valuelabel
         in: area size: size label: "vpn"
         value: ot0cli-server
-        value-equal: eq? value-display: conv))
+        value-equal: eq? value-display: beaver+guide-boolean-display))
      (lambda (area buffer active)
        (guide-valuelabel
-        in: area size: size label: "context directory" value: ot0-context))
+        in: area size: size label: "context directory"
+        value-display: conv
+        value: ot0-context))
      ;; ot0cli-origin
      (lambda (area buffer active)
        (guide-valuelabel
         in: area size: size label: "onetierzero"
         value: ot0-online
-        value-equal: eq? value-display: conv))
+        value-equal: eq? value-display: beaver+guide-boolean-display))
      (lambda (area buffer active)
        (guide-valuelabel
         in: area size: size label: "lwIP"
         value: lwIP
-        value-equal: eq? value-display: conv))
+        value-equal: eq? value-display: beaver+guide-boolean-display))
      (lambda (area buffer active)
        (guide-valuelabel
         in: area size: size label: "beaver id"
         value: beaver-local-unit-id
-        value-equal: eq? value-display: object->string))
+        value-equal: eq? value-display: beaver-number-display))
      (lambda (area buffer active)
        (guide-valuelabel
         in: area size: size label: "beaver number"
         value: beaver-local-unit-id
-        value-equal: eq? value-display: (lambda (x) (if x (beaver-number->unicode-vector x) '#()))))
+        value-equal: eq? value-display: beaver-number-display))
      (lambda (area buffer active)
        (guide-valuelabel
         in: area size: size label: "use deamonize"
         value: beaver-use-daemonize
         value-equal: eq?
-        value-display: conv
+        value-display: beaver+guide-boolean-display
         input:
         (lambda (rect payload event xsw ysw)
           (cond
@@ -272,7 +272,7 @@
        (guide-valuelabel
         in: area size: size label: "memoize active"
         value: $memoize-active
-        value-equal: eqv? value-display: conv
+        value-equal: eqv? value-display: beaver+guide-boolean-display
         input:
         (lambda (rect payload event xsw ysw)
           (cond
