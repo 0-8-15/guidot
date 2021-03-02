@@ -169,6 +169,122 @@
 
 (register-command! "beaver" beaver-process-commands)
 
+(define (beaver-about-page-content-constructors)
+  (define conv
+    (lambda (v)
+      (case v
+        ((#f) "no")
+        ((#t) "yes")
+        (else
+         (cond
+          ((and (number? v) (exact? v)) (beaver-unit-id->unicode-vector v))
+          ((string? v) v)
+          (else (object->string v)))))))
+  (define val1 (lambda (a1 . more) a1))
+  (define size 'medium)
+  (define content
+    (list
+     (lambda (area buffer active)
+       (guide-button
+        in: area
+        label: "(C) JFW [Corona edition: 2020-2021]"
+        guide-callback: (lambda (rect payload event xsw ysw) (active #f) #t)))
+     (lambda (area buffer active)
+       (guide-valuelabel in: area label: "Version" value: (system-appversion)))
+     (let* ((last (memoize-last conv eqv?))
+            (check (lambda () (last (kick-style)))))
+       (lambda (area buffer active)
+         (guide-valuelabel
+          in: area size: size label: "kick-style"
+          value: check
+          input:
+          (lambda (rect payload event xsw ysw)
+            (cond
+             ((eqv? event EVENT_BUTTON1DOWN)
+              (kick-style
+               (case (kick-style)
+                 ((async) 'sync)
+                 ((sync) 'async)
+                 (else #f)))))
+            #t))))
+     (let* ((last (memoize-last conv eq?))
+            (check (lambda () (last (ot0cli-server)))))
+       (lambda (area buffer active)
+         (guide-valuelabel in: area size: size label: "vpn" value: check success: val1)))
+     ;; end of content
+     ))
+  content)
+
+(define (guide-page-payload
+         #!key
+         (in (current-guide-gui-interval))
+         (line-height 16)
+         (line-height-selectable 60)
+         ;;
+         ;; ;; not yet: (results values)
+         (name 'page)
+         #!rest content-constructors
+         )
+  (let*
+      ((interval in)
+       (xsw 0) (ysw 0) ;; whatever zero is... ;-)
+       (w (mdv-rect-interval-width interval))
+       (h (mdv-rect-interval-height interval))
+       ;; derived values (context may need to re-define what `+` means)
+       (xno (+ xsw h))
+       (active
+        (let ((active #f))
+          (case-lambda
+           (() active)
+           ((next) (set! active next)))))
+       (redraw! (lambda ()
+                  (let ((active (active)))
+                    (and (guide-payload? active) ((guide-payload-on-redraw active))))))
+       (events
+        (lambda (rect payload event x y)
+          (cond
+           ((active) =>
+            (lambda (payload)
+              (guide-payload-contains/xy? payload x y)
+              (guide-event-dispatch-to-payload rect payload event x y)))
+           (else (mdvector-rect-interval-contains/xy? interval x y))))))
+    (define result
+      (cond
+       ((null? content-constructors)
+        (guide-button
+         in: (make-x0y0x1y1-interval/coerce xsw ysw (+ xsw (* w 19/20)) (+ ysw (/ h 2)))
+         label: "(C)... fallback version"
+         guide-callback: (lambda (rect payload event xsw ysw) (active #f) #t)))
+        (else
+         (guide-ggb-layout
+          interval
+          (let* ((in
+                  (let ((w w)
+                        (h (min (/ h 2) line-height)))
+                    (make-x0y0x1y1-interval/coerce 0 0 w h))))
+            ;; summarize `args` in result GGB
+            (let ((buffer (make-ggb)))
+              (for-each
+               (lambda (obj) (ggb-insert! buffer (obj in buffer active)))
+               content-constructors)
+              buffer)) ;; MUST return a GGB for `guide-ggb-layout` at this position
+          fixed: #f ;; better #t if known that no scrolling required
+          direction: 'topdown ;; depends on local usability
+          ))))
+    ;; finally
+    (active result) ;; ...don't touch the "(C)"... line
+    (make-guide-payload
+     name: name in: interval
+     on-redraw: redraw!
+     on-any-event: events
+     widget: #f lifespan: 'ephemeral)))
+
+(define (make-about-payload #!key in)
+  (apply
+   guide-page-payload name: 'about in: in
+   line-height: 32
+   (beaver-about-page-content-constructors)))
+
 (let ()
   (define (load-file-with-arguments file args)
     (with-exception-catcher

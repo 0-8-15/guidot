@@ -1766,7 +1766,7 @@
              ((eqv? event EVENT_BUTTON1DOWN)
               (set! armed (vector x y))
               (set! armed-at armed)
-              (guide-focus this-payload)
+              (guide-focus payload)
               #t)
              ((eqv? event EVENT_BUTTON1UP)
               (cond
@@ -1786,6 +1786,10 @@
                     (macro-guide-sanitize-payload-result
                      (guide-callback rect payload event x y)))
                    (else #t))))
+               (armed
+                (set! armed #f)
+                (set! armed-at #f)
+                #t)
                (else #f)))
              ((eqv? event EVENT_MOTION)
               (cond

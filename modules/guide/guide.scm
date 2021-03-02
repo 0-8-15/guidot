@@ -956,7 +956,7 @@
                ((eq? armed armed-at)
                 (set! armed #f)
                 (set! armed-at #f)
-                (%%guide-post-speculative
+                (begin ;; not %%guide-post-speculative
                  (let ((handle
                         (lambda (x)
                           (cond
