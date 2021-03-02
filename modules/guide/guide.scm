@@ -1127,6 +1127,13 @@
          (font #f)
          (accesskey #f)
          (label "exit")
+         (label-equal equal?)
+         (label-display
+          (lambda (value)
+            (cond
+             ((or (string? value) (glC:image? label) (vector? label))
+              value)
+             (else (object->string value)))))
          (color (guide-select-color-2))
          (padding '#(1 1 1 1))
          (background #f)
@@ -1159,15 +1166,15 @@
     ;; finally - in order to not trigger useless recalculations
     (cond
      ((or (string? label) (glC:image? label) (vector? label))
-      (label! text: label)
+      (label! foreground: label)
       (view! foreground: (label!)))
      ((procedure? label)
       (let* ((cached
               (macro-memoize:2->1
-               (lambda (update! str)
-                 (update! text: str)
+               (lambda (update! value)
+                 (update! foreground: (label-display value))
                  (update!))
-               (macro-alway-true-comparsion) equal?))
+               (macro-alway-true-comparsion) label-equal))
              (check! (lambda (update!) (cached update! (label)))))
         (view! foreground: (label! check! (list "guide-button" label)))))
      ((guide-payload? label) (view! foreground: (guide-payload-on-redraw label)))
@@ -1217,7 +1224,15 @@
          #!key
          (in (current-guide-gui-interval))
          (label "") (label-width 1/2)
-         (value #f) (input #f)
+         (value #f)
+         (value-equal equal?)
+         (value-display
+          (lambda (value)
+            (cond
+             ((or (string? value) (glC:image? label) (vector? label))
+              value)
+             (else (object->string value)))))
+         (input #f)
          (size 'small) (color (guide-select-color-4))
          (success values))
   (unless (or (string? value) (procedure? value))
@@ -1237,10 +1252,10 @@
            (let ((src value)
                  (cached
                   (macro-memoize:2->1 ;;memoize-last
-                   (lambda (update! str)
-                     (update! text: str)
+                   (lambda (update! value)
+                     (update! foreground: (value-display value))
                      (update!))
-                   (lambda (a b) #t) equal?)))
+                   (lambda (a b) #t) value-equal)))
              (lambda (update!) (cached update! (src)))))))
     (let ((lw (* w (- 1 label-width)))
           (gap (/ h 5))
@@ -1257,7 +1272,7 @@
       (label! color: color)
       (label! position: (- w lw) 0))
     (tag! text: label)
-    (label! text: (if (procedure? value) (value) value))
+    (label! text: (value-display (if (procedure? value) (value) value)))
     (box! size: w h)
     (box! background: (tag!))
     (box! foreground: (label! check! label))
