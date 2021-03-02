@@ -253,7 +253,7 @@
                                   (txo (- w strw)))
                              (max 0 (/ txo 2)))))
                         0)))
-                 (calculation (memoize-last formula eq? eqv? eq? eq?)))
+                 (calculation (macro-memoize:4->1 #;memoize-last formula eq? eqv? eq? eq?)))
             (lambda () (calculation glyphs w horizontal-align padding))))
          (y-offset
           (let* ((formula
@@ -275,7 +275,7 @@
                      ((eq? align 'bottom)
                       (if padding (vector-ref padding 2) 0))
                      (else (NYIE 'guide-label-view)))))
-                 (calculation (memoize-last formula eq? eqv? eq? eq?)))
+                 (calculation (macro-memoize:4->1 #;memoize-last formula eq? eqv? eq? eq?)))
             (lambda () (calculation glyphs h vertical-align padding))))
          (fgcolora
           (let ((calc (macro-memoize:1->1 color-conv equal?) #;(memoize-last color-conv equal?)))
@@ -514,7 +514,7 @@
                      (mdvector-body texcoords)
                      (mdvector-body colors)
                      2 4)))
-                 (calc (memoize-last formula eq? eq? eq?)))
+                 (calc (macro-memoize:3->1 #;memoize-last formula eq? eq? eq?)))
             (lambda () (and texture (calc (figure) texcoords (bgcolora)))))))
     (define fixed-draw
       (lambda ()
