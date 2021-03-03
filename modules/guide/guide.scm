@@ -1293,7 +1293,7 @@
               value)
              (else (object->string value)))))
          (input #f)
-         (size 'small) (color (guide-select-color-4))
+         (size 'small) (color (guide-select-color-2))
          (success values))
   (unless (or (string? value) (procedure? value))
     (error "invalid value argument" 'guide-valuelabel value))
