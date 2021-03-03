@@ -1023,8 +1023,9 @@
                            ((procedure? x) (x))
                            ((promise? x) (force x))
                            (else (error "invalid return" x))))))
-                   (handle (pass-event! rect payload EVENT_BUTTON1DOWN x y))
-                   (handle (pass-event! rect payload event x y)))))
+                   (let* ((r1 (pass-event! rect payload EVENT_BUTTON1DOWN x y))
+                          (r2 (pass-event! rect payload event x y)))
+                     (%%guide-post-speculative (begin (handle r1) (handle r2)))))))
                (else
                 (set! armed #f)
                 (set! armed-at #f)
