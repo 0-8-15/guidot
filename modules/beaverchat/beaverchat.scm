@@ -813,9 +813,10 @@
                 (let ((val1 (lambda (p a) p)))
                   (vector
                    (lambda (in col row)
-                     (let* ((last (memoize-last conv eqv?))
-                            (check (lambda () (last (chat-own-address)))))
-                       (guide-valuelabel in: in label: "Address" value: check success: val1)))
+                     (guide-valuelabel
+                      in: in label: "Address"
+                      value: chat-own-address
+                      value-display: conv))
                    (lambda (in col row)
                      (guide-valuelabel in: in label: "Version" value: system-appversion))
                    (lambda (in col row)
@@ -876,27 +877,24 @@
                             output: source
                             success: (lambda _ (dialog-set! #f))))))))
                    (lambda (in col row)
-                     (let* ((source beaver-socks-forward-addr)
-                            (last (memoize-last
-                                   (lambda (v)
-                                     (cond
-                                      ((string? v) v)
-                                      ((not v) '#())
-                                      (else (object->string v))))
-                                   eqv?))
-                            (check (lambda () (last (source))))
-                            (label "forward"))
-                       (guide-valuelabel
-                        in: in size: 'medium label-width: label-width
-                        label: label value: check success: val1
-                        input:
-                        (lambda (rect payload event x y)
-                          (dialog-set!
-                           (beaverchat-service-address-edit
-                            in: interval label: label size: size
-                            input: check
-                            output: source
-                            success: (lambda _ (dialog-set! #f))))))))
+                     (guide-valuelabel
+                      in: in size: 'medium label-width: label-width
+                      label: "forward"
+                      value: beaver-socks-forward-addr
+                      value-display:
+                      (lambda (v)
+                        (cond
+                         ((string? v) v)
+                         ((not v) '#())
+                         (else (object->string v))))
+                      input:
+                      (lambda (rect payload event x y)
+                        (dialog-set!
+                         (beaverchat-service-address-edit
+                          in: interval label: label size: size
+                          input: check
+                          output: source
+                          success: (lambda _ (dialog-set! #f)))))))
                    (lambda (area col row)
                      (guide-button
                       in: area
