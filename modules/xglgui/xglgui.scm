@@ -1951,21 +1951,36 @@
                      wrap: #f
                      data: (lambda _ linebroken)
                      results: (lambda (pl ctrl) pl)))))
-              (guide-button
-               in: (guide-payload-measures resized-payload)
-               position: (and (not l/r) (vector right-side-offset 0))
-               guide-callback:
-               (lambda _
-                 (unless
-                     (clipboard-copy
-                      (cond
-                       ((ggb2d? data) (ggb2d->string data))
-                       ((string? data) data)
-                       (else (string-append "UNHANDLED: " (object->string data)))))
-                   (MATURITY -1 "copying to clipboard failed" loc: (list 'chat name)))
-                 ;; gui: signal done anyway
-                 #t)
-               label: resized-payload))))
+              (let ((area (guide-payload-measures resized-payload)))
+                (guide-button
+                 in: area
+                 position: (and (not l/r) (vector right-side-offset 0))
+                 guide-callback:
+                 (let ((url? (rx '($ http-url))))
+                   (lambda (rect payload event x y)
+                     (cond
+                      ((or (eq? event press:) (eq? event release:))
+                       #t)
+                      ((eqv? event EVENT_BUTTON1UP)
+                       (let ((str
+                              (cond
+                               ((ggb2d? data) (ggb2d->string data))
+                               ((string? data) data)
+                               (else (string-append "UNHANDLED: " (object->string data))))))
+                         (cond
+                          ((and (< (* 3 x) (mdv-rect-interval-width area))
+                                (rx~ url? str))
+                           =>
+                           (lambda (m)
+                             (let ((url (rxm-ref m 1)))
+                               (%%guide-post-speculative/async (webview-launch! url via: 'webview)))))
+                          (else
+                           (unless (clipboard-copy str)
+                             (MATURITY -1 "copying to clipboard failed" loc: (list 'chat name)))
+                           ;; gui: signal done anyway
+                           #t))))
+                      (else #f))))
+                 label: resized-payload)))))
          ;; -- model
          (messages (make-ggb size: 0))
          (msg
