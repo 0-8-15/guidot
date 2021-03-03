@@ -2022,7 +2022,7 @@
                    ;; paste
                    (let ((action
                           (lambda _
-                            (%%guide-post-speculative/async
+                            (%%guide-post-speculative;/async
                              (edit-control! insert: (clipboard-paste))))))
                      (lambda (in row col)
                        (guide-button
