@@ -180,9 +180,9 @@
     (maturity-accept-pred (lambda (m c) (>= l (- c m))))
     (maturity-tolerate-pred (lambda (m c) (< (- c m) h))))))
 
-;;;* SRFI 180: assume
+;;;* SRFI 145: assume
 
-;; SRFI 180
+;; SRFI 145
 
 (cond-expand
  (debug
