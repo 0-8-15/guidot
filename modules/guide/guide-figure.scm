@@ -495,6 +495,7 @@
          (y 0)
          (w 100)
          (h 100)
+         (clip #f)
          (scale #f)
          (shift #f)
          (rot #f)
@@ -529,6 +530,7 @@
                   (rot-1 (and rot (vector-ref rot 1)))
                   (rot-2 (and rot (vector-ref rot 2)))
                   (rot-3 (and rot (vector-ref rot 3)))
+                  (clip clip)
                   (bgvset (bgvset))
                   (texture texture)
                   )
@@ -543,7 +545,14 @@
                   (glRotatef//checks rot-0 rot-1 rot-2 rot-3))
                 (when bgvset
                   (glC:TextureDrawGlArrays texture bgvset #f #f #f))
-                (when (procedure? foreground) (foreground))
+                (when (procedure? foreground)
+                  (when clip
+                    (glEnable GL_SCISSOR_TEST)
+                    ;; FIXME: sadly this would need the absolute
+                    ;; position, which is not available here.
+                    (glScissor x y w h))
+                  (foreground)
+                  (when clip (glDisable GL_SCISSOR_TEST)))
                 ;; eventually pop out
                 (glPopMatrix)))
             (lambda () #f))))
@@ -595,6 +604,8 @@
                  (set! texcoords (glC:image-legacy-texcoords thing)))
                 ((glCore:texture? thing) (set! texture thing))
                 (else (error "not a valid background" thing))))))
+        ((clip:)
+         (if (null? more) clip (set! clip (and (car more) #t))))
         ((size:)
          (if (pair? more)
              (receive (pw ph) (apply values more)
@@ -603,7 +614,10 @@
         ((position:)
          (if (pair? more)
              (receive (x y) (apply values more)
-               (set! shift (vector (exact->inexact x) (exact->inexact y) 0.)))
+               (cond
+                ((and (eqv? x 0) (eqv? y 0))
+                 (set! shift #f))
+                (else (set! shift (vector (exact->inexact x) (exact->inexact y) 0.)))))
              shift))
         ((rot:) ;; TBD: `rotate:`? use CSS term!
          ;;; HIER geht's weiter, da passiert 'was!:

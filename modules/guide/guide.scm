@@ -854,6 +854,8 @@
          (fixed #f)
          (on-key #f)
          (shrink-to-content #t)
+         (clip #f) ;; clip content display to area
+         (background #f)
          (results (lambda (payload control) payload))
          (name (vector 'guide-ggb-layout direction))
          )
@@ -922,12 +924,21 @@
                   ;; update running
                   (set! offset (+ offset width))))
                (vector-set! result i (view!))))))
-        #;(%%guide-make-redraw/check result)
-        (%%guide-make-redraw/check
-         ;; NOT nice but works
-         (case direction
-           ((2) (apply vector (reverse! (vector->list result))))
-           (else result)))))
+        (cond
+         ((or clip background)
+          (let ((bg! (MATURITY+1:make-guide-figure-view)))
+            ;; (bg! position: lower-bound-x0 lower-bound-y0)
+            (bg! size: (- upper-bound-x lower-bound-x0) (- upper-bound-y lower-bound-y0))
+            (bg! clip: clip)
+            (bg! background: background)
+            (bg! foreground:
+                 (%%guide-make-redraw/check
+                  ;; NOT nice but works
+                  (case direction
+                    ((2) (apply vector (reverse! (vector->list result))))
+                    (else result))))
+            (bg!)))
+         (else (%%guide-make-redraw/check result)))))
     (define redraw!
       (let ((last-content (ggb->vector buffer))
             (last-lower-bound-y lower-bound-y)

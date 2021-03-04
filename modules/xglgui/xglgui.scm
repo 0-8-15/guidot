@@ -1994,7 +1994,7 @@
          ;; CONTRUCTOR+ARGS: (or CONTRUCTOR (CONTRUCTOR . ARGS))
          (cm (lambda (in col row)
                (guide-ggb-layout
-                in messages direction: 'vertical
+                in messages direction: 'vertical ;; FIXME: clip: #t
                 results: (lambda (pl ctrl) (set! message-display-control! ctrl) pl))))
          (ce0
           (lambda (in col row)
