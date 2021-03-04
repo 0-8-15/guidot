@@ -180,6 +180,19 @@
     (maturity-accept-pred (lambda (m c) (>= l (- c m))))
     (maturity-tolerate-pred (lambda (m c) (< (- c m) h))))))
 
+;;;* SRFI 180: assume
+
+;; SRFI 180
+
+(cond-expand
+ (debug
+  (define (assume obj msg . more)
+    (if obj obj (apply error msg more))))
+ (else
+  (define (assume obj msg . more)
+    (MATURITY -2 "`assume` called as procedure, SHOULD be a special form" loc: assume)
+    obj)))
+
 ;;;* Call Caching
 
 (define $memoize-active (make-parameter #t)) ;; to disable for debug and test
