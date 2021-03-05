@@ -320,7 +320,7 @@
   (unless (and (eqv? (mdvector-interval-lower-bound in 0) 0)
                (eqv? (mdvector-interval-lower-bound in 1) 0))
     (error "area not zero based" guide-textarea-payload))
-  (let ((fh (* 21/20 (guide-font-height font))))
+  (let ((fh (guide-font-height font)))
     (set! rows (min rows (floor (/ (mdv-rect-interval-height in) fh)))))
   (let*
       ((newline-indicator 10)
@@ -752,8 +752,8 @@
                     (cond
                      ((< current-line-number row-display-offset)
                       (ggb2d-goto! value-buffer position: 'absolute row: row-display-offset))
-                     ((> current-line-number (+ row-display-offset rows))
-                      (ggb2d-goto! value-buffer position: 'absolute row: (+ row-display-offset rows)))))
+                     ((>= current-line-number (+ row-display-offset rows))
+                      (ggb2d-goto! value-buffer position: 'absolute row: (- (+ row-display-offset rows) 1)))))
                   ;; TBD: update only if things have changed
                   (update-cursor!))
                 #t))
@@ -2069,7 +2069,7 @@
               (xno (mdvector-interval-upper-bound area 0))
               (yno (mdvector-interval-upper-bound area 1))
               (ysw (mdvector-interval-lower-bound area 1))
-              (kph (* (+ rows 10) (guide-font-height font))))
+              (kph (* (+ rows 8) (guide-font-height font))))
           (ggb-insert! panel (ce (make-mdv-rect-interval 0 0 xno kph) 0 0))
           (ggb-insert! panel (cm (make-mdv-rect-interval 0 0 xno (+ (- yno ysw) kph)) 0 0))
           (guide-ggb-layout area panel direction: 'vertical fixed: #t)))
