@@ -990,8 +990,7 @@
                             (else x)))
                        (y (case direction
                             ((2) (- y lower-bound-y (- offset height)))
-                            ((-2)
-                             (+ (- y offset) (- lower-bound-y0 lower-bound-y)))
+                            ((-2) (- y lower-bound-y offset))
                             (else (- y lower-bound-y)))))
                   (when (mdvector-rect-interval-contains/xy? interval x y)
                     (return (guide-event-dispatch-to-payload rect v event x y)))
@@ -1104,7 +1103,7 @@
          (cell-width (- colw (* 2 min-hgap)))
          (used-width (* columns (+ cell-width (* 2 min-hgap))))
          (hgap (* (/ total-width used-width) min-hgap))
-         (left-offset (* 1/2 (+ (* 2 hgap) (/ (- total-width used-width) 2))))
+         (left-offset (+ xl (* 1/2 (+ (* 2 hgap) (/ (- total-width used-width) 2)))))
          ;;
          (rowh (floor (/ total-height rows)))
          (min-vgap (ceiling (* border-ratio rowh)))
@@ -1305,7 +1304,8 @@
              (else (object->string value)))))
          (input #f)
          (size 'small) (color (guide-select-color-2))
-         (success values))
+         (success values)
+         (name 'valuelabel))
   (unless (or (string? value) (procedure? value))
     (error "invalid value argument" 'guide-valuelabel value))
   (let* ((x (mdvector-interval-lower-bound in 0))
@@ -1356,7 +1356,9 @@
               ((guide-figure-contains? box! x y)
                (or (not input) (input rect payload event x y)))
               (else #f)))))
-      (let ((payload (make-guide-payload in: interval widget: #f on-redraw: (box!) on-any-event: events)))
+      (let ((payload (make-guide-payload
+                      name: name
+                      in: interval widget: #f on-redraw: (box!) on-any-event: events)))
         (cond
          ((procedure? value) payload)
          (else
