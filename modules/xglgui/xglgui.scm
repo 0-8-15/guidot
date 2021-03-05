@@ -1396,10 +1396,18 @@
        (ysw (mdvector-interval-lower-bound in 1))
        (xno (mdvector-interval-upper-bound in 0))
        (yno (mdvector-interval-upper-bound in 1))
+       (border-ratio 1/20)
        (w (- xno xsw))
        (h (- yno ysw))
-       (border-width (* h 1/20))
-       (line-height+border (+ border-width line-height))
+       (border-horizontal (* w border-ratio))
+       (border-vertical (* h border-ratio))
+       (wi (- w (* 2 border-horizontal)))
+       (hi (- w (* 2 border-vertical)))
+       (xsw-inner (+ xsw border-horizontal))
+       (ysw-inner (+ ysw border-vertical))
+       (xno-inner (- xno border-horizontal))
+       (yno-inner (- yno border-vertical))
+       (line-height+border (+ border-vertical line-height))
        (background-view
         (let ((bg! (make-guide-figure-view)))
           (bg! background: background)
@@ -1415,8 +1423,8 @@
            (label! vertical-align: vertical-align)
            (label! font: font)
            (label! color: color)
-           (label! size: w line-height)
-           (label! position: xsw (- yno line-height+border))
+           (label! size: wi line-height)
+           (label! position: xsw-inner (- yno-inner line-height))
            (label! text: (label-string label))
            label!)))
        (title (and title! (title!)))
@@ -1429,16 +1437,17 @@
                    (title! color: (if valid hightlight-color color))
                    (set! title (title!)))))))
        (line (guide-line-input
-              in: (make-mdv-rect-interval
-                   xsw
-                   (round (- yno title-height line-height+border)) xno yno)
+              in: (make-x0y0x1y1-interval/coerce
+                   xsw-inner (- yno-inner title-height line-height)
+                   xno-inner (- yno-inner title-height))
               horizontal-align: horizontal-align vertical-align: vertical-align
               font: font size: size line-height: line-height
               color: color hightlight-color: hightlight-color
               data: data
               validate: check-valid))
        (kpd (keypad
-             in: (make-x0y0x1y1-interval/coerce xsw ysw xno (round (- yno title-height line-height+border)))
+             in: (make-x0y0x1y1-interval/coerce
+                  xsw-inner ysw-inner xno-inner (- yno-inner title-height line-height))
              action:
              (lambda (p/r key mod)
                (let ((key (if on-key (on-key p/r key mod) key)))
@@ -1459,7 +1468,7 @@
             (cond
              ((guide-payload-contains/xy? kpd x y)
               (guide-event-dispatch-to-payload rect kpd event x y))
-             (else #f)))
+             (else #t)))
            ((or (eqv? press: event) (eqv? release: event))
             (guide-focus line) ;; questionable?
             (let ((v (on-key event x y)))
