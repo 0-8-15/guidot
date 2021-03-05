@@ -1389,7 +1389,8 @@
                  (a 210))
             (color-rgba r g b a)))
          (color (guide-select-color-2))
-         (hightlight-color (guide-select-color-4)))
+         (hightlight-color (guide-select-color-4))
+         (name 'guide-value-edit-dialog))
   (let*
       ((xsw (mdvector-interval-lower-bound in 0))
        (ysw (mdvector-interval-lower-bound in 1))
@@ -1470,7 +1471,7 @@
            (else (mdvector-rect-interval-contains/xy? in x y))))))
     (let ((result
            (make-guide-payload
-            name: 'guide-value-edit-dialog in: in widget: #f
+            name: name in: in widget: #f
             on-redraw: redraw! on-any-event: events lifespan: 'ephemeral)))
       (set! this result)
       result)))
@@ -1503,7 +1504,8 @@
                  (a 210))
             (color-rgba r g b a)))
          (color (guide-select-color-2))
-         (hightlight-color (guide-select-color-4)))
+         (hightlight-color (guide-select-color-4))
+         (name 'guide-textarea-edit))
   (let*
       ((xsw (mdvector-interval-lower-bound in 0))
        (ysw (mdvector-interval-lower-bound in 1))
@@ -1628,7 +1630,7 @@
                      (else (data (ctrl 'text)))))))))
     (results
      (make-guide-payload
-      name: 'guide-textarea-edit in: in widget: #f
+      name: name in: in widget: #f
       on-redraw: redraw! on-any-event: events lifespan: 'ephemeral)
      lines-control!)))
 
