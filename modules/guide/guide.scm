@@ -1383,6 +1383,7 @@
          (color (guide-select-color-2))
          (background-color (guide-select-color-1))
          (background #f)
+         (key-background #!void) ;; FIXME: macro-absent ... ??
          (on-key #f)
          (name 'keypad))
   (define (%%guide-post-key-event key)
@@ -1401,7 +1402,14 @@
   (define (post-key pat)
     (lambda (rect payload event x y)
       (%%guide-post-key-event pat)))
-  (define (keybutton in c #!key (label (string c)) (color color) (background #f) (background-color background-color) (vertical-align 'center) (padding '#(1 1 1 1)))
+  (define (keybutton
+           in c
+           #!key
+           (label (string c)) (color color)
+           (background key-background)
+           (background-color background-color)
+           (vertical-align 'center)
+           (padding '#(1 1 1 1)))
     (guide-button
      in: in label: label color: color font: font
      padding: padding
@@ -1439,6 +1447,10 @@
       (make-guide-table
        (make-mdvector (range (vector (range-size rng 0) (range-size rng 1))) constructors)
        in: area)))
+  ;; adjust defaults
+  (when (eqv? key-background #!void)
+    (set! key-background (guide-background button: in: area)))
+  ;;
   (let ((rng (mdvector-range spec)))
     (case (range-rank rng)
       ((2) (keypane rng (mdvector-body spec) #f))
