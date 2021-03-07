@@ -848,7 +848,7 @@
 
 ;; Arranges content (a generic gap buffer) in a direction (x, y, z).
 
-(define (MATURITY-1:guide-ggb-layout
+(define (guide-ggb-layout
          area buffer
          #!key
          (direction 0)
@@ -1103,8 +1103,6 @@
           (else #f)))
         ((fix) (make-drawing))
         (else (error "unhandled" name key)))))))
-
-(define guide-ggb-layout MATURITY-1:guide-ggb-layout)
 
 ;;**** Table Composition
 
