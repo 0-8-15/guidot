@@ -195,7 +195,8 @@
   ;; does not block, returns asap.
   `(%%guide-post-speculative
     (begin
-      (kick! (box (lambda () (macro-guide-execute-payload-result ,expr))))
+      (thread-start! (make-thread (lambda () (macro-guide-execute-payload-result ,expr))))
+      ;; (kick! (box (lambda () (macro-guide-execute-payload-result ,expr))))
       #t)))
 
 ;;** guide-transformed-payload
