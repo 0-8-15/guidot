@@ -1893,6 +1893,139 @@
          (results values)
          (name 'chat)
          ) ;; make-chat: end of keyword parameters
+  (define (chat-message data l/r)
+    ;; re-format message
+    (let*
+        ((area in)
+         (width (mdv-rect-interval-width area))
+         ;; I. general
+         (color-2 (guide-select-color-2))
+         (color-4 (guide-select-color-4))
+         (horizontal-align
+          (begin
+            (when l/r
+              (let ((t color-2))
+                (set! color-2 color-4)
+                (set! color-4 t)))
+            'left))
+         (line-count
+          (cond
+           ((ggb2d? data) (ggb2d-length data))
+           ((string? data)
+            ;; BAD: length!
+            (length (string-split data #\newline)))
+           (else 5)))
+         ;; II. reformat text
+         ;;
+         ;; TBD: this is quite slow.
+         (data-len (cond
+                    ((ggb2d? data) (ggb2d-total-length data))
+                    ((string? data) (string-length data))
+                    (else 2)))
+         (linebroken #f)
+         (formatted-payload
+          (guide-textarea-payload
+           readonly: #t
+           in: (make-mdv-rect-interval 0 0 width (* data-len line-height))
+           rows: data-len
+           horizontal-align: horizontal-align
+           vertical-align: 'bottom
+           font: font
+           line-height: line-height
+           color: color-2 hightlight-color: color-4
+           ;; background: #f
+           data: (lambda _
+                   (when (ggb2d? data)
+                     (ggb2d-goto! data 'position: 'absolute row: 1 col: 0))
+                   data)
+           results: (lambda (pl ctrl)
+                      (set! linebroken (ctrl 'text))
+                      ;;(ggb2d-goto! linebroken 'position: 'absolute row: 1 col: 0)
+                      pl)))
+         ;; III. re-size
+         (resized-payload
+          (let ((rows (ggb2d-length linebroken)))
+            (guide-textarea-payload
+             readonly: #t
+             in: (make-mdv-rect-interval 0 0 width (* rows line-height))
+             rows: rows
+             horizontal-align: horizontal-align
+             vertical-align: 'bottom
+             font: font
+             line-height: line-height
+             color: color-2 hightlight-color: color-4
+             ;; background: %%guide-default-background
+             wrap: #f
+             data: (lambda _ linebroken)
+             results: (lambda (pl ctrl) pl)))))
+      (let* ((msg-area (guide-payload-measures resized-payload))
+             (msg-bg (guide-background 'default))
+             (datentime
+              (and
+               timestamp
+               (guide-button
+                in: (make-mdv-rect-interval 0 0 width line-height)
+                font: font
+                label: (date->string (current-date))
+                background: msg-bg
+                color: (guide-select-color-4)
+                guide-callback: #f)))
+             (buffer (and timestamp (make-ggb size: 2))))
+        (when timestamp
+          (ggb-insert! buffer datentime)
+          (ggb-insert! buffer resized-payload))
+        (let ((decorated-area
+               (let ((headroom
+                      (cond
+                       (timestamp 3/2)
+                       (else 0/2))))
+                 (make-x0y0x1y1-interval/coerce
+                  0 0
+                  width (+ (mdvector-interval-upper-bound msg-area 1)
+                           (* headroom line-height))))))
+          (guide-button
+           in: decorated-area
+           position: (and (not l/r) (vector right-side-offset 0))
+           background: msg-bg
+           guide-callback:
+           (let ((url? (rx '($ http-url))))
+             (lambda (rect payload event x y)
+               (cond
+                ((or (eq? event press:) (eq? event release:))
+                 #t)
+                ((eqv? event EVENT_BUTTON1UP)
+                 (let ((str
+                        (cond
+                         ((ggb2d? data) (ggb2d->string data))
+                         ((string? data) data)
+                         (else (string-append "UNHANDLED: " (object->string data))))))
+                   (cond
+                    ((and (< (* 3 x) (mdv-rect-interval-width area))
+                          (rx~ url? str))
+                     =>
+                     (lambda (m)
+                       (let ((url (rxm-ref m 1)))
+                         (%%guide-post-speculative/async (webview-launch! url via: 'webview)))))
+                    (else
+                     (unless (clipboard-copy str)
+                       (MATURITY -1 "copying to clipboard failed" loc: (list 'chat name)))
+                     ;; gui: signal done anyway
+                     #t))))
+                (else #f))))
+           label:
+           (cond
+            (timestamp
+             (guide-ggb-layout
+              decorated-area
+              buffer
+              background: #t
+              direction: 'topdown
+              results:
+              (lambda (pl ctrl)
+                ;; payload is supposed to be garbage, just does
+                ;; not yet work, why?
+                (if #t pl (ctrl 'fix #t)))))
+            (else resized-payload)))))))
   (set! line-height (inexact->exact (ceiling line-height))) ;; just to be sure
   (let* ((mode
              (case mode
@@ -1900,138 +2033,6 @@
                ((client #f) #f)
                (else (error "invalid mode" 'guide-chat mode))))
          (area in)
-         (xno (mdvector-interval-upper-bound area 0))
-         (chat-message
-          (lambda (data l/r)
-            (let*
-                (;; I. general
-                 (color-2 (guide-select-color-2))
-                 (color-4 (guide-select-color-4))
-                 (horizontal-align
-                  (begin
-                    (when l/r
-                      (let ((t color-2))
-                        (set! color-2 color-4)
-                        (set! color-4 t)))
-                    'left))
-                 (line-count
-                  (cond
-                   ((ggb2d? data) (ggb2d-length data))
-                   ((string? data)
-                    ;; BAD: length!
-                    (length (string-split data #\newline)))
-                   (else 5)))
-                 ;; II. reformat text
-                 ;;
-                 ;; TBD: this is quite slow.
-                 (data-len (cond
-                            ((ggb2d? data) (ggb2d-total-length data))
-                            ((string? data) (string-length data))
-                            (else 2)))
-                 (linebroken #f)
-                 (formatted-payload
-                  (guide-textarea-payload
-                   readonly: #t
-                   in: (make-mdv-rect-interval 0 0 xno (* data-len line-height))
-                   rows: data-len
-                   horizontal-align: horizontal-align
-                   vertical-align: 'bottom
-                   font: font
-                   line-height: line-height
-                   color: color-2 hightlight-color: color-4
-                   ;; background: #f
-                   data: (lambda _
-                           (when (ggb2d? data)
-                             (ggb2d-goto! data 'position: 'absolute row: 1 col: 0))
-                           data)
-                   results: (lambda (pl ctrl)
-                              (set! linebroken (ctrl 'text))
-                              ;;(ggb2d-goto! linebroken 'position: 'absolute row: 1 col: 0)
-                              pl)))
-                 ;; III. re-size
-                 (resized-payload
-                  (let ((rows (ggb2d-length linebroken)))
-                    (guide-textarea-payload
-                     readonly: #t
-                     in: (make-mdv-rect-interval 0 0 xno (* rows line-height))
-                     rows: rows
-                     horizontal-align: horizontal-align
-                     vertical-align: 'bottom
-                     font: font
-                     line-height: line-height
-                     color: color-2 hightlight-color: color-4
-                     ;; background: %%guide-default-background
-                     wrap: #f
-                     data: (lambda _ linebroken)
-                     results: (lambda (pl ctrl) pl)))))
-              (let* ((msg-area (guide-payload-measures resized-payload))
-                     (msg-bg (guide-background 'default))
-                     (datentime
-                      (and
-                       timestamp
-                       (guide-button
-                        in: (make-mdv-rect-interval 0 0 xno line-height)
-                        font: font
-                        label: (date->string (current-date))
-                        background: msg-bg
-                        color: (guide-select-color-4)
-                        guide-callback: #f)))
-                     (buffer (and timestamp (make-ggb size: 2))))
-                (when timestamp
-                  (ggb-insert! buffer datentime)
-                  (ggb-insert! buffer resized-payload))
-                (let ((decorated-area
-                       (let ((headroom
-                              (cond
-                               (timestamp 3/2)
-                               (else 0/2))))
-                         (make-x0y0x1y1-interval/coerce
-                          0 0
-                          xno (+ (mdvector-interval-upper-bound msg-area 1)
-                                 (* headroom line-height))))))
-                  (guide-button
-                   in: decorated-area
-                   position: (and (not l/r) (vector right-side-offset 0))
-                   background: msg-bg
-                   guide-callback:
-                   (let ((url? (rx '($ http-url))))
-                     (lambda (rect payload event x y)
-                       (cond
-                        ((or (eq? event press:) (eq? event release:))
-                         #t)
-                        ((eqv? event EVENT_BUTTON1UP)
-                         (let ((str
-                                (cond
-                                 ((ggb2d? data) (ggb2d->string data))
-                                 ((string? data) data)
-                                 (else (string-append "UNHANDLED: " (object->string data))))))
-                           (cond
-                            ((and (< (* 3 x) (mdv-rect-interval-width area))
-                                  (rx~ url? str))
-                             =>
-                             (lambda (m)
-                               (let ((url (rxm-ref m 1)))
-                                 (%%guide-post-speculative/async (webview-launch! url via: 'webview)))))
-                            (else
-                             (unless (clipboard-copy str)
-                               (MATURITY -1 "copying to clipboard failed" loc: (list 'chat name)))
-                             ;; gui: signal done anyway
-                             #t))))
-                        (else #f))))
-                   label:
-                   (cond
-                    (timestamp
-                     (guide-ggb-layout
-                      decorated-area
-                      buffer
-                      background: #t
-                      direction: 'topdown
-                      results:
-                      (lambda (pl ctrl)
-                        ;; payload is supposed to be garbage, just does
-                        ;; not yet work, why?
-                        (if #t pl (ctrl 'fix #t)))))
-                    (else resized-payload))))))))
          ;; -- model
          (messages (make-ggb size: 0))
          (msg
