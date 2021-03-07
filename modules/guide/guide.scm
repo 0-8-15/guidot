@@ -848,7 +848,7 @@
 
 ;; Arranges content (a generic gap buffer) in a direction (x, y, z).
 
-(define (guide-ggb-layout
+(define (MATURITY-1:guide-ggb-layout
          area buffer
          #!key
          (direction 0)
@@ -939,8 +939,7 @@
         (cond
          ((or clip background)
           (let ((bg! (MATURITY+1:make-guide-figure-view)))
-            ;; (bg! position: lower-bound-x0 lower-bound-y0)
-            (bg! size: (- upper-bound-x lower-bound-x0) (- upper-bound-y lower-bound-y0))
+            (bg! size: total-width total-height)
             (bg! position: lower-bound-x0 lower-bound-y0)
             (bg! clip: clip)
             (cond
@@ -1092,7 +1091,7 @@
              (else (pass-event! rect payload event x y)))))))
     (results
      (make-guide-payload
-      in: area name: name
+      in: area name: (list 'MATURITY-1: name)
       widget: #f lifespan: 'ephemeral ;; TBD: change defaults here!
       on-redraw: redraw!
       on-any-event: events)
@@ -1104,6 +1103,8 @@
           (else #f)))
         ((fix) (make-drawing))
         (else (error "unhandled" name key)))))))
+
+(define guide-ggb-layout MATURITY-1:guide-ggb-layout)
 
 ;;**** Table Composition
 
