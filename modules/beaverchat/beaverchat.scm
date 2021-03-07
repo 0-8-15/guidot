@@ -618,6 +618,7 @@
                 (make-chat
                  in: (make-mdv-rect-interval xsw ysw xno (- yno line-height))
                  font: fnt line-height: line-height
+                 timestamp: #t
                  mode: #f
                  keypad: keypad
                  action: callback)
