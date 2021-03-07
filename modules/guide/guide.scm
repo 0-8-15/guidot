@@ -857,6 +857,7 @@
          (shrink-to-content #t)
          (clip #f) ;; clip content display to area
          (background #f) ;; note: special case, see below
+         (background-color #f)
          (results (lambda (payload control) payload))
          (name (vector 'guide-ggb-layout direction))
          )
@@ -947,6 +948,7 @@
               ;; only but otherwise like #f
               (bg! background: #f))
              (else (bg! background: background)))
+            (bg! color: background-color)
             (bg! foreground:
                  (%%guide-make-redraw/check
                   ;; NOT nice but works
@@ -1114,7 +1116,6 @@
          (in (current-guide-gui-interval))
          (font #f)
          (border-ratio 1/20)
-         (background-image (macro-guide-default-background))
          (on-key #f)
          (name 'table)
          )
