@@ -1,3 +1,10 @@
+;;; https://bigtechdetective.net/firefox
+;;;
+;;;
+;;; Lyra: A New Very Low-Bitrate Codec for Speech Compression
+;;;
+;;; https://soylentnews.org/article.pl?sid=21/02/28/1438232
+
 ;;; To be fixed upstream:
 
 (define-macro (macro-fix val)
@@ -297,6 +304,10 @@
   (let*
       ((interval in)
        (xsw 0) (ysw 0) ;; whatever zero is... ;-)
+       #|
+       (xsw (mdvector-interval-lower-bound interval 0))
+       (ysw (mdvector-interval-lower-bound interval 1))
+       |#
        (w (mdv-rect-interval-width interval))
        (h (mdv-rect-interval-height interval))
        ;; derived values (context may need to re-define what `+` means)
@@ -337,6 +348,7 @@
                (lambda (obj) (ggb-insert! buffer (obj in buffer active)))
                content-constructors)
               buffer)) ;; MUST return a GGB for `guide-ggb-layout` at this position
+          background: #t
           fixed: #f ;; better #t if known that no scrolling required
           direction: direction
           ))))
