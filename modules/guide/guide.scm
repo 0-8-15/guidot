@@ -855,7 +855,7 @@
          (on-key #f)
          (shrink-to-content #t)
          (clip #f) ;; clip content display to area
-         (background #f)
+         (background #f) ;; note: special case, see below
          (results (lambda (payload control) payload))
          (name (vector 'guide-ggb-layout direction))
          )
@@ -872,12 +872,16 @@
         (lower-bound-x0 (mdvector-interval-lower-bound area 0))
         (upper-bound-y (mdvector-interval-upper-bound area 1))
         (lower-bound-y0 (mdvector-interval-lower-bound area 1)))
+    (define total-height (- upper-bound-y lower-bound-y0))
+    (define total-width (- upper-bound-x lower-bound-x0))
     (define lower-bound-x lower-bound-x0)
     (define lower-bound-y lower-bound-y0)
     (define (make-drawing)
       (let ((offset
              (case direction
-               ((-2) upper-bound-y)
+               ((1) (- lower-bound-x lower-bound-x0))
+               ((2) (- lower-bound-y lower-bound-y0))
+               ((-2) (- total-height (- lower-bound-y0 lower-bound-y)))
                (else 0)))
             (result (make-vector (ggb-length buffer) #f)))
         (ggb-for-each
@@ -888,6 +892,13 @@
                     (width (mdv-rect-interval-width interval))
                     (height (mdv-rect-interval-height interval))
                     (view! (make-guide-label-view)))
+               (case direction
+                 ((1)
+                  (unless (eqv? (mdvector-interval-lower-bound interval 0) 0)
+                    (MATURITY -1 "horizontal ggb payload with horizontal offset" loc: 'ggb-layout v)))
+                 ((2 -2)
+                  (unless (eqv? (mdvector-interval-lower-bound interval 1) 0)
+                    (MATURITY -1 "vertical ggb payload with vertical offset" loc: 'ggb-layout v))))
                (view! size: width height)
                (let ((draw (guide-payload-on-redraw v)))
                  (cond
@@ -899,9 +910,9 @@
                (case direction
                  ((0) #f)
                  ((2)
-                  (let ((y (+ lower-bound-y offset)))
+                  (let ((y offset))
                     (if (or fixed
-                            (and (>= (+ y height) lower-bound-y0)
+                            (and (>= (+ y height) 0)
                                  (<= y upper-bound-y)))
                         (begin (view! visible: #t) (view! position: 0 y))
                         (view! visible: #f)))
@@ -909,17 +920,17 @@
                   (set! offset (+ offset height)))
                  ((-2)
                   (set! offset (- offset height))
-                  (let ((y (+ lower-bound-y offset)))
+                  (let ((y offset))
                     (if (or fixed
-                            (and (>= (+ y height) lower-bound-y0)
-                                 (<= y upper-bound-y)))
+                            (and (>= (+ y height) 0)
+                                 (<= y total-height)))
                         (begin (view! visible: #t) (view! position: 0 y))
                         (view! visible: #f))))
                  (else
-                  (let ((x (+ lower-bound-x0 offset)))
+                  (let ((x offset))
                     (if (or fixed
-                            (and (>= x lower-bound-x0) (<= (+ x width) upper-bound-x)))
-                        (begin (view! visible: #t) (view! position: x lower-bound-y))
+                            (and (>= (+ x width) 0) (<= offset total-width)))
+                        (begin (view! visible: #t) (view! position: x 0))
                         (view! visible: #f)))
                   ;; update running
                   (set! offset (+ offset width))))
@@ -929,8 +940,13 @@
           (let ((bg! (MATURITY+1:make-guide-figure-view)))
             ;; (bg! position: lower-bound-x0 lower-bound-y0)
             (bg! size: (- upper-bound-x lower-bound-x0) (- upper-bound-y lower-bound-y0))
+            (bg! position: lower-bound-x0 lower-bound-y0)
             (bg! clip: clip)
-            (bg! background: background)
+            (cond
+             ((eq? background #t) ;; enforces background+positioning
+              ;; only but otherwise like #f
+              (bg! background: #f))
+             (else (bg! background: background)))
             (bg! foreground:
                  (%%guide-make-redraw/check
                   ;; NOT nice but works
@@ -938,14 +954,22 @@
                     ((2) (apply vector (reverse! (vector->list result))))
                     (else result))))
             (bg!)))
-         (else (%%guide-make-redraw/check result)))))
+         (else (%%guide-make-redraw/check
+                ;; NOT nice but works
+                (case direction
+                  ((2) (apply vector (reverse! (vector->list result))))
+                  (else result)))))))
     (define redraw!
       (let ((last-content (ggb->vector buffer))
             (last-lower-bound-y lower-bound-y)
+            (last-lower-bound-x lower-bound-x)
             (last (make-drawing)))
         (lambda ()
           (let ((changed
-                 (or (not (eqv? last-lower-bound-y lower-bound-y))
+                 (or (case direction
+                       ((2 -2) (not (eqv? last-lower-bound-y lower-bound-y)))
+                       ((1) (not (eqv? last-lower-bound-x lower-bound-x)))
+                       (else #f))
                      (not (eqv? (vector-length last-content) (ggb-length buffer))))))
             (unless changed
               (ggb-for-each
@@ -956,12 +980,17 @@
             (when changed
               (set! last-content (ggb->vector buffer))
               (set! last-lower-bound-y lower-bound-y)
+              (set! last-lower-bound-x lower-bound-x)
               (set! last (make-drawing))))
           (last))))
     (define (pass-event! rect payload event x y)
-      (let ((offset
+      (let ((x-offset
              (case direction
-               ((-2) upper-bound-y)
+               ((0) lower-bound-x0)
+               (else (- lower-bound-x lower-bound-x0))))
+            (y-offset
+             (case direction
+               ((-2) (+ upper-bound-y (- lower-bound-y lower-bound-y0)))
                (else 0))))
         (ggb-for-each
          buffer ;; TBD: this pass is almost cacheable
@@ -972,9 +1001,9 @@
                     (height (mdv-rect-interval-height interval)))
                ;; update running
                (case direction
-                 ((2) (set! offset (+ offset height)))
-                 ((-2) (set! offset (- offset height)))
-                 ((1) (set! offset (+ offset width))))))))
+                 ((2) (set! y-offset (+ y-offset height)))
+                 ((-2) (set! y-offset (- y-offset height)))
+                 ((1) (set! x-offset (+ x-offset width))))))))
         (bind-exit
          (lambda (return)
            (ggb-for-each-rtl
@@ -985,20 +1014,22 @@
                        (width (mdv-rect-interval-width interval))
                        (height (mdv-rect-interval-height interval))
                        (y0 y)
-                       (x (case direction
-                            ((1) (+ lower-bound-x0 (+ width (- x offset))))
-                            (else x)))
+                       (x
+                        (case direction
+                          ((0) (- x x-offset))
+                          ((1) (+ (- x x-offset) width))
+                          (else (- x lower-bound-x))))
                        (y (case direction
-                            ((2) (- y lower-bound-y (- offset height)))
-                            ((-2) (- y lower-bound-y offset))
+                            ((2) (- y lower-bound-y (- y-offset height)))
+                            ((-2) (- y y-offset))
                             (else (- y lower-bound-y)))))
                   (when (mdvector-rect-interval-contains/xy? interval x y)
                     (return (guide-event-dispatch-to-payload rect v event x y)))
                   ;; update running
                   (case direction
-                    ((2) (set! offset (- offset height)))
-                    ((-2) (set! offset (+ offset height)))
-                    ((1) (set! offset (- offset width))))))))
+                    ((2) (set! y-offset (- y-offset height)))
+                    ((-2) (set! y-offset (+ y-offset height)))
+                    ((1) (set! x-offset (- x-offset width))))))))
            (cond ;; no hit
             (shrink-to-content #f)
             (else #t))))))
@@ -1070,6 +1101,7 @@
          (cond
           ((null? more) (set! lower-bound-x val) (set! lower-bound-y val))
           (else #f)))
+        ((fix) (make-drawing))
         (else (error "unhandled" name key)))))))
 
 ;;**** Table Composition
