@@ -1882,11 +1882,12 @@
          #!key
          (in (current-guide-gui-interval))
          (font (guide-select-font size: 'small))
-         (line-height (ceiling (* 12/10 (guide-font-height font))))
+         (line-height (ceiling (* 11/10 (guide-font-height font))))
          (rows 3)
          (keypad guide-keypad/default)
          (mode #t)
          (right-side-offset line-height)
+         (timestamp #f)
          (action #f #;(lambda (ctrl) #f))
          (results values)
          (name 'chat)
@@ -1962,36 +1963,74 @@
                      wrap: #f
                      data: (lambda _ linebroken)
                      results: (lambda (pl ctrl) pl)))))
-              (let ((area (guide-payload-measures resized-payload)))
-                (guide-button
-                 in: area
-                 position: (and (not l/r) (vector right-side-offset 0))
-                 guide-callback:
-                 (let ((url? (rx '($ http-url))))
-                   (lambda (rect payload event x y)
-                     (cond
-                      ((or (eq? event press:) (eq? event release:))
-                       #t)
-                      ((eqv? event EVENT_BUTTON1UP)
-                       (let ((str
+              (let* ((msg-area (guide-payload-measures resized-payload))
+                     (msg-bg (guide-background 'default))
+                     (datentime
+                      (and
+                       timestamp
+                       (guide-button
+                        in: (make-mdv-rect-interval 0 0 xno line-height)
+                        font: font
+                        label: (date->string (current-date))
+                        background: msg-bg
+                        color: (guide-select-color-4)
+                        guide-callback: #f)))
+                     (buffer (and timestamp (make-ggb size: 2))))
+                (when timestamp
+                  (ggb-insert! buffer datentime)
+                  (ggb-insert! buffer resized-payload))
+                (let ((decorated-area
+                       (let ((headroom
                               (cond
-                               ((ggb2d? data) (ggb2d->string data))
-                               ((string? data) data)
-                               (else (string-append "UNHANDLED: " (object->string data))))))
-                         (cond
-                          ((and (< (* 3 x) (mdv-rect-interval-width area))
-                                (rx~ url? str))
-                           =>
-                           (lambda (m)
-                             (let ((url (rxm-ref m 1)))
-                               (%%guide-post-speculative/async (webview-launch! url via: 'webview)))))
-                          (else
-                           (unless (clipboard-copy str)
-                             (MATURITY -1 "copying to clipboard failed" loc: (list 'chat name)))
-                           ;; gui: signal done anyway
-                           #t))))
-                      (else #f))))
-                 label: resized-payload)))))
+                               (timestamp 3/2)
+                               (else 0/2))))
+                         (make-x0y0x1y1-interval/coerce
+                          0 0
+                          xno (+ (mdvector-interval-upper-bound msg-area 1)
+                                 (* headroom line-height))))))
+                  (guide-button
+                   in: decorated-area
+                   position: (and (not l/r) (vector right-side-offset 0))
+                   background: msg-bg
+                   guide-callback:
+                   (let ((url? (rx '($ http-url))))
+                     (lambda (rect payload event x y)
+                       (cond
+                        ((or (eq? event press:) (eq? event release:))
+                         #t)
+                        ((eqv? event EVENT_BUTTON1UP)
+                         (let ((str
+                                (cond
+                                 ((ggb2d? data) (ggb2d->string data))
+                                 ((string? data) data)
+                                 (else (string-append "UNHANDLED: " (object->string data))))))
+                           (cond
+                            ((and (< (* 3 x) (mdv-rect-interval-width area))
+                                  (rx~ url? str))
+                             =>
+                             (lambda (m)
+                               (let ((url (rxm-ref m 1)))
+                                 (%%guide-post-speculative/async (webview-launch! url via: 'webview)))))
+                            (else
+                             (unless (clipboard-copy str)
+                               (MATURITY -1 "copying to clipboard failed" loc: (list 'chat name)))
+                             ;; gui: signal done anyway
+                             #t))))
+                        (else #f))))
+                   label:
+                   (cond
+                    (timestamp
+                     (guide-ggb-layout
+                      decorated-area
+                      buffer
+                      background: #t
+                      direction: 'topdown
+                      results:
+                      (lambda (pl ctrl)
+                        ;; payload is supposed to be garbage, just does
+                        ;; not yet work, why?
+                        (if #t pl (ctrl 'fix #t)))))
+                    (else resized-payload))))))))
          ;; -- model
          (messages (make-ggb size: 0))
          (msg
