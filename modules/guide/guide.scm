@@ -915,7 +915,7 @@
                   (let ((y offset))
                     (if (or fixed
                             (and (>= (+ y height) 0)
-                                 (<= y upper-bound-y)))
+                                 (<= y total-height)))
                         (begin (view! visible: #t) (view! position: 0 y))
                         (view! visible: #f)))
                   ;; update running
