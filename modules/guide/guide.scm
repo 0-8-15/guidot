@@ -862,29 +862,27 @@
          (name (vector 'guide-ggb-layout direction))
          )
   (unless (ggb? buffer) (error "arg1 ggb expected" 'guide-ggb-layout buffer))
-  (let ((direction ;; direction: 0: z, 1: x, y: z...
-         (case direction
-           ((0 1 2 -2) direction)
-           ((layer) 0)
-           ((horizontal) 1)
-           ((vertical) 2)
-           ((topdown) -2)
-           (else (error "unknown direction" 'guide-ggb-layout direction))))
-        (upper-bound-x (mdvector-interval-upper-bound area 0))
-        (lower-bound-x0 (mdvector-interval-lower-bound area 0))
-        (upper-bound-y (mdvector-interval-upper-bound area 1))
-        (lower-bound-y0 (mdvector-interval-lower-bound area 1)))
-    (define total-height (- upper-bound-y lower-bound-y0))
-    (define total-width (- upper-bound-x lower-bound-x0))
-    (define lower-bound-x lower-bound-x0)
-    (define lower-bound-y lower-bound-y0)
+  (let* ((direction ;; direction: 0: z, 1: x, y: z...
+          (case direction
+            ((0 1 2 -2) direction)
+            ((layer) 0)
+            ((horizontal) 1)
+            ((vertical) 2)
+            ((topdown) -2)
+            (else (error "unknown direction" 'guide-ggb-layout direction))))
+         (upper-bound-x (mdvector-interval-upper-bound area 0))
+         (lower-bound-x0 (mdvector-interval-lower-bound area 0))
+         (upper-bound-y (mdvector-interval-upper-bound area 1))
+         (lower-bound-y0 (mdvector-interval-lower-bound area 1))
+         (lower-bound-x lower-bound-x0)
+         (lower-bound-y lower-bound-y0))
     (define (make-drawing)
       (let ((offset
              (case direction
-               ((1) (- lower-bound-x lower-bound-x0))
-               ((2) (- lower-bound-y lower-bound-y0))
-               ((-2) (- total-height (- lower-bound-y0 lower-bound-y)))
-               (else 0)))
+               ((1) lower-bound-x)
+               ((2) lower-bound-y)
+               ((-2) (+ upper-bound-y (- lower-bound-y lower-bound-y0)))
+               (else lower-bound-x0)))
             (result (make-vector (ggb-length buffer) #f)))
         (ggb-for-each
          buffer
@@ -910,13 +908,13 @@
                    #;(MATURITY -1 "payload has no drawing" log: guide-ggb-layout)
                    #t)))
                (case direction
-                 ((0) #f)
+                 ((0) #f #;(view! position: lower-bound-x lower-bound-y))
                  ((2)
                   (let ((y offset))
                     (if (or fixed
-                            (and (>= (+ y height) 0)
-                                 (<= y total-height)))
-                        (begin (view! visible: #t) (view! position: 0 y))
+                            (and (>= (+ y height) lower-bound-y0)
+                                 (<= y upper-bound-y)))
+                        (begin (view! visible: #t) (view! position: lower-bound-x y))
                         (view! visible: #f)))
                   ;; update running
                   (set! offset (+ offset height)))
@@ -924,27 +922,32 @@
                   (set! offset (- offset height))
                   (let ((y offset))
                     (if (or fixed
-                            (and (>= (+ y height) 0)
-                                 (<= y total-height)))
-                        (begin (view! visible: #t) (view! position: 0 y))
+                            (and (>= (+ y height) lower-bound-y0)
+                                 (<= y upper-bound-y)))
+                        (begin (view! visible: #t) (view! position: lower-bound-x y))
                         (view! visible: #f))))
-                 (else
+                 ((1)
                   (let ((x offset))
                     (if (or fixed
-                            (and (>= (+ x width) 0) (<= offset total-width)))
-                        (begin (view! visible: #t) (view! position: x 0))
+                            (and (> (+ x width) lower-bound-x0) (<= x upper-bound-x)))
+                        (begin (view! visible: #t) (view! position: x lower-bound-y))
                         (view! visible: #f)))
                   ;; update running
-                  (set! offset (+ offset width))))
+                  (set! offset (+ offset width)))
+                 (else (NYI "ggb draw" direction)))
                (vector-set! result i (view!))))))
         (cond
-         ((or clip background)
+         #|
+         ;; Does NOT work that way!
+         ;;
+         ((and #f (or clip background))
           (let ((bg! (MATURITY+1:make-guide-figure-view)))
             (bg! size: total-width total-height)
             (bg! position: lower-bound-x0 lower-bound-y0)
-            (bg! clip: clip)
+            ;; (bg! foreground: (guide-background button: in: area))
+            ;; (bg! clip: clip)
             (cond
-             ((eq? background #t) ;; enforces background+positioning
+             ((eq? background #t) ;; FIXME outdated: enforces background+positioning
               ;; only but otherwise like #f
               (bg! background: #f))
              (else (bg! background: background)))
@@ -956,6 +959,28 @@
                     ((2) (apply vector (reverse! (vector->list result))))
                     (else result))))
             (bg!)))
+         |#
+         ((and #t (or clip background))
+          (let ((pc! (MATURITY+2:make-guide-bg+fg-view))
+                (bg! (MATURITY+2:make-guide-label-view)))
+            (bg! size: (- upper-bound-x lower-bound-x0) (- upper-bound-y lower-bound-y0))
+            (bg! position: lower-bound-x0 lower-bound-y0)
+            ;; (bg! foreground: (guide-background button: in: area))
+            ;; (bg! clip: clip) ;; no clipping implemented here yet
+            (cond
+             ((eq? background #t) ;; FIXME outdated: enforces background+positioning
+              ;; only but otherwise like #f
+              (bg! foreground: (guide-background default: in: area)))
+             (else (bg! foreground: background)))
+            (bg! color: background-color)
+            (pc! background: (bg!))
+            (pc! foreground:
+                 (%%guide-make-redraw/check
+                  ;; NOT nice but works
+                  (case direction
+                    ((2) (apply vector (reverse! (vector->list result))))
+                    (else result))))
+            (pc!)))
          (else (%%guide-make-redraw/check
                 ;; NOT nice but works
                 (case direction
@@ -989,11 +1014,11 @@
       (let ((x-offset
              (case direction
                ((0) lower-bound-x0)
-               (else (- lower-bound-x lower-bound-x0))))
+               (else lower-bound-x)))
             (y-offset
              (case direction
                ((-2) (+ upper-bound-y (- lower-bound-y lower-bound-y0)))
-               (else 0))))
+               (else lower-bound-y))))
         (ggb-for-each
          buffer ;; TBD: this pass is almost cacheable
          (lambda (i v)
