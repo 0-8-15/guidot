@@ -1883,7 +1883,7 @@
          #!key
          (in (current-guide-gui-interval))
          (font (guide-select-font size: 'small))
-         (line-height (ceiling (* 11/10 (guide-font-height font))))
+         (line-height (guide-font-height font))
          (rows 3)
          (keypad guide-keypad/default)
          (mode #t)
