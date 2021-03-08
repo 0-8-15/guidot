@@ -910,13 +910,13 @@
                    #;(MATURITY -1 "payload has no drawing" log: guide-ggb-layout)
                    #t)))
                (case direction
-                 ((0) #f)
+                 ((0) #f #;(view! position: lower-bound-x lower-bound-y))
                  ((2)
                   (let ((y offset))
                     (if (or fixed
                             (and (>= (+ y height) 0)
                                  (<= y total-height)))
-                        (begin (view! visible: #t) (view! position: 0 y))
+                        (begin (view! visible: #t) (view! position: lower-bound-x y))
                         (view! visible: #f)))
                   ;; update running
                   (set! offset (+ offset height)))
@@ -926,36 +926,39 @@
                     (if (or fixed
                             (and (>= (+ y height) 0)
                                  (<= y total-height)))
-                        (begin (view! visible: #t) (view! position: 0 y))
+                        (begin (view! visible: #t) (view! position: lower-bound-x0 y))
                         (view! visible: #f))))
-                 (else
+                 ((1)
                   (let ((x offset))
                     (if (or fixed
                             (and (>= (+ x width) 0) (<= offset total-width)))
-                        (begin (view! visible: #t) (view! position: x 0))
+                        (begin (view! visible: #t) (view! position: x lower-bound-y))
                         (view! visible: #f)))
                   ;; update running
-                  (set! offset (+ offset width))))
+                  (set! offset (+ offset width)))
+                 (else (NYI "ggb draw" direction)))
                (vector-set! result i (view!))))))
         (cond
-         ((or clip background)
-          (let ((bg! (MATURITY+1:make-guide-figure-view)))
+         ((and #f (or clip background))
+          (let ((pc! (MATURITY+2:make-guide-bg+fg-view))
+                (bg! (MATURITY+2:make-guide-label-view)))
             (bg! size: total-width total-height)
-            (bg! position: lower-bound-x0 lower-bound-y0)
-            (bg! clip: clip)
+            #;(bg! position: lower-bound-x0 lower-bound-y0)
+            ;; (bg! clip: clip)
             (cond
-             ((eq? background #t) ;; enforces background+positioning
+             ((eq? background #t) ;; FIXME outdated: enforces background+positioning
               ;; only but otherwise like #f
-              (bg! background: #f))
-             (else (bg! background: background)))
+              (bg! foreground: #f))
+             (else (bg! foreground: background)))
             (bg! color: background-color)
-            (bg! foreground:
+            (pc! background: (bg!))
+            (pc! foreground:
                  (%%guide-make-redraw/check
                   ;; NOT nice but works
                   (case direction
                     ((2) (apply vector (reverse! (vector->list result))))
                     (else result))))
-            (bg!)))
+            (pc!)))
          (else (%%guide-make-redraw/check
                 ;; NOT nice but works
                 (case direction
