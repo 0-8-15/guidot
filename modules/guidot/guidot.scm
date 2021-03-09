@@ -174,7 +174,7 @@
                                    in: dialog-area label: label
                                    keypad: guide-keypad/numeric
                                    validate:
-                                   (gui-check-ggb/string-pred
+                                   (macro-guidot-check-ggb/string-pred
                                     (lambda (str)
                                       (let ((n (string->number str)))
                                         (and n (or (eqv? n 0) (positive? n))))))

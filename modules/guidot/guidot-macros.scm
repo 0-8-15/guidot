@@ -39,3 +39,14 @@
             ((procedure? ,obj) ,obj)
             ((promise? ,obj) ,obj)
             (else #t))))))))
+
+(define-macro (macro-guidot-check-ggb/string-pred pred)
+  ;; just don't make this global...
+  (let ((ggb (gensym 'ggb))
+        (str (gensym 'str))
+        (i (gensym))
+        (v (gensym)))
+    `(lambda (,ggb)
+       (let ((,str (make-string (ggb-length ,ggb))))
+         (ggb-for-each ,ggb (lambda (,i ,v) (string-set! ,str ,i (integer->char ,v))))
+         (,pred ,str)))))
