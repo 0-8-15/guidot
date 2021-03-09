@@ -43,6 +43,12 @@
 ;; (ggb-goto-left! GGB #!optional n)
 ;; (ggb-goto-right! GGB #!optional n)
 
+;; (ggb-delete-matching! GGB PRED) -- delete all elements matching
+;; `pred` - leaving point after the last deletion
+;;
+;; (ggb-delete-first-match! GGB PRED) -- delete first element matching
+;; `pred` and keep point
+
 ;;* Implementation
 
 ;;#|
@@ -343,3 +349,32 @@
 
 (define (ggb-goto-right! ggb #!optional (n 1))
   (ggb-goto! ggb (max 0 (min (ggb-length ggb) (fx+ (macro-ggb-point ggb) n)))))
+
+;;** Utilities
+
+(define (ggb-delete-matching! ggb pred)
+  ;; delete all elements matching `pred` - leaving point after the last deletion
+  (do ((i 0 (+ i 1)))
+      ((>= i (ggb-length ggb)))
+    (let ((x (ggb-ref ggb i)))
+      (when (pred x)
+        (ggb-goto! ggb i)
+        (ggb-delete! ggb 1)))))
+
+(define (ggb-delete-first-match! ggb pred)
+  ;; delete first element matching `pred` and keep point
+  (let ((point (ggb-point ggb)))
+    (do ((i 0 (+ i 1))
+         (done #f))
+        ((or done
+             (>= i (ggb-length ggb)))
+         (cond
+          ((not done))
+          ((> done point) (ggb-goto! ggb point))
+          ((eqv? done 0))
+          (else (ggb-goto! ggb (- point 1)))))
+      (let ((x (ggb-ref ggb i)))
+        (when (pred x)
+          (set! done i)
+          (ggb-goto! ggb i)
+          (ggb-delete! ggb 1))))))
