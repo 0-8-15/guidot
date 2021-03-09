@@ -318,9 +318,6 @@
            (or (eqv? point 0)
                (not (char-alphabetic? (integer->char (ggb-ref ggb (- point 1))))))))
       (if dir (ggb-goto-right! ggb) (ggb-goto-left! ggb))))
-  (unless (and (eqv? (mdvector-interval-lower-bound in 0) 0)
-               (eqv? (mdvector-interval-lower-bound in 1) 0))
-    (error "area not zero based" guide-textarea-payload))
   (let ((fh (guide-font-height font)))
     (set! rows (min rows (floor (/ (mdv-rect-interval-height in) fh)))))
   (let*
@@ -1494,8 +1491,8 @@
          (menu #f)
          (label #f) (label-string (lambda (value) (if (string? value) value (object->string value))))
          label-properties
-         (line-height 16)
-         (font (guide-select-font height: line-height))
+         (font (guide-select-font size: 'small))
+         (line-height (guide-font-height font))
          (keypad guide-keypad/default)
          (on-key %%guide-textarea-keyfilter)
          (data (let ((state "n/a")) (case-lambda (() state) ((val) (set! state val)))))
@@ -1523,8 +1520,6 @@
        (yno (mdvector-interval-upper-bound in 1))
        (width (- xno xsw))
        (height (- yno ysw))
-       (border-width (* height 1/20))
-       (line-height+border (+ border-width line-height))
        (background-view
         (let ((bg! (make-guide-figure-view)))
           (bg! background: background)
@@ -1535,7 +1530,7 @@
        (title-height
         (cond
          ((guide-payload? menu) (guide-payload-height menu))
-         (label line-height+border)
+         (label line-height)
          (else 0)))
        (title
         (cond
@@ -1551,17 +1546,34 @@
                (lambda (setting) (apply label! setting))
                label-properties))
             (label! size: width line-height)
-            (label! position: xsw (- yno line-height+border))
+            (label! position: xsw (- yno title-height))
             (label!)))
          (menu
-          (let ((label! (make-guide-label-view)))
-            (label! position: xsw (- yno title-height))
+          (let ((label! (make-guide-label-view))
+                (figure! (MATURITY+2:make-guide-bg+fg-view)))
+            (label! size: width line-height)
+            (figure! size: width line-height)
+            (figure! position: xsw (- yno title-height))
             (when (pair? label-properties)
               (for-each
                (lambda (setting) (apply label! setting))
                label-properties))
-            (label! foreground: (guide-payload-on-redraw menu))
-            (label!)))
+            (figure! background: #f)
+            (figure! foreground: (guide-payload-on-redraw menu))
+            (case 2
+              ((1)
+               (let ((fig! (make-guide-figure-view)))
+                 (fig! size: width title-height)
+                 (fig! foreground: (label!))
+                 (fig! position: xsw (- yno title-height))
+                 (fig! color: Yellow)
+                 (fig! background:
+                       (guide-background
+                         button:
+                         in: (guide-payload-measures menu)))
+                 (fig!)))
+              ((2) (figure!))
+              (else (label!)))))
          (else #f)))
        (edit-area-height (* rows line-height))
        (edit-position
@@ -1619,10 +1631,10 @@
               (let ((x (- x (vector-ref edit-position 0)))
                     (y (- y (vector-ref edit-position 1))))
                 (guide-event-dispatch-to-payload rect lines event x y)))
-             ((and menu (> y (- yno line-height+border)))
-              (guide-event-dispatch-to-payload rect menu event x (- y (- yno line-height+border))))
-             ((and lines-control! title (> y (- yno line-height+border)) (eqv? event EVENT_BUTTON1DOWN))
-              (lines-control! event x y))
+             ((and menu (> y (- yno title-height)))
+              (guide-event-dispatch-to-payload rect menu event x (- y (- yno title-height))))
+             ((and lines-control! title (> y (- yno line-height)) (eqv? event EVENT_BUTTON1DOWN))
+              (lines-control! event x (- y (- yno title-height))) #t)
              (else (mdvector-rect-interval-contains/xy? in x y))))
            ((or (eqv? press: event) (eqv? release: event))
             (guide-focus lines) ;; questionable?
@@ -1897,7 +1909,10 @@
     ;; re-format message
     (let*
         ((area in)
-         (width (mdv-rect-interval-width area))
+         (width
+          (cond
+           (l/r (mdv-rect-interval-width area))
+           (else (- (mdv-rect-interval-width area) right-side-offset))))
          ;; I. general
          (color-2 (guide-select-color-2))
          (color-4 (guide-select-color-4))
