@@ -822,6 +822,12 @@
                       data
                       (lambda (port) (ggb2d-insert-port! value-buffer port)))
                      (update-cursor!))))))
+              ((input-port? data)
+               ;; maybe better char-by-char?
+               (ggb2d-insert-port! value-buffer data)
+               (ggb2d-goto! value-buffer position: 'absolute row: 1 col: 0)
+               (linebreak-again!)
+               (update-cursor!))
               (else #f)))
            more))
          (else (error "invalid command key" 'guide-textarea-payload key)))))))
@@ -1844,14 +1850,15 @@
             ((press: release:)
              (and (eq? (guide-focus) this-payload) (key-event event x y)))
             (else
-             (cond
-              ((guide-payload-contains/xy? payload x y)
-               (pointer-event rect payload event x y))
-              (else
-               #;(MATURITY
-               -1 "NOT handling event outside, TBD: don't pass here!"
-               loc: 'make-figure-list-payload2)
-               #f)))))))
+             (let ((y (- y y-shift)))
+               (cond
+                ((guide-payload-contains/xy? payload x y)
+                 (pointer-event rect payload event x y))
+                (else
+                 #;(MATURITY
+                 -1 "NOT handling event outside, TBD: don't pass here!"
+                 loc: 'make-figure-list-payload2)
+                 #f))))))))
     (update-content!)
     (let ((result
            (make-guide-payload
