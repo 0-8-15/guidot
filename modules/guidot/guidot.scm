@@ -215,7 +215,7 @@
        (co (lambda (in row col)
              (guide-textarea-payload
               in: in
-              data: (lambda _ '#u32())
+              data: (lambda _ #f)
               rows: 40
               horizontal-align: 'left
               vertical-align: 'bottom
