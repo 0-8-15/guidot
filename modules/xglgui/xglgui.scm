@@ -1692,6 +1692,9 @@
        (selh line-height)
        (num-max-visible (floor (/ h line-height)))
        (num-visible (min len num-max-visible))
+       (set-content-offset!
+        (lambda (to)
+          (set! content-offset (max 0 (min (- len num-visible) to)))))
        (area-visible-width (- xno ysw))
        (area-visible-height (- yno (* num-visible line-height)))
        (area-visible
@@ -1766,46 +1769,45 @@
        (draw-frame (visible-frame!))
        (y-shift 0)
        (shift!
-        (lambda ()
-          (define (update-shift!)
-            (labels-container! position: 0 y-shift)
-            (visible-frame! foreground: (labels-container!))
-            (set! draw-frame (visible-frame!)))
-          (cond
-           ((or (and (eqv? content-offset 0) (< y-shift 0))
-                (and (>= (+ num-visible content-offset) len) (> y-shift 0)))
-            (set! y-shift 0))
-           ((> y-shift line-height)
-            (set! y-shift (remainder y-shift line-height))
-            (set! content-offset (min (- len num-visible) (fx+ content-offset 2)))
-            (update-content!)
-            (update-shift!))
-           ((< y-shift line-height)
-            (set! y-shift (remainder y-shift line-height))
-            (set! content-offset (max 0 (fx- content-offset 2)))
-            (update-content!)
-            (update-shift!)))
-          ;; tail in event handler
-          #t))
+        (let ((rebuild-height (* 2 line-height)))
+          (lambda (base target)
+            (define (update-shift!)
+              (labels-container! position: 0 y-shift)
+              (visible-frame! foreground: (labels-container!))
+              (set! draw-frame (visible-frame!)))
+            (cond
+             ((< target rebuild-height) ;; upwards
+              (let ((delta-lines (* 2 (quotient target rebuild-height))))
+                ;; (set! y-shift (remainder target rebuild-height))
+                (set-content-offset! (+ base delta-lines))
+                (update-content!)
+                (update-shift!)
+                (- (* delta-lines line-height))))
+             ((> target (- rebuild-height))
+              (let ((delta-lines (* 2 (quotient target rebuild-height))))
+                ;; (set! y-shift (remainder target rebuild-height))
+                (set-content-offset! (+ base delta-lines))
+              (update-shift!))
+              (update-content!))
+             (else #f)))))
        (redraw (lambda () (draw-frame)))
        (this-payload #f) ;; letrec
        (pointer-event
-        (let ((armed #f) (armed-at #f) (motion-hyst 15))
+        (let ((armed #f) (armed-content-offset #f) (motion-hyst 15))
           (lambda (rect payload event x y)
             (cond
              ((eqv? event EVENT_BUTTON1DOWN)
               (set! armed (vector x y))
-              (set! armed-at armed)
               (guide-focus payload)
               #t)
              ((eqv? event EVENT_BUTTON1UP)
               (cond
-               ((eq? armed armed-at)
+               ((vector? armed)
                 (let* ((dx (- x (vector-ref armed 0)))
                        (dy (- y (vector-ref armed 1)))
                        (in-sel (floor (/ (- yno y) selh))))
                   (set! armed #f)
-                  (set! armed-at #f)
+                  (set! armed-content-offset #f)
                   (cond
                    (action
                     (let ((selected-item (+ content-offset in-sel))
@@ -1818,31 +1820,32 @@
                    (else #t))))
                (armed
                 (set! armed #f)
-                (set! armed-at #f)
+                (set! armed-content-offset #f)
                 #t)
                (else #f)))
              ((eqv? event EVENT_MOTION)
+              ;; strange: observing wild jumps in `y`
               (cond
+               ((number? armed)
+                (shift! armed-content-offset (- y armed))
+                #t)
                (armed
-                (let* ((dx (- x (vector-ref armed-at 0)))
-                       (dy (- y (vector-ref armed-at 1))))
-                  (when (and (eq? armed armed-at)
-                             (> (sqrt (+ (* dx dx) (* dy dy))) ;; distance
-                                motion-hyst))
-                    (set! armed y-shift))
-                  (cond
-                   ((number? armed)
-                    (set! y-shift (+ armed dy))
-                    (shift!))
-                   (else #t))))
+                (let* ((dx (- x (vector-ref armed 0)))
+                       (dy (- y (vector-ref armed 1))))
+                  (when (> (sqrt (+ (* dx dx) (* dy dy))) ;; distance
+                           motion-hyst)
+                    (set! armed-content-offset content-offset)
+                    (set! armed (vector-ref armed 1))
+                    (shift! armed-content-offset (- y armed)))
+                  #t))
                (else #t)))
              (else (debug 'guide-list-select-payload (list event x y)))))))
        (key-event
         (lambda (event key modifier)
           (case key
             ((PageUp PageDown)
-             (set! y-shift ((if (eq? key 'PageDown) + -) y-shift (* num-visible line-height)))
-             (shift!))
+             (set-content-offset! ((if (eq? key 'PageDown) + -) content-offset (* num-visible line-height)))
+             (update-content!))
             (else #f))))
        (events-here
         (lambda (rect payload event x y)
@@ -1850,7 +1853,7 @@
             ((press: release:)
              (and (eq? (guide-focus) this-payload) (key-event event x y)))
             (else
-             (let ((y (- y y-shift)))
+             (let ((y (+ ysw (- y y-shift))))
                (cond
                 ((guide-payload-contains/xy? payload x y)
                  (pointer-event rect payload event x y))
