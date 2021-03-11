@@ -1013,11 +1013,13 @@
     (define (pass-event! rect payload event x y)
       (let ((x-offset
              (case direction
-               ((0) lower-bound-x0)
+               ((0) 0 #;lower-bound-x0)
                (else lower-bound-x)))
             (y-offset
              (case direction
+               ((0) 0)
                ((-2) (+ upper-bound-y (- lower-bound-y lower-bound-y0)))
+               ((2) (- lower-bound-y lower-bound-y0))
                (else lower-bound-y))))
         (ggb-for-each
          buffer ;; TBD: this pass is almost cacheable
@@ -1043,11 +1045,12 @@
                        (y0 y)
                        (x
                         (case direction
-                          ((0) (- x x-offset))
+                          ((0) x #;(- x x-offset))
                           ((1) (+ (- x x-offset) width))
                           (else (- x lower-bound-x))))
                        (y (case direction
-                            ((2) (- y lower-bound-y (- y-offset height)))
+                            ((0) y)
+                            ((2) (- y (+ y-offset height)))
                             ((-2) (- y y-offset))
                             (else (- y lower-bound-y)))))
                   (when (mdvector-rect-interval-contains/xy? interval x y)
@@ -1069,7 +1072,8 @@
             (cond
              ((or (eqv? press: event) (eqv? release: event))
               (and on-key (on-key event x y)))
-             ((and (eqv? event EVENT_BUTTON1DOWN) (not fixed))
+             (fixed (pass-event! rect payload event x y))
+             ((and (eqv? event EVENT_BUTTON1DOWN))
               (set! armed (vector x y))
               (set! armed-at armed)
               #t)
@@ -1078,7 +1082,7 @@
                    (not (mdvector-rect-interval-contains/xy? area x y)))
               (MATURITY -1 "pointer event outside of payload" loc: 'ggb-layout)
               #f)
-             ((and (eqv? event EVENT_BUTTON1UP) (not fixed))
+             ((and (eqv? event EVENT_BUTTON1UP))
               (cond
                ((eq? armed armed-at)
                 (set! armed #f)
@@ -1643,7 +1647,9 @@
              (thread-sleep! 0.01))
             (else))
            (let ((cpl (if (procedure? payload) (payload) payload)))
-             (guide-default-event-dispatch/toplevel gui cpl event x y)))
+             (guide-default-event-dispatch/toplevel gui cpl event x y))
+           (thread-sleep! 0.01) ;; give other threads a chance
+           #t)
          ;; termination
          terminate
          ;; suspend
