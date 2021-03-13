@@ -1,5 +1,7 @@
 (include "guidot-macros.scm")
 
+(include "debugger.scm")
+
 (define (guidot-insert-scheme-interpreter!
          plane ;; GGB (expected to be used as `direction: 'layer`
          #!key

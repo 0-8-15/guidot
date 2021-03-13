@@ -436,7 +436,19 @@
          ((not handler) (MATURITY -1 "no event handler for redraw" loc: guide-event-dispatch-to-payload/redraw))
          (else (MATURITY -10 "invalid event handler" loc: guide-event-dispatch-to-payload/redraw))))))))
 
+(cond-expand
+ (debug
+  (define $guide-event-dispatch-log (make-parameter #f)))
+ (else
+  (define ($guide-event-dispatch-log . args) 'unsupported)))
+
 (define (guide-event-dispatch-to-payload rect payload event x y)
+  (cond-expand
+   (debug
+    (let ((logger ($guide-event-dispatch-log)))
+      (when (procedure? logger)
+        (logger rect payload event x y))))
+   (else))
   (cond
    ((eqv? event EVENT_REDRAW)
     (let ((redraw (guide-payload-on-redraw payload)))

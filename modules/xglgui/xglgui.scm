@@ -2139,7 +2139,7 @@
                  (set! input-edit value)
                  value))))
     (results
-     (case 1
+     (case 2
        ((1)
         (let ((panel (make-ggb size: 2))
               (xno (mdvector-interval-upper-bound area 0))
@@ -2149,6 +2149,13 @@
           (ggb-insert! panel (ce (make-mdv-rect-interval 0 0 xno kph) 0 0))
           (ggb-insert! panel (cm (make-mdv-rect-interval 0 0 xno (+ (- yno ysw) kph)) 0 0))
           (guide-ggb-layout area panel direction: 'vertical fixed: #t)))
+       ((2) ;; Table, messages at bottom - bug workaround.
+        (make-guide-table
+         (make-mdvector
+          (range '#(1 2))
+          (vector ce cm))
+         in: area name: name
+         border-ratio: 0))
        (else
         (make-guide-table
          (make-mdvector
