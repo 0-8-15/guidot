@@ -954,6 +954,8 @@
                  (lambda () (when edit-active (guide-event-dispatch-to-payload/redraw edit-active)))))
        (events
         (lambda (rect payload event x y)
+          (define (otherwise interval x y)
+            (mdvector-rect-interval-contains/xy? interval x y))
           (cond
            (edit-active (guide-event-dispatch-to-payload rect edit-active event x y))
            ((or (eqv? event EVENT_BUTTON1DOWN) (eqv? event EVENT_BUTTON1UP))
@@ -965,8 +967,9 @@
              ((guide-payload-contains/xy? b2 x y)
               (cond-expand
                (android #t)
-               (else (guide-event-dispatch-to-payload rect b2 event x y))))))
-           (else (mdvector-rect-interval-contains/xy? interval x y))))))
+               (else (guide-event-dispatch-to-payload rect b2 event x y))))
+             (else (otherwise interval x y))))
+           (else (otherwise interval x y))))))
     (make-guide-payload
      name: 'beaverchat-about
      in: interval widget: #f on-redraw: redraw! on-any-event: events lifespan: 'ephemeral)))
