@@ -204,6 +204,13 @@
      (>= x (mdvector-ref measures 0 0))
      (< x (mdvector-ref measures 1 0)))))
 
+(define (guide-boundingbox->quadrupel obj)
+  (cond
+   ((mdvector-interval? obj) (mdv-rect-interval->quadrupel obj))
+   ((guide-payload? obj) (mdv-rect-interval->quadrupel (guide-payload-measures obj)))
+   ((guide-rectangle? obj) (mdv-rect-interval->quadrupel (guide-rectangle-measures obj)))
+   (else (error "invalid argument" guide-boundingbox->quadrupel obj))))
+
 (define (guide-payload-width obj)
   (mdv-rect-interval-width (guide-payload-measures obj)))
 

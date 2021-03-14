@@ -151,13 +151,19 @@
          (else
           (make-mdvector (mdvector-range left) intersection (mdvector-special left))))))))
 
-(define (mdvector-rect-interval-contains/xy? interval x y)
+(define (mdv-rect-interval->quadrupel interval)
   (unless (mdvector-interval? interval)
-    (error "illegal argument" mdvector-rect-interval-contains/xy? interval))
-  (and (>= x (mdvector-ref interval 0 0))
-       (< x (mdvector-ref interval 1 0))
-       (>= y (mdvector-ref interval 0 1))
-       (< y (mdvector-ref interval 1 1))))
+    (error "illegal argument" mdvector-rect-interval->quadrupel interval))
+  (values
+   (mdvector-ref interval 0 0)
+   (mdvector-ref interval 1 0)
+   (mdvector-ref interval 0 1)
+   (mdvector-ref interval 1 1)))
+
+(define (mdvector-rect-interval-contains/xy? interval x y)
+  (receive (x0 x1 y0 y1) (mdv-rect-interval->quadrupel interval)
+    (and (>= x x0) (< x x1)
+         (>= y y0) (< y y1))))
 
 (define (mdv-rect-interval-width interval)
   ;; FIXME: OVERHEAD
