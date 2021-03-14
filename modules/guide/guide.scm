@@ -1031,7 +1031,6 @@
              (case direction
                ((0) 0)
                ((-2) (+ upper-bound-y (- lower-bound-y lower-bound-y0)))
-               ((2) (- lower-bound-y lower-bound-y0))
                (else lower-bound-y))))
         (ggb-for-each
          buffer ;; TBD: this pass is almost cacheable
@@ -1062,7 +1061,7 @@
                           (else (- x lower-bound-x))))
                        (y (case direction
                             ((0) y)
-                            ((2) (- y (+ y-offset height)))
+                            ((2) (- y (+ y-offset (- height))))
                             ((-2) (- y y-offset))
                             (else (- y lower-bound-y)))))
                   (when (mdvector-rect-interval-contains/xy? interval x y)
@@ -1134,7 +1133,7 @@
              (else (pass-event! rect payload event x y)))))))
     (results
      (make-guide-payload
-      in: area name: (list 'MATURITY-1: name)
+      in: area name: name
       widget: #f lifespan: 'ephemeral ;; TBD: change defaults here!
       on-redraw: redraw!
       on-any-event: events)
