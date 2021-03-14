@@ -11,14 +11,22 @@
 (define (pp-define-values/rt)
   (define src
     '(define-macro (define-values names . body)
-       (let ((vals (gensym 'vals)))
+       (let ((arg1 (gensym 'arg1))
+             (rest (gensym 'rest)))
          `(begin
-            ,@(map (lambda (name) `(define ,name #f)) names)
-            (call-with-values (lambda () . ,body)
-              (lambda ,vals
-                . ,(map (lambda (name)
-                          `(set! ,name (let ((,name (car ,vals))) (set! ,vals (cdr ,vals)) ,name)))
-                        names)))))))
+            ,@(map (lambda (name) `(define ,name #f)) (cdr names))
+            (define ,(car names)
+              (call-with-values
+                  (lambda () unquote body)
+                (lambda (,arg1 . ,rest)
+                  (begin
+                    ,@(map (lambda (name)
+                             `(set! ,name
+                                    (let ((,name (car ,rest)))
+                                      (set! ,rest (cdr ,rest))
+                                      ,name)))
+                           (cdr names))
+                    ,arg1))))))))
   (pp `(eval ',src) (current-output-port)))
 
 (define (make-ln-akwmatch)
@@ -37,14 +45,22 @@
  )
 
 (define-macro (define-values names . body)
-  (let ((vals (gensym 'vals)))
+  (let ((arg1 (gensym 'arg1))
+        (rest (gensym 'rest)))
     `(begin
-       ,@(map (lambda (name) `(define ,name #f)) names)
-       (call-with-values (lambda () . ,body)
-         (lambda ,vals
-           . ,(map (lambda (name)
-                     `(set! ,name (let ((,name (car ,vals))) (set! ,vals (cdr ,vals)) ,name)))
-                   names))))))
+       ,@(map (lambda (name) `(define ,name #f)) (cdr names))
+       (define ,(car names)
+         (call-with-values
+             (lambda () unquote body)
+           (lambda (,arg1 . ,rest)
+             (begin
+               ,@(map (lambda (name)
+                        `(set! ,name
+                               (let ((,name (car ,rest)))
+                                 (set! ,rest (cdr ,rest))
+                                 ,name)))
+                      (cdr names))
+               ,arg1)))))))
 
 (define-macro (this-module-works name exports . body)
   (let ((extern (lambda (e) (if (pair? e) (car e) e)))

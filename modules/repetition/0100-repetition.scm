@@ -16,14 +16,22 @@
 ;;*** syntax import
 
 (define-macro (define-values names . body)
-  (let ((vals (gensym 'vals)))
+  (let ((arg1 (gensym 'arg1))
+        (rest (gensym 'rest)))
     `(begin
-       ,@(map (lambda (name) `(define ,name #f)) names)
-       (call-with-values (lambda () . ,body)
-         (lambda ,vals
-           . ,(map (lambda (name)
-                     `(set! ,name (let ((,name (car ,vals))) (set! ,vals (cdr ,vals)) ,name)))
-                   names))))))
+       ,@(map (lambda (name) `(define ,name #f)) (cdr names))
+       (define ,(car names)
+         (call-with-values
+             (lambda () unquote body)
+           (lambda (,arg1 . ,rest)
+             (begin
+               ,@(map (lambda (name)
+                        `(set! ,name
+                               (let ((,name (car ,rest)))
+                                 (set! ,rest (cdr ,rest))
+                                 ,name)))
+                      (cdr names))
+               ,arg1)))))))
 
 ;;;** OVER
 
