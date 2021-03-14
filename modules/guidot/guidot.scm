@@ -249,3 +249,5 @@
         #t     ce))
       in: area name: 'interpreter
       border-ratio: 1/20))))
+
+(include "fossil-guidot.scm")
