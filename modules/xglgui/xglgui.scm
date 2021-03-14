@@ -2031,10 +2031,12 @@
                        (let ((url (rxm-ref m 1)))
                          (%%guide-post-speculative/async (webview-launch! url via: 'webview)))))
                     (else
-                     (unless (clipboard-copy str)
-                       (MATURITY -1 "copying to clipboard failed" loc: (list 'chat name)))
-                     ;; gui: signal done anyway
-                     #t))))
+                     (%%guide-post-speculative
+                      (begin
+                        (unless (clipboard-copy str)
+                          (MATURITY -1 "copying to clipboard failed" loc: (list 'chat name)))
+                        ;; gui: signal done anyway
+                        #t))))))
                 (else #f))))
            label:
            (cond
@@ -2139,7 +2141,7 @@
                  (set! input-edit value)
                  value))))
     (results
-     (case 2
+     (case 1
        ((1)
         (let ((panel (make-ggb size: 2))
               (xno (mdvector-interval-upper-bound area 0))
