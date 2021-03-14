@@ -700,7 +700,7 @@
                    ((cadr e)
                     (cond
                      ((< x 1/3)
-                      (dialog-set! #f)
+                      (dial-dialog!)
                       (let* ((pn (chat-number->neatstring (car e) "-"))
                              (url (string-append "http://" pn "." (beaver-domain) "/index"))
                              (via (if (< x 1/4) 'webview 'extern)))
@@ -711,10 +711,10 @@
                         (else
                          (%%guide-post-speculative
                           (kick! (box (lambda () (launch-url url via: via)))))))))
-                     ((> x 2/3) (dialog-set! (nick-dialog (car e) #t)))
+                     ((> x 2/3) (dialog-set! (nick-dialog (car e) #t)) #t)
                      (else (activate-chat-partner! (car e)))))
                    (else (dialog-set! (nick-dialog (car e) #f))))))
-               (else (dialog-set! #f))))
+               (else (dial-dialog!) #t)))
             line-height: line-height-selectable
             font: (guide-select-font size: 'medium)
             horizontal-align: 'left))))
