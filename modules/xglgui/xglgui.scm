@@ -1914,7 +1914,7 @@
          (results values)
          (name 'chat)
          ) ;; make-chat: end of keyword parameters
-  (define (chat-message data l/r)
+  (define (chat-message data timestamp l/r)
     ;; re-format message
     (let*
         ((area in)
@@ -1990,7 +1990,11 @@
                (guide-button
                 in: (make-mdv-rect-interval 0 0 width line-height)
                 font: font
-                label: (date->string (current-date))
+                label: (date->string
+                        (cond
+                         ((date? timestamp) timestamp)
+                         ((number? timestamp) (time-utc->date (make-srfi19:time 'time-utc 0 timestamp)))
+                         (else (current-date))))
                 background: msg-bg
                 color: (guide-select-color-4)
                 guide-callback: #f)))
@@ -2084,7 +2088,7 @@
                (else
                 (ggb-goto! messages 0)
                 (let ((msg (edit-control! 'text)))
-                  (ggb-insert! messages (chat-message msg mode)))
+                  (ggb-insert! messages (chat-message msg timestamp mode)))
                 (edit-control! text: #f)
                 #t)))
             (define menu
@@ -2165,18 +2169,18 @@
           (vector cm ce))
          in: area name: name
          border-ratio: 0)))
-     (lambda (key msg)
+     (lambda (key msg #!optional (timestamp timestamp))
        (case key
          ((msg:) ;; add remote message
           (check-not-observable-speculative! name key msg)
           (unless (equal? msg "")
             (ggb-goto! messages 0)
-            (ggb-insert! messages (chat-message msg (not mode)))))
+            (ggb-insert! messages (chat-message msg timestamp (not mode)))))
          ((sent:) ;; add local message
           (check-not-observable-speculative! name key msg)
           (unless (equal? msg "")
             (ggb-goto! messages 0)
-            (ggb-insert! messages (chat-message msg mode))))
+            (ggb-insert! messages (chat-message msg timestamp mode))))
          ((focus:)
           (guide-focus (and msg input-edit)))
          ((load:)
@@ -2186,7 +2190,7 @@
           (for-each
            (lambda (msg)
              (receive (reference from msg kind) (apply values msg)
-               (ggb-insert! messages (chat-message msg (eqv? kind 0)))))
+               (ggb-insert! messages (chat-message msg (and timestamp reference) (eqv? kind 0)))))
            msg)))))))
 
 ;;;* Xglgui
