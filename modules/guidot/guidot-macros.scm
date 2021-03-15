@@ -1,3 +1,5 @@
+(include "../misc-conventions/observable-syntax.sch")
+
 ;; FIXME: These should not be here!
 
 (define-macro (%%guide-post-speculative expr)
