@@ -1,5 +1,7 @@
 (include "guidot-macros.scm")
 
+(include "guidot-utils.scm")
+
 (include "debugger.scm")
 
 (define (guidot-insert-scheme-interpreter!
