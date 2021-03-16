@@ -44,6 +44,46 @@
 
 ;;** GUI
 
+(define (guidot-layers
+         area #!key
+         (dialog (make-ggb size: 2))
+         (results values)
+         (name "Guidot Layers"))
+  ;; Note: as long as we have a plain ggb as INPUT, there is no way to
+  ;; properly lock (using mutices at least).
+  (define (push! payload #!key (notify #f))
+    (assume (guide-payload? payload) "invalid" name payload)
+    (check-not-observable-speculative! name key more)
+    (ggb-goto! dialog (ggb-length dialog))
+    (ggb-insert! dialog payload)
+    (cond
+     ((box? notify) (set-box! notify payload) payload))
+    payload)
+  (define (close! obj)
+    (check-not-observable-speculative! name key more)
+    (cond
+     ((guide-payload? obj)
+      (ggb-delete-first-match! dialog (lambda (x) (eq? x obj)))
+      #t)
+     ((and (box? obj) (guide-payload? (unbox obj)))
+      (let ((payload (unbox obj)))
+        (ggb-delete-first-match! dialog (lambda (x) (eq? x payload))))
+      #t)
+     (else (error "invalid payload" name key more))))
+  (results
+   (guide-ggb-layout area dialog direction: 'layer fixed: #t name: name)
+   (lambda (key . more)
+     (case key
+       ((top:)
+        (cond
+         ((stm-atomic?) (apply push! more))
+         (else (guide-critical-add! (lambda () (apply push! more))))))
+       ((close:)
+        (cond
+         ((stm-atomic?) (apply close! more))
+         (else (guide-critical-add! (lambda () (apply close! more))))))
+       (else (error "invalid key" name key more))))))
+
 ;;*** Help
 
 (define (guidot-fossil-help-browser area)
@@ -137,7 +177,232 @@
   (ggb-insert! vbuf work-view)
   (guide-ggb-layout area vbuf direction: 'topdown fixed: #t name: "fossil help browser"))
 
-(define (guidot-fossil-wiki ))
+(define (guidot-make-fossil-wiki-constructur
+         area #!key
+         (font (guide-select-font size: 'medium))
+         (keypad guide-keypad/default)
+         (menu-height 48)
+         (dialog-control (NYIE))
+         (color
+          (let* ((color (guide-select-color-1))
+                 (r (color-red color))
+                 (g (color-green color))
+                 (b (color-blue color))
+                 (a 140))
+            (color-rgba r g b a)))
+         (background (guide-background default: in: in))
+         ;; replaceable pins
+         (selected (make-pin initial: #f name: "wiki selected page"))
+         ;; that's it
+         (name "Fossil Wiki"))
+  ;; (options '#("create" "diff" "get" "list" "preview" "save" "timeline"))
+  (lambda (#!key (in (NYIE)) (command (NYIE)) (dismiss (NYIE)))
+    (define wiki-selected selected)
+    (define (wiki-list off)
+      (guidot-frame
+       (let ((options
+              (let ((json (json-read (fossil-command "json" command "list"))))
+                (cdr (assq 'payload json)))))
+         (lambda (area)
+           (guide-list-select-payload
+            area (lambda () options)
+            action:
+            (lambda (n x)
+              (wiki-selected (vector-ref options n))
+              (off)
+              (%%guide-post-speculative (begin (dialog-control top: (with-page)) #t))))))
+       in: area
+       border-ratio: 1/4
+       color: color background: background
+       name: "wiki list"))
+    (define (get-wiki-page)
+      (let* ((json (json-read (fossil-command "json" command "get" (wiki-selected))))
+             (json-pl (cdr (assq 'payload json))))
+        (cdr (assq 'content json-pl))))
+    (define (with-page)
+      (define page-content
+        (make-pin
+         initial: (get-wiki-page)
+         filter: (lambda (o n) (if (equal? o n) o n))
+         name: "wiki page content"))
+      (define this
+        (guidot-frame
+         (let ((options '#("get" "preview" "save"))
+               (rows 50))
+           (lambda (area)
+             (let ((edit-control! #f))
+               (guide-textarea-edit
+                in: area
+                menu:
+                (guidot-texteditor-menu
+                 (lambda () edit-control!)
+                 in: area
+                 font: font
+                 save-callback: (lambda _ (page-content (edit-control! 'string)))
+                 reload-callback:
+                 (lambda _
+                   (%%guide-post-speculative
+                    (begin
+                      (let ((update
+                             (lambda ()
+                               (let ((content (get-wiki-page)))
+                                 (lambda () (page-content content))))))
+                        (kick! (box update)))
+                      #t)))
+                 close-callback:
+                 (lambda _ (dialog-control close: this)
+                   #t)
+                 name: "wiki editor menu")
+                keypad: keypad
+                data: page-content
+                horizontal-align: 'left
+                label-properties:
+                `((color: ,(guide-select-color-4))
+                  (horizontal-align: right))
+                ;; is default: on-key: %%guide-textarea-keyfilter
+                rows: rows
+                results:
+                (lambda (payload ctrl)
+                  (set! edit-control! ctrl)
+                  payload)))))
+         in: area
+         border-ratio: 1/8
+         color: color background: background
+         name: "wiki list"))
+      (wire!
+       page-content post:
+       (lambda ()
+         (let ((content (page-content))
+               (name (wiki-selected)))
+           (when (and name content)
+             (let ((port (fossil-command/json)))
+               (json-write
+                `((command . "wiki/save")
+                  (payload
+                   (name . ,name)
+                   (content . ,content)
+                   (contentFormat . "raw")))
+                port)
+               (close-output-port port)
+               ;; ignoring the response here
+               (json-read port))))))
+      this)
+    (let ((tl-options '#("create" "list" "timeline")))
+      (guidot-frame
+       (lambda (area)
+         (guide-list-select-payload
+          area (lambda () tl-options)
+          action:
+          (lambda (n x)
+            (let ((ssc (vector-ref tl-options n)))
+              (cond
+               ((equal? ssc "list")
+                (dismiss)
+                (letrec ((edit (wiki-list (lambda _ (dialog-control close: edit)))))
+                  (dialog-control top: edit)
+                  #t))
+               ((equal? ssc "create")
+                (dismiss)
+                (let ((selfie (box #f)))
+                  (dialog-control
+                   top:
+                   (let ((label "New Wiki Page"))
+                     (guide-value-edit-dialog
+                      name: label
+                      in: area label: label
+                      keypad: guide-keypad/default
+                      on-key: %%guide-textarea-keyfilter
+                      validate:
+                      (macro-guidot-check-ggb/string-pred
+                       (lambda (str) ;; TBD: correct check
+                         (cond
+                          ((equal? str "")) ;; abort
+                          (else (> (string-length str) 3)))))
+                      data:
+                      (case-lambda
+                       (() "")
+                       ((val)
+                        (dialog-control close: selfie)
+                        (cond
+                         ((equal? val "")) ;; abort
+                         (else
+                          (guide-critical-add!
+                           (lambda ()
+                             (let ((port (fossil-command/json)))
+                               (json-write
+                                `((command . "wiki/create")
+                                  (payload
+                                   (name . ,val)
+                                   (content . "")
+                                   (contentFormat . "raw")))
+                                port)
+                               (close-output-port port)
+                               ;; ignoring the response here
+                               (debug 'create-wiki-response (json-read port)))))))))))
+                   notify: selfie))
+                #t)
+               (else
+                (guide-critical-add!
+                 (lambda ()
+                   (dismiss)
+                   (let ((result (json-read (fossil-command "json" command ssc)))
+                         (rows 50))
+                     (dialog-control
+                      top:
+                      (guide-textarea-payload
+                       readonly: #t
+                       in: area
+                       rows: rows
+                       horizontal-align: 'left
+                       vertical-align: 'bottom
+                       font: font
+                       ;; color: color-2 hightlight-color: color-4
+                       ;; background: #f
+                       data: (lambda _ (call-with-output-string (lambda (p) (pp result p))))
+                       results: (lambda (pl ctrl) pl))))))
+                #t))))))
+       in: area
+       border-ratio: 1/4
+       color: color background: background
+       name: "wiki toplevel selection"))))
+
+(define (guidot-fossil-wiki
+         area #!key
+         (font (guide-select-font size: 'medium))
+         (keypad guide-keypad/default)
+         (menu-height 48)
+         (dialog-control #f)
+         (color
+          (let* ((color (guide-select-color-1))
+                 (r (color-red color))
+                 (g (color-green color))
+                 (b (color-blue color))
+                 (a 140))
+            (color-rgba r g b a)))
+         (background #f)
+         (dismiss (lambda _ #t)) ;; experimental
+         ;; replaceable pins
+         (selected (make-pin initial: #f name: "wiki selected page"))
+         ;; that's it
+         (name "Fossil Wiki"))
+  (let* ((selfie (box #f))
+         (dialog-control
+          (or dialog-control
+              (guidot-layers
+               area name: name
+               results:
+               (lambda (payload control) (set-box! selfie payload) control)))))
+    (dialog-control
+     top:
+     ((guidot-make-fossil-wiki-constructur
+       area selected: selected
+       dialog-control: dialog-control
+       color: color background: background
+       font: font menu-height: menu-height
+       name: name)
+      in: area command: "wiki" dismiss: dismiss)
+     notify: (and (not (unbox selfie)) selfie))
+    (unbox selfie)))
 
 (define (guidot-fossil-browser
          area #!key
@@ -150,6 +415,15 @@
   (define label-width 1/4)
   (define help (make-pin #t))
   (define wiki-selected (make-pin initial: #f name: "wiki selected page"))
+  (define frame-color
+    (let* ((color (guide-select-color-3))
+           (r (color-red color))
+           (g (color-green color))
+           (b (color-blue color))
+           (a 140))
+      (color-rgba r g b a)))
+  (define frame-background (guide-background default: in: area))
+  (define-values (result-payload dialog-control!) (guidot-layers area))
   (define (json-commands)
     (define json-commands-ggb (make-ggb))
     (define (def! name refinement)
@@ -157,10 +431,10 @@
       (ggb-insert! json-commands-ggb refinement))
     (define (ddef! name arg)
       (define options (apply vector arg))
-      (define (next #!key (in (NYIE)) (command (NYIE)) (action (NYIE)))
+      (define (next #!key (in (NYIE)) (command (NYIE)) (dismiss (NYIE)))
         (guide-list-select-payload
          in (lambda () options)
-         action: action))
+         action: dismiss))
       (def! name next))
     (def! "anonymousPassword" #f)
     (ddef! "artifact" '("name"))
@@ -183,168 +457,18 @@
     (def! "version" #f)
     (def! "whoami" #f)
     #;(ddef! "wiki" '("create" "diff" "get" "list" "preview" "save" "timeline"))
-    (def!
-      "wiki"
-      (let ((options '#("create" "diff" "get" "list" "preview" "save" "timeline"))
-            (tl-options '#("create" "list" "timeline")))
-        (lambda (#!key (in (NYIE)) (command (NYIE)) (action (NYIE)))
-          (define (wiki-list off)
-            (guidot-frame
-             (let ((options
-                    (let ((json (json-read (fossil-command "json" command "list"))))
-                      (cdr (assq 'payload json)))))
-               (lambda (area)
-                 (guide-list-select-payload
-                  area (lambda () options)
-                  action:
-                  (lambda (n x)
-                    (wiki-selected (vector-ref options n))
-                    (off)
-                    (%%guide-post-speculative (begin (ggb-insert! dialog (with-page)) #t))))))
-             in: area
-             border-ratio: 1/4
-             name: "wiki list"))
-          (define (get-wiki-page)
-            (let* ((json (json-read (fossil-command "json" command "get" (wiki-selected))))
-                   (json-pl (cdr (assq 'payload json))))
-              (cdr (assq 'content json-pl))))
-          (define (with-page)
-            (define page-content
-              (make-pin
-               initial: (get-wiki-page)
-               filter: (lambda (o n) (if (equal? o n) o n))
-               name: "wiki page content"))
-            (define this
-              (guidot-frame
-               (let ((options '#("get" "preview" "save"))
-                     (rows 50))
-                 (lambda (area)
-                   (let ((edit-control! #f))
-                     (guide-textarea-edit
-                      in: area
-                      menu:
-                      (guidot-texteditor-menu
-                       (lambda () edit-control!)
-                       in: area
-                       font: font
-                       save-callback: (lambda _ (page-content (edit-control! 'string)))
-                       reload-callback:
-                       (lambda _
-                         (page-content (get-wiki-page))
-                         (%%guide-post-speculative
-                          (begin
-                            (edit-control! text: #f)
-                            (edit-control! insert: (page-content))
-                            #t)))
-                       close-callback:
-                       (lambda _
-                         (ggb-delete-first-match! dialog (lambda (x) (eq? x this)))
-                         #t)
-                       name: "wiki editor menu")
-                      keypad: keypad
-                      data: page-content
-                      horizontal-align: 'left
-                      label-properties:
-                      `((color: ,(guide-select-color-4))
-                        (horizontal-align: right))
-                      ;; is default: on-key: %%guide-textarea-keyfilter
-                      rows: rows
-                      results:
-                      (lambda (payload ctrl)
-                        (set! edit-control! ctrl)
-                        payload)))))
-               in: area
-               border-ratio: 1/8
-               name: "wiki list"))
-            (wire!
-             page-content post:
-             (lambda ()
-               (let ((content (page-content))
-                     (name (wiki-selected)))
-                 (when (and name content)
-                   (let ((port (fossil-command/json)))
-                     (json-write
-                      `((command . "wiki/save")
-                        (payload
-                         (name . ,name)
-                         (content . ,content)
-                         (contentFormat . "raw")))
-                      port)
-                     (close-output-port port)
-                     ;; ignoring the response here
-                     (json-read port))))))
-            this)
-          (guidot-frame
-           (lambda (area)
-             (guide-list-select-payload
-              area (lambda () tl-options)
-              action:
-              (lambda (n x)
-                (let ((ssc (vector-ref tl-options n)))
-                  (cond
-                   ((equal? ssc "list")
-                    (action)
-                    (letrec ((edit (wiki-list
-                                    (lambda _
-                                      (ggb-delete-first-match! dialog (lambda (x) (eq? x edit)))))))
-                      (ggb-insert! dialog edit)
-                      #t))
-                   ((equal? ssc "create")
-                    (action)
-                    (letrec
-                        ((edit
-                          (let ((label "New Wiki Page"))
-                            (guide-value-edit-dialog
-                             name: label
-                             in: area label: label
-                             keypad: guide-keypad/default
-                             on-key: %%guide-textarea-keyfilter
-                             validate:
-                             (macro-guidot-check-ggb/string-pred
-                              (lambda (str) ;; TBD: correct check
-                                (cond
-                                 ((equal? str "")) ;; abort
-                                 (else (> (string-length str) 3)))))
-                             data:
-                             (case-lambda
-                              (() "")
-                              ((val)
-                               (ggb-delete-first-match! dialog (lambda (x) (eq? x edit))) ;; ???
-                               (cond
-                                ((equal? val "")) ;; abort
-                                (else
-                                 (let ((port (fossil-command/json)))
-                                   (json-write
-                                    `((command . "wiki/create")
-                                      (payload
-                                       (name . ,val)
-                                       (content . "")
-                                       (contentFormat . "raw")))
-                                    port)
-                                   (close-output-port port)
-                                   ;; ignoring the response here
-                                   (debug 'create-wiki-response (json-read port)))))))))))
-                      (ggb-insert! dialog edit)
-                      #t))
-                   (else
-                    (%%guide-post-speculative/async
-                     (begin
-                       (action)
-                       (output-control! text: #f)
-                       (let ((result
-                              (cond
-                               (else (fossil-command "json" command ssc)))))
-                         (output-control! insert: result))))))))))
-             in: area
-             border-ratio: 1/4
-             name: "wiki toplovel selection"))))
+    (def! "wiki"
+      (guidot-make-fossil-wiki-constructur
+       area selected: wiki-selected
+       dialog-control: dialog-control!
+       color: frame-color background: frame-background
+       font: font menu-height: menu-height))
     (ggb->vector json-commands-ggb))
   (define json-commands-mdv
     (let ((vec (json-commands)))
       (make-mdvector
        (range (vector 2 (/ (vector-length vec) 2)))
        vec)))
-  (define dialog (make-ggb size: 2))
   (define menu
     (make-guide-table
      (make-mdvector
@@ -446,10 +570,9 @@
                       (rest
                        in: area
                        command: (mdvector-ref json-commands-mdv n 0)
-                       action:
-                       (lambda _
-                         (ggb-delete-first-match! dialog (lambda (x) (eq? x tbd)))))))
-                  (ggb-insert! dialog tbd)
+                       dismiss:
+                       (lambda _ (dialog-control! close: tbd)))))
+                  (dialog-control! top: tbd)
                   #t)))
              (else
               (%%guide-post-speculative/async
@@ -477,5 +600,5 @@
   (define vbuf (make-ggb size: 2))
   (ggb-insert! vbuf menu)
   (ggb-insert! vbuf work-view)
-  (ggb-insert! dialog (guide-ggb-layout area vbuf direction: 'topdown fixed: #t))
-  (guide-ggb-layout area dialog direction: 'layer fixed: #t name: name))
+  (dialog-control! top: (guide-ggb-layout area vbuf direction: 'topdown fixed: #t))
+  result-payload)

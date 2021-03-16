@@ -10,7 +10,7 @@
                  (b (color-blue color))
                  (a 140))
             (color-rgba r g b a)))
-         (background (guide-background 'default))
+         (background (guide-background default: in: in))
          (name 'guidot-frame))
   (define-values (xsw xno ysw yno) (guide-boundingbox->quadrupel in))
   (let ((view! (make-guide-figure-view))

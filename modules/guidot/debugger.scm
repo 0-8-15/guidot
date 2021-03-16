@@ -100,7 +100,15 @@
         (let ((active #f))
           (case-lambda
            (() active)
-           ((next) (set! active next)))))
+           ((key . more)
+            (case key
+              #;((top:)
+               (cond
+                ((stm-atomic?) (apply push! more))
+                (else (guide-critical-add! (lambda () (apply push! more))))))
+              ((next:)
+               (apply (lambda (next) (set! active next)) more))
+              (else (error "invalid key" name key more)))))))
        (redraw! (lambda ()
                   (let ((active (active)))
                     (and (guide-payload? active) ((guide-payload-on-redraw active))))))
@@ -118,7 +126,7 @@
         (guide-button
          in: (make-x0y0x1y1-interval/coerce xsw ysw (+ xsw (* w 19/20)) (+ ysw (/ h 2)))
          label: "(C)... fallback version"
-         guide-callback: (lambda (rect payload event xsw ysw) (active #f) #t)))
+         guide-callback: (lambda (rect payload event xsw ysw) (active next: #f) #t)))
         (else
          (guide-ggb-layout
           interval
@@ -137,7 +145,7 @@
           direction: direction
           ))))
     ;; finally
-    (active result) ;; ...don't touch the "(C)"... line
+    (active next: result) ;; ...don't touch the "(C)"... line
     (make-guide-payload
      name: name in: interval
      on-redraw: redraw!
@@ -164,7 +172,7 @@
        (guide-button
         in: area
         label: "(C) JFW [Corona edition: 2020-2021]"
-        guide-callback: (lambda (rect payload event xsw ysw) (active #f) #t)))
+        guide-callback: (lambda (rect payload event xsw ysw) (active next: #f) #t)))
      (lambda (area buffer active)
        (guide-valuelabel in: area label: "Version" value: (system-appversion)))
      (lambda (area buffer active)

@@ -1901,7 +1901,11 @@
      post: (lambda () (when (receiver) (receiver #f)) #f))
     receiver))
 
-(define guide-critical-add!
+(define guide-critical-add! ;; FIXME
+  ;;
+  ;; FIXME: This is better moved into `likely` - we MUST clear the
+  ;; list within the critical section, NOT in some transaction at
+  ;; WHATEVER later time.
   (let ()
     (define critical-calls
       ;; Guide *Global* Critical Section (GGCS)
@@ -1934,10 +1938,7 @@
     (lambda (obj)
       (assume (or (procedure? obj) (promise? obj))
               "invalid" guide-critical-add! obj)
-      (let ((now (critical-calls)))
-        (cond
-         ((memq obj now))
-         (else (critical-calls (cons obj now))))))))
+      (critical-calls (cons obj (critical-calls))))))
 
 (define (make-chat
          #!key
