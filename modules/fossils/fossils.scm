@@ -44,6 +44,21 @@
   (let ((dir (fossils-directory)))
     (and dir (make-pathname dir project "fossil"))))
 
+(define (fossil-command . args)
+  (open-process
+   `(path:
+     "fossil"
+     arguments: ,(append args (list "-R" (fossils-project-filename (current-fossil))))
+     stdin-redirection: #t stdout-redirection: #t stderr-redirection: #t show-console: #f)))
+
+(define (fossil-command/json)
+  (open-process
+   `(path:
+     "fossil"
+     arguments: ("json" "-json-input" "-"
+                 "-R" ,(fossils-project-filename (current-fossil)))
+     stdin-redirection: #t stdout-redirection: #t stderr-redirection: #f show-console: #f)))
+
 (wire!
  (list fossils-directory beaver-local-unit-id)
  sequence:
