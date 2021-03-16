@@ -807,7 +807,7 @@
 (define (guide-background
          key
          #!key
-         (in (current-guide-gui-interval)))
+         (in (NYIE "in: key missing" guide-background))) ;; (current-guide-gui-interval)
   (case key
     ((button:)
      (make-glC:image
