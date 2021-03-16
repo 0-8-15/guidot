@@ -323,7 +323,10 @@
    ((and line-height font)) ;; yield to use case
    (line-height (set! font (guide-select-font height: line-height)))
    (font (set! line-height (guide-font-height font)))
-   (else (error "at least one key out of (line-height font) is reguired" guide-textarea-payload)))
+   (else
+    (MATURITY -1 "at least one key out of (line-height font) is reguired" loc: guide-textarea-payload name)
+    (set! font (guide-select-font size: 'medium))
+    (set! line-height (guide-font-height font))))
   ;;
   (let ((fh (guide-font-height font)))
     (set! rows (min rows (floor (/ (mdv-rect-interval-height in) fh)))))
