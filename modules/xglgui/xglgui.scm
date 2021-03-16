@@ -289,8 +289,8 @@
          (in (current-guide-gui-interval))
          (horizontal-align 'center)
          (vertical-align 'center)
-         (line-height 16)
-         (font (guide-select-font height: line-height))
+         (line-height #f)
+         (font #f)
          (rows 3)
          (cols #f)
          (wrap #t)
@@ -318,6 +318,13 @@
            (or (eqv? point 0)
                (not (char-alphabetic? (integer->char (ggb-ref ggb (- point 1))))))))
       (if dir (ggb-goto-right! ggb) (ggb-goto-left! ggb))))
+  ;; complete missing defaults
+  (cond
+   ((and line-height font)) ;; yield to use case
+   (line-height (set! font (guide-select-font height: line-height)))
+   (font (set! line-height (guide-font-height font)))
+   (else (error "at least one key out of (line-height font) is reguired" guide-textarea-payload)))
+  ;;
   (let ((fh (guide-font-height font)))
     (set! rows (min rows (floor (/ (mdv-rect-interval-height in) fh)))))
   (let*
