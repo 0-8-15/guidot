@@ -1891,6 +1891,7 @@
          (check-not-observable-speculative! %%guide-critical-call)
          (check-observable-sequential! %%guide-critical-call))
         (else))
+       (MATURITY -1 "obsolete, use `guide-critical-add!`instead" loc: %%guide-critical-call)
        (cond
         ((not new))
         ((procedure? new) (new))
@@ -1899,6 +1900,44 @@
        #f)
      post: (lambda () (when (receiver) (receiver #f)) #f))
     receiver))
+
+(define guide-critical-add!
+  (let ()
+    (define critical-calls
+      ;; Guide *Global* Critical Section (GGCS)
+      ;;
+      ;; suspended computation (currently thunk or promise)
+      (let ((receiver
+             (make-pin
+              initial: '()
+              name: "GGCS (critical sections): a list of suspended computation")))
+        (wire!
+         receiver
+         extern: receiver
+         critical:
+         (lambda (new)
+           (cond-expand
+            (debug
+             (check-not-observable-speculative! %%guide-critical-call)
+             (check-observable-sequential! %%guide-critical-call))
+            (else))
+           (for-each
+            (lambda (new)
+              (cond
+               ((procedure? new) (new))
+               (else (force new))))
+            (reverse! new))
+           #f)
+         ;; FIXME: post is actually a little too late to clean up
+         post: (lambda () (when (pair? (receiver)) (receiver '())) #f))
+        receiver))
+    (lambda (obj)
+      (assume (or (procedure? obj) (promise? obj))
+              "invalid" guide-critical-add! obj)
+      (let ((now (critical-calls)))
+        (cond
+         ((memq obj now))
+         (else (critical-calls (cons obj now))))))))
 
 (define (make-chat
          #!key
