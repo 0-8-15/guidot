@@ -2033,7 +2033,7 @@
              data: (lambda _ linebroken)
              results: (lambda (pl ctrl) pl)))))
       (let* ((msg-area (guide-payload-measures resized-payload))
-             (msg-bg (guide-background 'default))
+             (msg-bg (guide-background 'default in: msg-area))
              (datentime
               (and
                timestamp
