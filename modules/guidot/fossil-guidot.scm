@@ -72,6 +72,9 @@
 (define (guidot-fossil-menu
          area #!key
          (size 'small)
+         (interactive
+          (lambda (constructor #!key in)
+            #f))
          ;; pins
          (mode (make-pin initial: 'all pred: symbol? name: "Fossil Access Mode"))
          ;; finally
@@ -91,7 +94,10 @@
         (lambda (rect payload event xsw ysw)
           (cond
            ((eqv? event EVENT_BUTTON1DOWN)
-            (NYI)))
+            (interactive
+             (guide-rectangle-measures rect)
+             (lambda (area close)
+               (guide-button in: area guide-callback: (lambda _ (close)))))))
           #t)))
      (lambda (area row col)
        (guide-valuelabel
@@ -499,7 +505,11 @@
     (dialog-control
      top:
      (guidot-fossil-menu
-      (make-mdv-rect-interval xsw (- yno menu-height) xno yno)))
+      (make-mdv-rect-interval xsw (- yno menu-height) xno yno)
+      interactive:
+      (lambda (area constructor)
+        (letrec ((this (constructor area (lambda _ (dialog-control close: this)))))
+          (dialog-control top: this)))))
     (unbox selfie)))
 
 (define (guidot-fossil-browser
