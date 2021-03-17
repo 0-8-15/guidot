@@ -814,7 +814,14 @@
       (mdv-rect-interval-width in)
       (mdv-rect-interval-height in)
       0 0. 1. .7734375 .375))
-    ((default: default) %%guide-default-background)
+    ((default: default)
+     (cond
+      ((not in) %%guide-default-background)
+      (else
+       (make-glC:image
+        (mdv-rect-interval-width in)
+        (mdv-rect-interval-height in)
+        (glC:image-t %%guide-default-background) 0. 0. 1. 1.))))
     (else (error "invalid argument" guide-background key))))
 
 (define-macro (macro-guide-default-background) `((lambda () %%guide-default-background)))
