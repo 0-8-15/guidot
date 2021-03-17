@@ -246,7 +246,12 @@
                       (let ((update
                              (lambda ()
                                (let ((content (get-wiki-page)))
-                                 (lambda () (page-content content))))))
+                                 (lambda ()
+                                   (page-content content)
+                                   (guide-critical-add!
+                                    (lambda ()
+                                      (edit-control! text: #f)
+                                      (edit-control! insert: content))))))))
                         (kick! (box update)))
                       #t)))
                  close-callback:
