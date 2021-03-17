@@ -32,6 +32,46 @@
      on-redraw: (view!) on-any-event: (guide-payload-on-any-event table)
      lifespan: 'ephemeral widget: #f)))
 
+(define (guidot-layers
+         area #!key
+         (dialog (make-ggb size: 2))
+         (results values)
+         (name "Guidot Layers"))
+  ;; Note: as long as we have a plain ggb as INPUT, there is no way to
+  ;; properly lock (using mutices at least).
+  (define (push! payload #!key (notify #f))
+    (assume (guide-payload? payload) "invalid" name payload)
+    (check-not-observable-speculative! name key more)
+    (ggb-goto! dialog (ggb-length dialog))
+    (ggb-insert! dialog payload)
+    (cond
+     ((box? notify) (set-box! notify payload) payload))
+    payload)
+  (define (close! obj)
+    (check-not-observable-speculative! name key more)
+    (cond
+     ((guide-payload? obj)
+      (ggb-delete-first-match! dialog (lambda (x) (eq? x obj)))
+      #t)
+     ((and (box? obj) (guide-payload? (unbox obj)))
+      (let ((payload (unbox obj)))
+        (ggb-delete-first-match! dialog (lambda (x) (eq? x payload))))
+      #t)
+     (else (error "invalid payload" name key more))))
+  (results
+   (guide-ggb-layout area dialog direction: 'layer fixed: #t name: name)
+   (lambda (key . more)
+     (case key
+       ((top:)
+        (cond
+         ((stm-atomic?) (apply push! more))
+         (else (guide-critical-add! (lambda () (apply push! more))))))
+       ((close:)
+        (cond
+         ((stm-atomic?) (apply close! more))
+         (else (guide-critical-add! (lambda () (apply close! more))))))
+       (else (error "invalid key" name key more))))))
+
 (define (guidot-texteditor-menu
          edit-control
          #!key

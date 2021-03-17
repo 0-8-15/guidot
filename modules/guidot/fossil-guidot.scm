@@ -2,6 +2,29 @@
 
 ;;** Utilities
 
+;;*** Status and Control
+
+(define current-fossil
+  (make-pin
+   initial: #f
+   pred: (lambda (v) (or (not v) (string? v)))
+   name: "projects directory"))
+
+(define (fossil-command . args)
+  (open-process
+   `(path:
+     "fossil"
+     arguments: ,(append args (list "-R" (fossils-project-filename (current-fossil))))
+     stdin-redirection: #t stdout-redirection: #t stderr-redirection: #t show-console: #f)))
+
+(define (fossil-command/json)
+  (open-process
+   `(path:
+     "fossil"
+     arguments: ("json" "-json-input" "-"
+                 "-R" ,(fossils-project-filename (current-fossil)))
+     stdin-redirection: #t stdout-redirection: #t stderr-redirection: #f show-console: #f)))
+
 ;;*** Internal Utilities
 (define (fossil-help-basic-parse-output-to-commands port)
   ;; crude, stupid, simple, just get it done
@@ -44,45 +67,69 @@
 
 ;;** GUI
 
-(define (guidot-layers
+;;*** Status & Menu
+
+(define (guidot-fossil-menu
          area #!key
-         (dialog (make-ggb size: 2))
-         (results values)
-         (name "Guidot Layers"))
-  ;; Note: as long as we have a plain ggb as INPUT, there is no way to
-  ;; properly lock (using mutices at least).
-  (define (push! payload #!key (notify #f))
-    (assume (guide-payload? payload) "invalid" name payload)
-    (check-not-observable-speculative! name key more)
-    (ggb-goto! dialog (ggb-length dialog))
-    (ggb-insert! dialog payload)
-    (cond
-     ((box? notify) (set-box! notify payload) payload))
-    payload)
-  (define (close! obj)
-    (check-not-observable-speculative! name key more)
-    (cond
-     ((guide-payload? obj)
-      (ggb-delete-first-match! dialog (lambda (x) (eq? x obj)))
-      #t)
-     ((and (box? obj) (guide-payload? (unbox obj)))
-      (let ((payload (unbox obj)))
-        (ggb-delete-first-match! dialog (lambda (x) (eq? x payload))))
-      #t)
-     (else (error "invalid payload" name key more))))
-  (results
-   (guide-ggb-layout area dialog direction: 'layer fixed: #t name: name)
-   (lambda (key . more)
-     (case key
-       ((top:)
-        (cond
-         ((stm-atomic?) (apply push! more))
-         (else (guide-critical-add! (lambda () (apply push! more))))))
-       ((close:)
-        (cond
-         ((stm-atomic?) (apply close! more))
-         (else (guide-critical-add! (lambda () (apply close! more))))))
-       (else (error "invalid key" name key more))))))
+         (size 'small)
+         ;; pins
+         (help (NYI "help pin required"))
+         ;; finally
+         (name "Fossil Status Menu"))
+  (define label-width 1/4)
+  (make-guide-table
+   (make-mdvector
+    (range '#(2 2))
+    (vector
+     (lambda (area row col)
+       (guide-valuelabel
+        in: area size: size label: "directory"
+        label-width: label-width
+        value: fossils-directory
+        value-display: (lambda (x) (if x x "n/a"))
+        input:
+        (lambda (rect payload event xsw ysw)
+          (cond
+           ((eqv? event EVENT_BUTTON1DOWN)
+            (NYI)))
+          #t)))
+     (lambda (area row col)
+       (guide-valuelabel
+        in: area size: size label: "project"
+        label-width: label-width
+        value: current-fossil
+        value-display: (lambda (x) (if x x "n/a"))
+        input:
+        (lambda (rect payload event xsw ysw)
+          (cond
+           ((eqv? event EVENT_BUTTON1DOWN)
+            (NYI)))
+          #t)))
+     (lambda (area row col)
+       (guide-valuelabel
+        in: area size: size label: "help"
+        label-width: label-width
+        value: help
+        value-display: (lambda (x) (if x "X" "-"))
+        input:
+        (lambda (rect payload event xsw ysw)
+          (cond
+           ((eqv? event EVENT_BUTTON1DOWN)
+            (help (not (help)))))
+          #t)))
+     (lambda (area row col)
+       (guide-valuelabel
+        in: area size: size label: ""
+        label-width: label-width
+        value: (lambda _ #f)
+        value-display: (lambda (x) (if x "" ""))
+        input:
+        (lambda (rect payload event xsw ysw)
+          (cond
+           ((eqv? event EVENT_BUTTON1DOWN)
+            (NYI)))
+          #t)))))
+   in: area))
 
 ;;*** Help
 
@@ -350,10 +397,13 @@
                 (guide-critical-add!
                  (lambda ()
                    (dismiss)
-                   (let ((result (json-read (fossil-command "json" command ssc)))
-                         (rows 50))
-                     (dialog-control
-                      top:
+                   (let* ((result (json-read (fossil-command "json" command ssc)))
+                          (rows 50)
+                          (buffer (make-ggb size: 2))
+                          (all (box #f)))
+                     (define-values (xsw xno ysw yno) (guide-boundingbox->quadrupel area))
+                     (ggb-insert!
+                      buffer
                       (guide-textarea-payload
                        readonly: #t
                        in: area
@@ -363,8 +413,42 @@
                        font: font
                        ;; color: color-2 hightlight-color: color-4
                        ;; background: #f
-                       data: (lambda _ (call-with-output-string (lambda (p) (pp result p))))
-                       results: (lambda (pl ctrl) pl))))))
+                       data:
+                       (lambda _
+                         (call-with-output-string
+                          (lambda (p)
+                            (let* ((results (cdr (assq 'timeline (cdr (assq 'payload result)))))
+                                   (limit (vector-length results)))
+                              (do ((i 0 (+ i 1)))
+                                  ((eqv? i limit))
+                                (let* ((result (vector-ref results i))
+                                       (timestamp (cdr (assq 'timestamp result)))
+                                       (comment (cdr (assq 'comment result))))
+                                  (display
+                                   (date->string
+                                    (time-utc->date (make-srfi19:time 'time-utc 0 timestamp)))
+                                   p)
+                                  (newline p)
+                                  (display comment p)
+                                  (newline p)))))))
+                       results: (lambda (pl ctrl) pl)))
+                     (ggb-insert!
+                      buffer
+                      (let ((size 20))
+                        (guide-button
+                         name: 'close
+                         in: (make-x0y0x1y1-interval/coerce (- xno size) (- yno size) xno yno)
+                         label: "x"
+                         guide-callback: (lambda _ (dialog-control close: all)))))
+                     (dialog-control
+                      top:
+                      (guide-ggb-layout
+                       area
+                       buffer direction: 'layer
+                       background: (guide-background default: in: area) background-color: color
+                       fixed: #f)
+                      notify: all)))
+                 async: #t)
                 #t))))))
        in: area
        border-ratio: 1/4
@@ -390,6 +474,7 @@
          (selected (make-pin initial: #f name: "wiki selected page"))
          ;; that's it
          (name "Fossil Wiki"))
+  (define-values (xsw xno ysw yno) (guide-boundingbox->quadrupel area))
   (let* ((selfie (box #f))
          (dialog-control
           (or dialog-control
@@ -405,8 +490,14 @@
        color: color background: background
        font: font menu-height: menu-height
        name: name)
-      in: area command: "wiki" dismiss: dismiss)
+      in: (make-mdv-rect-interval xsw ysw xno (- yno menu-height))
+      command: "wiki" dismiss: dismiss)
      notify: (and (not (unbox selfie)) selfie))
+    (dialog-control
+     top:
+     (guidot-fossil-menu
+      (make-mdv-rect-interval xsw (- yno menu-height) xno yno)
+      help: (make-pin #f)))
     (unbox selfie)))
 
 (define (guidot-fossil-browser
@@ -475,60 +566,10 @@
        (range (vector 2 (/ (vector-length vec) 2)))
        vec)))
   (define menu
-    (make-guide-table
-     (make-mdvector
-      (range '#(2 2))
-      (let ((size 'small))
-        (vector
-         (lambda (area row col)
-           (guide-valuelabel
-            in: area size: size label: "directory"
-            label-width: label-width
-            value: fossils-directory
-            value-display: (lambda (x) (if x x "n/a"))
-            input:
-            (lambda (rect payload event xsw ysw)
-              (cond
-               ((eqv? event EVENT_BUTTON1DOWN)
-                (NYI)))
-              #t)))
-         (lambda (area row col)
-           (guide-valuelabel
-            in: area size: size label: "project"
-            label-width: label-width
-            value: current-fossil
-            value-display: (lambda (x) (if x x "n/a"))
-            input:
-            (lambda (rect payload event xsw ysw)
-              (cond
-               ((eqv? event EVENT_BUTTON1DOWN)
-                (NYI)))
-              #t)))
-         (lambda (area row col)
-           (guide-valuelabel
-            in: area size: size label: "help"
-            label-width: label-width
-            value: help
-            value-display: (lambda (x) (if x "X" "-"))
-            input:
-            (lambda (rect payload event xsw ysw)
-              (cond
-               ((eqv? event EVENT_BUTTON1DOWN)
-                (help (not (help)))))
-              #t)))
-         (lambda (area row col)
-           (guide-valuelabel
-            in: area size: size label: ""
-            label-width: label-width
-            value: (lambda _ #f)
-            value-display: (lambda (x) (if x "" ""))
-            input:
-            (lambda (rect payload event xsw ysw)
-              (cond
-               ((eqv? event EVENT_BUTTON1DOWN)
-                (NYI)))
-              #t))))))
-     in: (make-mdv-rect-interval xsw 0 xno menu-height)))
+    (guidot-fossil-menu
+     (make-mdv-rect-interval xsw 0 xno menu-height)
+     ;; (make-mdv-rect-interval xsw (- yno menu-height) xno yno)
+     help: help))
   (define output-control!)
   (define work-view
     (make-guide-table
