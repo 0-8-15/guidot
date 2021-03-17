@@ -1945,10 +1945,20 @@
          ;; FIXME: post is actually a little too late to clean up
          post: (lambda () (when (pair? (receiver)) (receiver '())) #f))
         receiver))
-    (lambda (obj)
+    (lambda (obj #!key (async #f))
       (assume (or (procedure? obj) (promise? obj))
               "invalid" guide-critical-add! obj)
-      (critical-calls (cons obj (critical-calls))))))
+      (cond
+       (async
+        (let ((wrapped
+               (lambda ()
+                 (thread-start!
+                  (make-thread
+                   (cond
+                    ((procedure? obj) obj)
+                    (else (lambda () (force obj)))))))))
+          (critical-calls (cons wrapped (critical-calls)))))
+       (else (critical-calls (cons obj (critical-calls))))))))
 
 (define (make-chat
          #!key
