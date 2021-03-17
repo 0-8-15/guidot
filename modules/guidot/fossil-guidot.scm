@@ -73,7 +73,7 @@
          area #!key
          (size 'small)
          ;; pins
-         (help (NYI "help pin required"))
+         (mode (make-pin initial: 'all pred: symbol? name: "Fossil Access Mode"))
          ;; finally
          (name "Fossil Status Menu"))
   (define label-width 1/4)
@@ -107,15 +107,18 @@
           #t)))
      (lambda (area row col)
        (guide-valuelabel
-        in: area size: size label: "help"
+        in: area size: size label: "mode"
         label-width: label-width
-        value: help
-        value-display: (lambda (x) (if x "X" "-"))
+        value: mode
+        value-display: (lambda (x) (case x ((all) "all") ((checkout) "checkout") (else "BROKEN")))
         input:
         (lambda (rect payload event xsw ysw)
           (cond
            ((eqv? event EVENT_BUTTON1DOWN)
-            (help (not (help)))))
+            (case (mode)
+              ((all) (mode 'checkout))
+              ((checkout) (mode 'all))
+              (else (mode #f)))))
           #t)))
      (lambda (area row col)
        (guide-valuelabel
@@ -496,8 +499,7 @@
     (dialog-control
      top:
      (guidot-fossil-menu
-      (make-mdv-rect-interval xsw (- yno menu-height) xno yno)
-      help: (make-pin #f)))
+      (make-mdv-rect-interval xsw (- yno menu-height) xno yno)))
     (unbox selfie)))
 
 (define (guidot-fossil-browser
@@ -509,7 +511,7 @@
   (define-values (xsw xno ysw yno) (guide-boundingbox->quadrupel area))
   (define total-height (mdv-rect-interval-height area))
   (define label-width 1/4)
-  (define help (make-pin #t))
+  (define-pin mode initial: 'all pred: symbol? name: "Fossil Access Mode")
   (define wiki-selected (make-pin initial: #f name: "wiki selected page"))
   (define frame-color
     (let* ((color (guide-select-color-3))
@@ -569,7 +571,7 @@
     (guidot-fossil-menu
      (make-mdv-rect-interval xsw 0 xno menu-height)
      ;; (make-mdv-rect-interval xsw (- yno menu-height) xno yno)
-     help: help))
+     mode: mode))
   (define output-control!)
   (define work-view
     (make-guide-table
@@ -594,7 +596,6 @@
                  (output-control! text: #f)
                  (let ((result
                         (cond
-                         ((help) (fossil-command "help" (vector-ref basic-options n)))
                          (else (fossil-command (vector-ref basic-options n))))))
                    (output-control! insert: result))))))))
        (lambda (area row col)
