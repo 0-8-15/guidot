@@ -171,7 +171,24 @@
           (cond
            ((eqv? event EVENT_BUTTON1DOWN)
             (case (mode)
-              ((all) (mode 'checkout))
+              ((all)
+               (mode 'checkout) ;; pretent it works aready
+               (interactive
+                ;; (lambda (#!key in done) (guide-button in: in guide-callback: done))
+                (lambda (#!key in done)
+                  (guide-critical-add!
+                   (lambda ()
+                     (thread-sleep! 5)
+                     (done)
+                     (kick (mode 'all)))
+                   async: #t)
+                  (guide-button
+                   in: in label: "NYI"
+                   guide-callback:
+                   (lambda _
+                     (mode 'all)
+                     (%%guide-post-speculative (done)))))
+                in: (guide-rectangle-measures rect)))
               ((checkout) (mode 'all))
               (else (mode #f)))))
           #t)))
@@ -630,6 +647,10 @@
     (guidot-fossil-menu
      (make-mdv-rect-interval xsw 0 xno menu-height)
      ;; (make-mdv-rect-interval xsw (- yno menu-height) xno yno)
+     interactive:
+     (lambda (constructor #!key (in area))
+       (letrec ((this (constructor in: in done: (lambda _ (dialog-control! close: this)))))
+         (dialog-control! top: this)))
      mode: mode))
   (define output-control!)
   (define work-view
