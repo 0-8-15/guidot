@@ -97,14 +97,17 @@
 (define (guidot-fossil-menu
          area #!key
          (size 'small)
-         (interactive
-          (lambda (constructor #!key in)
-            #f))
+         (interactive (lambda (constructor #!key in done) #f))
          ;; pins
          (mode (make-pin initial: 'all pred: symbol? name: "Fossil Access Mode"))
          ;; finally
          (name "Fossil Status Menu"))
   (define label-width 1/4)
+  (define (top-area rect)
+    (receive (xsw xno ysw yno)
+        ;; FIXME inconsistent argument/result ordering!
+        (guide-boundingbox->quadrupel (guide-rectangle-measures rect))
+      (make-mdv-rect-interval xsw ysw xno (- yno 84))))
   (make-guide-table
    (make-mdvector
     (range '#(2 2))
@@ -120,9 +123,23 @@
           (cond
            ((eqv? event EVENT_BUTTON1DOWN)
             (interactive
-             (guide-rectangle-measures rect)
-             (lambda (area close)
-               (guide-button in: area guide-callback: (lambda _ (close)))))))
+             ;; (lambda (#!key in done) (guide-button in: in guide-callback: done))
+             (lambda (#!key in done)
+               (guide-path-select
+                in: (top-area rect)
+                directory: fossils-directory
+                selected:
+                (case-lambda
+                 (() (fossils-directory))
+                 ((x)
+                  (when (equal? x "..")
+                    (set! x (path-directory (fossils-directory))))
+                  (when (and (file-exists? x)
+                             (eq? (file-type x) 'directory))
+                    (fossils-directory x))))
+                ignore-hidden: #f
+                done: done))
+             in: (guide-rectangle-measures rect))))
           #t)))
      (lambda (area row col)
        (guide-valuelabel
@@ -134,7 +151,14 @@
         (lambda (rect payload event xsw ysw)
           (cond
            ((eqv? event EVENT_BUTTON1DOWN)
-            (NYI)))
+            (interactive
+             (lambda (#!key in done)
+               (guide-path-select
+                in: (top-area rect)
+                directory: fossils-directory
+                selected: current-fossil
+                done: done))
+             in: (guide-rectangle-measures rect))))
           #t)))
      (lambda (area row col)
        (guide-valuelabel
@@ -532,8 +556,8 @@
      (guidot-fossil-menu
       (make-mdv-rect-interval xsw (- yno menu-height) xno yno)
       interactive:
-      (lambda (area constructor)
-        (letrec ((this (constructor area (lambda _ (dialog-control close: this)))))
+      (lambda (constructor #!key (in area))
+        (letrec ((this (constructor in: in done: (lambda _ (dialog-control close: this)))))
           (dialog-control top: this)))))
     (unbox selfie)))
 
