@@ -2,6 +2,24 @@
 
 (define-macro (bind-exit x) `(call-with-current-continuation ,x))
 
+(define-macro (define-values names . body)
+  (let ((arg1 (gensym 'arg1))
+        (rest (gensym 'rest)))
+    `(begin
+       ,@(map (lambda (name) `(define ,name #f)) (cdr names))
+       (define ,(car names)
+         (call-with-values
+             (lambda () unquote body)
+           (lambda (,arg1 . ,rest)
+             (begin
+               ,@(map (lambda (name)
+                        `(set! ,name
+                               (let ((,name (car ,rest)))
+                                 (set! ,rest (cdr ,rest))
+                                 ,name)))
+                      (cdr names))
+               ,arg1)))))))
+
 ;;;* glcore
 
 ;;;** Strings
@@ -1959,6 +1977,62 @@
                     (else (lambda () (force obj)))))))))
           (critical-calls (cons wrapped (critical-calls)))))
        (else (critical-calls (cons obj (critical-calls))))))))
+
+(define (guide-path-select
+         #!key
+         (in (current-guide-gui-interval))
+         (done (lambda _ #f))
+         (menu #f)
+         (label #f) (label-string (lambda (value) (if (string? value) value (object->string value))))
+         label-properties
+         (size 'small)
+         (font (guide-select-font size: 'medium))
+         (keypad guide-keypad/default)
+         (on-key %%guide-textarea-keyfilter)
+         (directory (let ((state ".")) (case-lambda (() state) ((val) (set! state val)))))
+         (selected (let ((state #f)) (case-lambda (() state) ((val) (set! state val)))))
+         (filter-pred (lambda (x) #t))
+         (ignore-hidden #t)
+         (results values)
+         (background (guide-background default: in: in))
+         (background-color
+          (let* ((color (guide-select-color-1))
+                 (r (color-red color))
+                 (g (color-green color))
+                 (b (color-blue color))
+                 (a 210))
+            (color-rgba r g b a)))
+         (color (guide-select-color-2))
+         (hightlight-color (guide-select-color-4))
+         (name 'guide-path-select))
+  (define-values (xsw xno ysw yno) (guide-boundingbox->quadrupel in))
+  (define line-height (guide-font-height font))
+  (define button-size line-height)
+  (define listing
+    (let* ((port (open-directory (list path: (directory) ignore-hidden: ignore-hidden)))
+           (files (list->vector (filter filter-pred (read-all port)))))
+      (guide-list-select-payload
+       (let ((selection-height ;; not correct yet
+              (* (+ (vector-length files) 1) line-height)))
+         (make-mdv-rect-interval xsw 0 xno selection-height))
+       (lambda () files)
+       action:
+       (lambda (n x)
+         (selected (vector-ref files n))
+         (%%guide-post-speculative (done))))))
+  (define close-button
+    (guide-button
+     name: 'close
+     in: (make-mdv-rect-interval (- xno button-size) 0 xno button-size)
+     label: "x" background-color: background-color color: color
+     guide-callback: done))
+  (let ((buffer (make-ggb size: 2)))
+    (ggb-insert! buffer close-button)
+    (ggb-insert! buffer listing)
+    (guide-ggb-layout
+     in buffer name: name direction: 'topdown
+     background: background background-color: background-color
+     fixed: #t)))
 
 (define (make-chat
          #!key
