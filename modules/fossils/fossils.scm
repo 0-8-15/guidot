@@ -24,7 +24,7 @@
   (make-pin
    initial: #f
    pred: (lambda (v) (or (not v) (string? v)))
-   filter: (lambda (old new) (if old old new)) ;; once only
+;;   filter: (lambda (old new) (if old old new)) ;; once only
    name: "projects directory"))
 
 (define fossils-enable-http-hijacking
