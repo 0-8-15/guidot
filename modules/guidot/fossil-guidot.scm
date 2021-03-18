@@ -5,9 +5,34 @@
 ;;*** Status and Control
 
 (define current-fossil
+  ;; Note: this enforces the fossil files to have a `.fossil` files
+  ;; extension.  As `fossil` itself expects that to be the case (when
+  ;; serving directories), this is considered a consistency enforcing
+  ;; feature than the limitation it is as well.
+  ;;
+  ;; Furthermore it the file MUST be within the directory pinned in
+  ;; `fossils-directory`.
   (make-pin
    initial: #f
-   pred: (lambda (v) (or (not v) (string? v)))
+   pred:
+   (lambda (v)
+     (cond
+      ((not v) #t)
+      ((not (string? v)) #f)
+      ((not (fossils-directory)))
+      ((let ((fn (make-pathname (fossils-directory) v ".fossil")))
+         (and
+          (file-exists? fn)
+          (eq? (file-type fn) 'regular)
+          ;; TBD: check file for being sqlite and fossil
+          )) #t)
+      (else #f)))
+   filter:
+   (lambda (old new)
+     (cond
+      ((and (string? new)) ;; remove `.fossil` extension
+       (path-strip-extension new))
+      (else new)))
    name: "projects directory"))
 
 (define (fossil-command . args)
