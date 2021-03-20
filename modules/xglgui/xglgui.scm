@@ -1018,7 +1018,7 @@
              (cond
               ((eqv? event EVENT_BUTTON1UP)
                (set-cursor-position! x y)
-               (guide-focus (debug 'Focus this-payload))
+               (guide-focus this-payload)
                #t)
               (else (mdvector-rect-interval-contains/xy? in x y))))))))
     (when (procedure? validate) (validate value-buffer))
@@ -1537,7 +1537,7 @@
                      label: "M" background-color: background-color color: color
                      guide-callback:
                      (lambda (rect payload event x y)
-                       (clipboard-copy (data)) (refresh-line! rect))))
+                       (clipboard-copy (data)) #t)))
                   (lambda (area row col)
                     (guide-button
                      name: 'close
@@ -1545,7 +1545,14 @@
                      label: "R" background-color: background-color color: color
                      guide-callback:
                      (lambda (rect payload event x y)
-                       (data (clipboard-paste)) (refresh-line! rect))))
+                        ;; clipboard-paste may block, run async
+                       (guide-critical-add!
+                        (lambda () ;; FIXME: how comes this closes the dialog?
+                          (kick! (lambda ()
+                                   (data (clipboard-paste))
+                                   (lambda () (lambda () (refresh-line! rect) #f)))))
+                        async: #t)
+                       #t)))
                   (lambda (area row col)
                     (guide-button
                      name: 'close
