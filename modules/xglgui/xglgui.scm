@@ -988,6 +988,16 @@
                (data (%%value-buffer->string value-buffer)) ;; speculative
                (%%guide-post-speculative (on-key event x y)))
               (else (%%guide-post-speculative (on-key event x y)))))
+            ((reload:)
+             (set! value-buffer (input->buffer data))
+             (guide-critical-add!
+              (lambda ()
+                (when (procedure? validate) (validate value-buffer))
+                (value! text: (%%value-buffer->string value-buffer))
+                (set! value-draw (value!))
+                (update-cursor!))
+              async: #f)
+             #t)
             (else (mdvector-rect-interval-contains/xy? in x y))))))
     (when (procedure? validate) (validate value-buffer))
     (update-cursor!)
@@ -1390,9 +1400,10 @@
 (define (guide-value-edit-dialog
          #!key
          (in (current-guide-gui-interval))
+         (done (lambda _ #f))
          (font (guide-select-font size: 'medium))
          (label #f) (label-string (lambda (value) (if (string? value) value (object->string value))))
-         (line-height 20)
+         (line-height (guide-font-height font))
          (keypad guide-keypad/numeric)
          (on-key
           (lambda (p/r key mod) ;; fit's to numeric keyboard
@@ -1469,17 +1480,65 @@
                    (title! color: (if valid hightlight-color color))
                    (set! title (title!)))))))
        (line (guide-line-input
-              in: (make-x0y0x1y1-interval/coerce
-                   xsw-inner (- yno-inner title-height line-height)
-                   xno-inner (- yno-inner title-height))
+              in: (let ((ysw-line (max 0 (- yno-inner title-height line-height))))
+                    (make-x0y0x1y1-interval/coerce
+                     xsw-inner ysw-line
+                     xno-inner (- yno-inner title-height)))
               horizontal-align: horizontal-align vertical-align: vertical-align
               font: font size: size line-height: line-height
               color: color hightlight-color: hightlight-color
               data: data
               validate: check-valid))
+       (refresh-line! (lambda (rect)
+                        ((guide-payload-on-any-event line) rect line reload: 0 0)))
+       (control-panel
+        (and title
+             (let ((buttons 4)
+                   (color (guide-select-color-4))
+                   (background-color (guide-select-color-3))
+                   (button-size (* 16/10 line-height)))
+               (make-guide-table
+                (make-mdvector
+                 (range (vector buttons 1))
+                 (vector
+                  (lambda (area row col)
+                    (guide-button
+                     name: 'close
+                     in: area
+                     label: "C" background-color: background-color color: color
+                     guide-callback:
+                     (lambda (rect payload event x y) (data "") (refresh-line! rect))))
+                  (lambda (area row col)
+                    (guide-button
+                     name: 'close
+                     in: area
+                     label: "M" background-color: background-color color: color
+                     guide-callback:
+                     (lambda (rect payload event x y)
+                       (clipboard-copy (data)) (refresh-line! rect))))
+                  (lambda (area row col)
+                    (guide-button
+                     name: 'close
+                     in: area
+                     label: "R" background-color: background-color color: color
+                     guide-callback:
+                     (lambda (rect payload event x y)
+                       (data (clipboard-paste)) (refresh-line! rect))))
+                  (lambda (area row col)
+                    (guide-button
+                     name: 'close
+                     in: area
+                     label: "X" background-color: background-color color: color
+                     guide-callback: (lambda (rect payload event x y) (done))))))
+                in: (make-x0y0x1y1-interval/coerce
+                     (- xno-inner (* buttons button-size)) (- yno-inner button-size)
+                     xno-inner yno-inner)
+                border-ratio: 1/20))))
        (kpd (keypad
-             in: (make-x0y0x1y1-interval/coerce
-                  xsw-inner ysw-inner xno-inner (- yno-inner title-height line-height))
+             in: (let ((ynokpd
+                        (max (- yno-inner title-height line-height) ;; best
+                             (+ ysw-inner title-height))))
+                   (make-x0y0x1y1-interval/coerce xsw-inner ysw-inner xno-inner ynokpd))
              action:
              (lambda (p/r key mod)
                (let ((key (if on-key (on-key p/r key mod) key)))
@@ -1490,7 +1549,7 @@
              (vector background-view (if check-valid (lambda () (title)) title))
              (vector background-view))
          (guide-payload-on-redraw line)
-         (vector (guide-payload-on-redraw kpd))))
+         (vector (guide-payload-on-redraw kpd) (guide-payload-on-redraw control-panel))))
        (this #f)
        (events
         (lambda (rect payload event x y)
@@ -1500,6 +1559,8 @@
             (cond
              ((guide-payload-contains/xy? kpd x y)
               (guide-event-dispatch-to-payload rect kpd event x y))
+             ((guide-payload-contains/xy? control-panel x y)
+              (guide-event-dispatch-to-payload rect control-panel event x y))
              (else #t)))
            ((or (eqv? press: event) (eqv? release: event))
             (guide-focus line) ;; questionable?
@@ -1963,11 +2024,13 @@
          ;; FIXME: post is actually a little too late to clean up
          post: (lambda () (when (pair? (receiver)) (receiver '())) #f))
         receiver))
-    (lambda (obj #!key (async #f))
+    (lambda (obj #!key (async #f) (once #f))
       (assume (or (procedure? obj) (promise? obj))
               "invalid" guide-critical-add! obj)
       (cond
        (async
+        (when once (error "invalid async and once are exclusive"
+                          guide-critical-add! async once))
         (let ((wrapped
                (lambda ()
                  (thread-start!
@@ -1976,7 +2039,12 @@
                     ((procedure? obj) obj)
                     (else (lambda () (force obj)))))))))
           (critical-calls (cons wrapped (critical-calls)))))
-       (else (critical-calls (cons obj (critical-calls))))))))
+       (else
+        (cond
+         (once (let ((registered (critical-calls)))
+                 (unless (memq obj registered)
+                   (critical-calls (cons obj (critical-calls))))))
+         (else (critical-calls (cons obj (critical-calls))))))))))
 
 (define (guide-path-select
          #!key
