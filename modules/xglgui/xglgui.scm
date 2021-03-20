@@ -950,6 +950,22 @@
           ;; no longer: tail position of key handler - return "event handled"
           #t))
 
+       (set-cursor-position!
+        (lambda (x y)
+          (let ((target-column
+                 (bind-exit
+                  (lambda (return)
+                    (let ((w (+ xsw (vector-ref (value! 'aligned-position) 0))))
+                      (ggb-for-each
+                       value-buffer
+                       (lambda (i c)
+                         (let ((glyph (MATURITY+1:ln-ttf:font-ref font c)))
+                           (if glyph (set! w (+ w (ttf:glyph-advancex glyph)))))
+                         (if (< x w) (return i))))
+                      (ggb-length value-buffer))))))
+            (ggb-goto! value-buffer target-column)
+            (update-cursor!))))
+
        (on-key
         (lambda (p/r key mod)
           (or
@@ -998,7 +1014,13 @@
                 (update-cursor!))
               async: #f)
              #t)
-            (else (mdvector-rect-interval-contains/xy? in x y))))))
+            (else
+             (cond
+              ((eqv? event EVENT_BUTTON1UP)
+               (set-cursor-position! x y)
+               (guide-focus (debug 'Focus this-payload))
+               #t)
+              (else (mdvector-rect-interval-contains/xy? in x y))))))))
     (when (procedure? validate) (validate value-buffer))
     (update-cursor!)
     (let ((result ;; a letrec* on `this-payload`
@@ -1536,7 +1558,7 @@
                 border-ratio: 1/20))))
        (kpd (keypad
              in: (let ((ynokpd
-                        (max (- yno-inner title-height line-height) ;; best
+                        (max (- yno-inner title-height (* 16/10 line-height)) ;; best
                              (+ ysw-inner title-height))))
                    (make-x0y0x1y1-interval/coerce xsw-inner ysw-inner xno-inner ynokpd))
              action:
@@ -1561,6 +1583,8 @@
               (guide-event-dispatch-to-payload rect kpd event x y))
              ((guide-payload-contains/xy? control-panel x y)
               (guide-event-dispatch-to-payload rect control-panel event x y))
+             ((guide-payload-contains/xy? line x y)
+              (guide-event-dispatch-to-payload rect line event x y))
              (else #t)))
            ((or (eqv? press: event) (eqv? release: event))
             (guide-focus line) ;; questionable?
