@@ -1781,6 +1781,7 @@
          in content
          #!key
          (font #f)
+         (done #f)
          (action #f) (guide-callback #f)
          (background %%guide-default-background)
          (background-color (guide-select-color-1))
@@ -1791,196 +1792,220 @@
          ;; non-functional; for debugging:
          (name 'list-select-payload))
   (unless font (set! font (guide-select-font height: line-height)))
-  (let*
-      ((content (let ((content (content)))
-                  (if (vector? content) content (apply vector content))))
-       (content-offset 0)
-       (len (vector-length content))
-       (xno (mdvector-interval-upper-bound in 0))
-       (xsw (mdvector-interval-lower-bound in 0))
-       (yno (mdvector-interval-upper-bound in 1))
-       (ysw (mdvector-interval-lower-bound in 1))
-       (area-width (- xno xsw))
-       (h (- yno ysw))
-       (selh line-height)
-       (num-max-visible (floor (/ h line-height)))
-       (num-visible (min len num-max-visible))
-       (set-content-offset!
-        (lambda (to)
-          (set! content-offset (max 0 (min (- len num-visible) to)))))
-       (area-visible-height (* num-visible line-height))
-       (area-visible
-        (if (> len num-max-visible) in
-            (make-x0y0x1y1-interval/coerce xsw (- yno (* num-visible line-height)) xno yno)))
-       (background-color-even
-        (let* ((color background-color)
-               (r (color-red color))
-               (g (color-green color))
-               (b (color-blue color))
-               (a (color-alpha color)))
-          (define (conv x)
-            (round (if (> x 127) (/ x 2) (/ (- 255 x) 2))))
-          (color-rgba (conv r) (conv g) (conv b) a)))
-       (visible-labels-bg (make-vector num-visible #f))
-       (draw-labels
-        (lambda ()
-          (do ((i 0 (fx+ i 1)))
-              ((eqv? i num-visible) #t)
-            (let ((payload (vector-ref visible-labels-bg i)))
-              (and payload (payload))))))
-       (visible-labels
-        (let ((vec (make-vector (* 2 num-visible) #f)))
-          (do ((i 0 (fx+ i 1)))
-              ((eqv? i num-visible) vec)
-            (let ((label! (make-guide-label-view))
-                  (view! (make-guide-figure-view))
-                  (y (- area-visible-height (* (fx+ i 1) line-height))))
-              (view! background: background)
-              (view! size: area-width line-height)
-              (view! position: 0 y)
-              (view! color: (if (even? i) background-color-even background-color))
-              (label! size: area-width line-height)
-              (label! font: font)
-              (label! horizontal-align: horizontal-align)
-              (label! vertical-align: vertical-align)
-              (label! color: color)
-              (view! foreground: (label!))
-              (vector-set! vec (+ i num-visible) view!)
-              (vector-set! vec i label!)))))
-       (update-drawing!
-        (lambda ()
-          (do ((i 0 (fx+ i 1)))
-              ((eqv? i num-visible) #t)
-            (let ((label! (vector-ref visible-labels i))
-                  (view! (vector-ref visible-labels (+ i num-visible))))
-              (when label!
-                (view! foreground: (label!))
-                (vector-set! visible-labels-bg i (view!)))))))
-       (update-content!
-        (lambda ()
-          (do ((i 0 (fx+ i 1)))
-              ((eqv? i num-visible) (update-drawing!))
-            ((vector-ref visible-labels i) text: (vector-ref content (+ i content-offset))))
-          content-offset))
-       (labels-container! (MATURITY+2:make-guide-label-view))
-       (visible-frame!
-        (let ((frame! (MATURITY+2:make-guide-bg+fg-view))
-              (bg! (MATURITY+2:make-guide-label-view))
-              (fg! labels-container!))
-          (bg! size: area-width area-visible-height)
-          (bg! color: background-color)
-          (bg! foreground: background)
-          (frame! background: (bg!))
-          (fg! size: area-width area-visible-height)
-          (fg! color: color)
-          (fg! foreground: draw-labels)
-          (frame! foreground: (fg!))
-          (frame! size: area-width area-visible-height)
-          (frame! position: xsw (- yno area-visible-height))
-          frame!))
-       (draw-frame (visible-frame!))
-       (y-shift 0)
-       (shift!
-        (let ((rebuild-height (* 2 line-height)))
-          (lambda (base target)
-            (define (update-shift!)
-              (labels-container! position: 0 y-shift)
-              (visible-frame! foreground: (labels-container!))
-              (set! draw-frame (visible-frame!)))
-            (cond
-             ((< target rebuild-height) ;; upwards
-              (let ((delta-lines (* 2 (quotient target rebuild-height))))
-                ;; (set! y-shift (remainder target rebuild-height))
-                (set-content-offset! (+ base delta-lines))
-                (update-content!)
-                (update-shift!)
-                (- (* delta-lines line-height))))
-             ((> target (- rebuild-height))
-              (let ((delta-lines (* 2 (quotient target rebuild-height))))
-                ;; (set! y-shift (remainder target rebuild-height))
-                (set-content-offset! (+ base delta-lines))
-              (update-shift!))
-              (update-content!))
-             (else #f)))))
-       (redraw (lambda () (draw-frame)))
-       (this-payload #f) ;; letrec
-       (pointer-event
-        (let ((armed #f) (armed-content-offset #f) (motion-hyst 15))
-          (lambda (rect payload event x y)
-            (cond
-             ((eqv? event EVENT_BUTTON1DOWN)
-              (set! armed (vector x y))
-              (guide-focus payload)
-              #t)
-             ((eqv? event EVENT_BUTTON1UP)
-              (cond
-               ((vector? armed)
-                (let* ((dx (- x (vector-ref armed 0)))
-                       (dy (- y (vector-ref armed 1)))
-                       (in-sel (floor (/ (- yno y) selh))))
-                  (set! armed #f)
-                  (set! armed-content-offset #f)
+  (let* ((content (let ((content (content)))
+                    (if (vector? content) content (apply vector content))))
+         (len (vector-length content)))
+    (cond
+     ((eqv? len 0)
+      (guide-button
+       in: in
+       label: "nothing"
+       guide-callback:
+       (cond
+        ((procedure? done)
+         (lambda (rect payload event x y) (done #f)))
+        ((procedure? action)
+         (lambda (rect payload event x y)
+           (with-exception-catcher
+            (lambda (lmb) #t)
+            (lambda () (macro-guide-sanitize-payload-result (action -1 0))))))
+        ((procedure? guide-callback)
+         (macro-guide-sanitize-payload-result
+          (guide-callback rect payload event x y)))
+        (else #t))
+       font: font
+       background: background background-color: background-color
+       color: color
+       horizontal-align: horizontal-align vertical-align: vertical-align
+       name: name))
+     (else
+      (let*
+          ((content-offset 0)
+           (xno (mdvector-interval-upper-bound in 0))
+           (xsw (mdvector-interval-lower-bound in 0))
+           (yno (mdvector-interval-upper-bound in 1))
+           (ysw (mdvector-interval-lower-bound in 1))
+           (area-width (- xno xsw))
+           (h (- yno ysw))
+           (selh line-height)
+           (num-max-visible (floor (/ h line-height)))
+           (num-visible (min len num-max-visible))
+           (set-content-offset!
+            (lambda (to)
+              (set! content-offset (max 0 (min (- len num-visible) to)))))
+           (area-visible-height (* num-visible line-height))
+           (area-visible
+            (if (> len num-max-visible) in
+                (make-x0y0x1y1-interval/coerce xsw (- yno (* num-visible line-height)) xno yno)))
+           (background-color-even
+            (let* ((color background-color)
+                   (r (color-red color))
+                   (g (color-green color))
+                   (b (color-blue color))
+                   (a (color-alpha color)))
+              (define (conv x)
+                (round (if (> x 127) (/ x 2) (/ (- 255 x) 2))))
+              (color-rgba (conv r) (conv g) (conv b) a)))
+           (visible-labels-bg (make-vector num-visible #f))
+           (draw-labels
+            (lambda ()
+              (do ((i 0 (fx+ i 1)))
+                  ((eqv? i num-visible) #t)
+                (let ((payload (vector-ref visible-labels-bg i)))
+                  (and payload (payload))))))
+           (visible-labels
+            (let ((vec (make-vector (* 2 num-visible) #f)))
+              (do ((i 0 (fx+ i 1)))
+                  ((eqv? i num-visible) vec)
+                (let ((label! (make-guide-label-view))
+                      (view! (make-guide-figure-view))
+                      (y (- area-visible-height (* (fx+ i 1) line-height))))
+                  (view! background: background)
+                  (view! size: area-width line-height)
+                  (view! position: 0 y)
+                  (view! color: (if (even? i) background-color-even background-color))
+                  (label! size: area-width line-height)
+                  (label! font: font)
+                  (label! horizontal-align: horizontal-align)
+                  (label! vertical-align: vertical-align)
+                  (label! color: color)
+                  (view! foreground: (label!))
+                  (vector-set! vec (+ i num-visible) view!)
+                  (vector-set! vec i label!)))))
+           (update-drawing!
+            (lambda ()
+              (do ((i 0 (fx+ i 1)))
+                  ((eqv? i num-visible) #t)
+                (let ((label! (vector-ref visible-labels i))
+                      (view! (vector-ref visible-labels (+ i num-visible))))
+                  (when label!
+                    (view! foreground: (label!))
+                    (vector-set! visible-labels-bg i (view!)))))))
+           (update-content!
+            (lambda ()
+              (do ((i 0 (fx+ i 1)))
+                  ((eqv? i num-visible) (update-drawing!))
+                ((vector-ref visible-labels i) text: (vector-ref content (+ i content-offset))))
+              content-offset))
+           (labels-container! (MATURITY+2:make-guide-label-view))
+           (visible-frame!
+            (let ((frame! (MATURITY+2:make-guide-bg+fg-view))
+                  (bg! (MATURITY+2:make-guide-label-view))
+                  (fg! labels-container!))
+              (bg! size: area-width area-visible-height)
+              (bg! color: background-color)
+              (bg! foreground: background)
+              (frame! background: (bg!))
+              (fg! size: area-width area-visible-height)
+              (fg! color: color)
+              (fg! foreground: draw-labels)
+              (frame! foreground: (fg!))
+              (frame! size: area-width area-visible-height)
+              (frame! position: xsw (- yno area-visible-height))
+              frame!))
+           (draw-frame (visible-frame!))
+           (y-shift 0)
+           (shift!
+            (let ((rebuild-height (* 2 line-height)))
+              (lambda (base target)
+                (define (update-shift!)
+                  (labels-container! position: 0 y-shift)
+                  (visible-frame! foreground: (labels-container!))
+                  (set! draw-frame (visible-frame!)))
+                (cond
+                 ((< target rebuild-height) ;; upwards
+                  (let ((delta-lines (* 2 (quotient target rebuild-height))))
+                    ;; (set! y-shift (remainder target rebuild-height))
+                    (set-content-offset! (+ base delta-lines))
+                    (update-content!)
+                    (update-shift!)
+                    (- (* delta-lines line-height))))
+                 ((> target (- rebuild-height))
+                  (let ((delta-lines (* 2 (quotient target rebuild-height))))
+                    ;; (set! y-shift (remainder target rebuild-height))
+                    (set-content-offset! (+ base delta-lines))
+                    (update-shift!))
+                  (update-content!))
+                 (else #f)))))
+           (redraw (lambda () (draw-frame)))
+           (this-payload #f) ;; letrec
+           (pointer-event
+            (let ((armed #f) (armed-content-offset #f) (motion-hyst 15))
+              (lambda (rect payload event x y)
+                (cond
+                 ((eqv? event EVENT_BUTTON1DOWN)
+                  (set! armed (vector x y))
+                  (guide-focus payload)
+                  #t)
+                 ((eqv? event EVENT_BUTTON1UP)
                   (cond
-                   (action
-                    (let ((selected-item (+ content-offset in-sel))
-                          (relative-width (/ (- x xsw) (- xno xsw))))
-                      (macro-guide-sanitize-payload-result
-                       (action selected-item relative-width))))
-                   (guide-callback
-                    (macro-guide-sanitize-payload-result
-                     (guide-callback rect payload event x y)))
-                   (else #t))))
-               (armed
-                (set! armed #f)
-                (set! armed-content-offset #f)
-                #t)
-               (else #f)))
-             ((eqv? event EVENT_MOTION)
-              ;; strange: observing wild jumps in `y`
-              (cond
-               ((number? armed)
-                (shift! armed-content-offset (- y armed))
-                #t)
-               (armed
-                (let* ((dx (- x (vector-ref armed 0)))
-                       (dy (- y (vector-ref armed 1))))
-                  (when (> (sqrt (+ (* dx dx) (* dy dy))) ;; distance
-                           motion-hyst)
-                    (set! armed-content-offset content-offset)
-                    (set! armed (vector-ref armed 1))
-                    (shift! armed-content-offset (- y armed)))
-                  #t))
-               (else #t)))
-             (else (debug 'guide-list-select-payload (list event x y)))))))
-       (key-event
-        (lambda (event key modifier)
-          (case key
-            ((PageUp PageDown)
-             (set-content-offset! ((if (eq? key 'PageDown) + -) content-offset (* num-visible line-height)))
-             (update-content!))
-            (else #f))))
-       (events-here
-        (lambda (rect payload event x y)
-          (case event
-            ((press: release:)
-             (and (eq? (guide-focus) this-payload) (key-event event x y)))
-            (else
-             (let ((y (- y y-shift)))
-               (cond
-                ((guide-payload-contains/xy? payload x y)
-                 (pointer-event rect payload event x y))
+                   ((vector? armed)
+                    (let* ((dx (- x (vector-ref armed 0)))
+                           (dy (- y (vector-ref armed 1)))
+                           (in-sel (floor (/ (- yno y) selh))))
+                      (set! armed #f)
+                      (set! armed-content-offset #f)
+                      (cond
+                       (action
+                        (let ((selected-item (+ content-offset in-sel))
+                              (relative-width (/ (- x xsw) (- xno xsw))))
+                          (macro-guide-sanitize-payload-result
+                           (action selected-item relative-width))))
+                       (guide-callback
+                        (macro-guide-sanitize-payload-result
+                         (guide-callback rect payload event x y)))
+                       (else #t))))
+                   (armed
+                    (set! armed #f)
+                    (set! armed-content-offset #f)
+                    #t)
+                   (else #f)))
+                 ((eqv? event EVENT_MOTION)
+                  ;; strange: observing wild jumps in `y`
+                  (cond
+                   ((number? armed)
+                    (shift! armed-content-offset (- y armed))
+                    #t)
+                   (armed
+                    (let* ((dx (- x (vector-ref armed 0)))
+                           (dy (- y (vector-ref armed 1))))
+                      (when (> (sqrt (+ (* dx dx) (* dy dy))) ;; distance
+                               motion-hyst)
+                        (set! armed-content-offset content-offset)
+                        (set! armed (vector-ref armed 1))
+                        (shift! armed-content-offset (- y armed)))
+                      #t))
+                   (else #t)))
+                 (else (debug 'guide-list-select-payload (list event x y)))))))
+           (key-event
+            (lambda (event key modifier)
+              (case key
+                ((PageUp PageDown)
+                 (set-content-offset! ((if (eq? key 'PageDown) + -) content-offset (* num-visible line-height)))
+                 (update-content!))
+                (else #f))))
+           (events-here
+            (lambda (rect payload event x y)
+              (case event
+                ((press: release:)
+                 (and (eq? (guide-focus) this-payload) (key-event event x y)))
                 (else
-                 #;(MATURITY
-                 -1 "NOT handling event outside, TBD: don't pass here!"
-                 loc: 'make-figure-list-payload2)
-                 #f))))))))
-    (update-content!)
-    (let ((result
-           (make-guide-payload
-            in: area-visible on-redraw: redraw on-any-event: events-here
-            name: name lifespan: 'ephemeral widget: #f)))
-      (set! this-payload result)
-      result)))
+                 (let ((y (- y y-shift)))
+                   (cond
+                    ((guide-payload-contains/xy? payload x y)
+                     (pointer-event rect payload event x y))
+                    (else
+                     #;(MATURITY
+                     -1 "NOT handling event outside, TBD: don't pass here!"
+                     loc: 'make-figure-list-payload2)
+                     #f))))))))
+        (update-content!)
+        (let ((result
+               (make-guide-payload
+                in: area-visible on-redraw: redraw on-any-event: events-here
+                name: name lifespan: 'ephemeral widget: #f)))
+          (set! this-payload result)
+          result))))))
 
 (define %%guide-critical-call
   ;; Guide *Global* Critical Section (GGCS)
@@ -2110,7 +2135,8 @@
        (lambda () files)
        action:
        (lambda (n x)
-         (selected (vector-ref files n))
+         (when (and (fixnum? n) (>= n 0) (< n (vector-length files)))
+           (selected (vector-ref files n)))
          (%%guide-post-speculative (done))))))
   (define close-button
     (guide-button
