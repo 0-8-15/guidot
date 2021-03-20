@@ -1272,6 +1272,49 @@
      ;; backward compatibility
      widget: #f lifespan: 'ephemeral)))
 
+(define (guide-table-layout
+         area #!key
+         (cols 1)
+         (rows 1)
+         ;; inherited from make-guide-table
+         font
+         (border-ratio 1/20)
+         on-key
+         (name 'guide-table-layout)
+         (map-over-constructors #f) ;; TBD: backward compatible TRASH!
+         #!rest
+         constructors)
+  (assume (mdvector-interval? area) "invalid area" name area)
+  (let ((constructors
+         (cond
+          ((and (pair? constructors) (null? (cdr constructors))
+                (vector? (car constructors))) ;; may be easier to write
+           (set! constructors (car constructors)))
+          (map-over-constructors
+           (list->vector (map map-over-constructors constructors)))
+          (else (list->vector constructors)))))
+    (assume (positive? (vector-length constructors))
+            "at least one constructor required" guide-table-layout)
+    (let ((given (vector-length constructors))
+          (volume (* rows cols)))
+      (cond
+       ((< given volume)
+        (MATURITY -1 "too few constructurs" loc: name given volume)
+        (let ((expanded (make-vector volume #f)))
+          (subvector-move! constructors 0 volume expanded volume)
+          (set! constructors expanded)))
+       ((> volume given)
+        (MATURITY -1 "additional constructurs" loc: name given volume))))
+    (make-guide-table
+     (make-mdvector
+      (range (vector cols rows))
+      constructors)
+     in: area
+     font: font
+     border-ratio: border-ratio
+     on-key: on-key
+     name: name)))
+
 ;;** Basic Payloads
 
 ;;*** Button Payload
