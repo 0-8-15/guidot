@@ -441,6 +441,8 @@
                    ((null? given) result)
                  (vector-set! result i (car given)))))
              scale))
+        ((aligned-position)
+         (vector (x-offset) (y-offset)))
         ((#t #f)   ;; reduce to draw thunk
          (if key   ;; either depending on observed state
              (lambda ()
