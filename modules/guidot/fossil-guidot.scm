@@ -40,6 +40,7 @@
    `(path:
      "fossil"
      arguments: ,(append args (list "-R" (fossils-project-filename (current-fossil))))
+     directory: ,(or (fossils-directory) (current-directory))
      stdin-redirection: #t stdout-redirection: #t stderr-redirection: #t show-console: #f)))
 
 (define (fossil-command/json)
@@ -48,7 +49,83 @@
      "fossil"
      arguments: ("json" "-json-input" "-"
                  "-R" ,(fossils-project-filename (current-fossil)))
+     directory: ,(or (fossils-directory) (current-directory))
      stdin-redirection: #t stdout-redirection: #t stderr-redirection: #f show-console: #f)))
+
+(define-values
+    (fossil-object-type? fossil-object-type->string)
+  (values
+   (lambda (obj)
+     (case type
+       ((technote event wiki ticket branch checkin) #t)
+       (else #f)))
+   (lambda (obj)
+     (case obj
+       ((technote event) "event")
+       ((technote:) "technote")
+       ((wiki) "wiki")
+       ((tiket) "ticket")
+       ((branch) "branch")
+       ((checkin) "checkin")
+       (else (error "fossil types are {technote, event, wiki, ticket, branch, checkin} not" obj))))))
+
+(define (fossil-timeline
+         #!key
+         (type 'event))
+  (let ((port (fossil-command/json))
+        (cmd (fossil-object-type->string type)))
+    (json-write
+     `((command . ,(string-append "timeline/" cmd)))
+     port)
+    (close-output-port port)
+    (json-read port)))
+
+(define (%%fossil-cmd
+         cmd url//proto #!key
+         (directory #f)
+         (once #t)
+         (title #f) (key #f)
+         (proxy #f)
+         (into #f))
+  (let ((auth
+         (cond
+          ((and title key (not (or (equal? title "") (equal? key ""))))
+           `("-httpauth" ,(string-append title ":" key)))
+          (else '())))
+        (admin '("-A" "u"))
+        (cmd-str
+         (cond
+          (else
+           (case cmd
+             ((clone) "clone")
+             (else (NYIE))))))
+        (url (string-append "http://" url//proto))
+        (once-only
+         (cond
+          (once '("-once"))
+          (else '())))
+        (proxy
+         (cond
+          (proxy `("-proxy" ,proxy))
+          (else (error "proxy port required for fossil command" cmd))))
+        (working-directory (or directory (current-directory))))
+    (let ((arguments
+           (case cmd
+            ((clone)
+             (let* ((relative-path
+                     (or into
+                         (date->string
+                          (time-utc->date (make-srfi19:time 'time-utc 0 (current-seconds)))
+                          "~1.fossil")))
+                    (new-repository (if #t relative-path (make-pathname working-directory relative-path))))
+               `(,cmd-str ,@admin ,@auth ,@proxy ,@once-only ,url ,new-repository)))
+            (else `(,cmd-str ,url ,@admin ,@auth ,@proxy ,@once-only)))))
+      (open-process
+       `(path:
+         "fossil"
+         arguments: ,arguments
+         directory: ,working-directory
+         stdin-redirection: #t stdout-redirection: #t stderr-redirection: #t show-console: #f)))))
 
 ;;*** Internal Utilities
 (define (fossil-help-basic-parse-output-to-commands port)
@@ -138,6 +215,11 @@
                              (eq? (file-type x) 'directory))
                     (fossils-directory x))))
                 ignore-hidden: #f
+                filter-pred:
+                (lambda (x)
+                  (cond
+                   ((or (equal? x ".") (equal? x "..")))
+                   (else (and (file-exists? x) (eq? (file-type x) 'directory)))))
                 done: done))
              in: (guide-rectangle-measures rect))))
           #t)))
@@ -157,6 +239,10 @@
                 in: (top-area rect)
                 directory: fossils-directory
                 selected: current-fossil
+                filter-pred:
+                (lambda (x)
+                  (let ((x (make-pathname (fossils-directory) x)))
+                    (and (file-exists? x) (eq? (file-type x) 'regular))))
                 done: done))
              in: (guide-rectangle-measures rect))))
           #t)))
@@ -299,6 +385,188 @@
   (ggb-insert! vbuf work-view)
   (guide-ggb-layout area vbuf direction: 'topdown fixed: #t name: "fossil help browser"))
 
+(define (guidot-fossil-transfer-dialog
+         area #!key
+         (done NYI)
+         (remote-fossil-title #f)
+         (remote-fossil-key #f)
+         (http-proxy-url
+          (lambda _
+            (let ((pn (beaver-proxy-port-number)))
+              (and pn (string-append "http://127.0.0.1:" (number->string pn))))))
+         (name "fossil transfer"))
+  (define menu-height 200)
+  (define label-width 1/4)
+  (define mode (make-pin 'clone))
+  (define mode->string symbol->string)
+  (define remote-tag
+    (cond
+     ((pin? remote-fossil-title) remote-fossil-title)
+     ((procedure? remote-fossil-title) (make-pin (remote-fossil-title)))
+     (else (make-pin (or remote-fossil-title "")))))
+  (define apikey
+    (cond
+     ((pin? remote-fossil-key) remote-fossil-key)
+     ((procedure? remote-fossil-key) (make-pin (remote-fossil-key)))
+     (else (make-pin (or remote-fossil-key "")))))
+  (define remote-url (make-pin ""))
+  (define directory fossils-directory)
+  ;; derived
+  (define dialog-area area)
+  (define-values (xsw xno ysw yno) (guide-boundingbox->quadrupel area))
+  (define-values (result dialog-control!) (guidot-layers area name: name))
+  ;; GUI
+  (define-values (output-textarea output-control!)
+    (guide-textarea-payload
+     in: (make-mdv-rect-interval xsw 0 xno (- yno menu-height))
+     data: (lambda _ #f)
+     rows: 120
+     horizontal-align: 'left
+     vertical-align: 'bottom
+     readonly: #t
+     wrap: #t
+     name: "fossil output"))
+  (define menu
+    (let ((size 'small))
+      (define (mk-generic area row col)
+        (guidot-fossil-menu
+         area
+         interactive:
+         (lambda (constructor #!key (in area))
+           (letrec ((this (constructor
+                           in: in done:
+                           (lambda args
+                             (match
+                              args
+                              ((? guide-payload? next)
+                               (guide-critical-add!
+                                (lambda ()
+                                  (dialog-control! close: this)
+                                  (dialog-control! top: next))
+                                async: #t))
+                              (_ (dialog-control! close: this)))
+                             #t))))
+             (dialog-control! top: this)))))
+      (define (mk-mode area row col)
+        (guide-valuelabel
+         in: area size: size label: "mode"
+         label-width: label-width
+         value: mode
+         value-display: mode->string
+         input:
+         (lambda (rect payload event xsw ysw)
+           (cond
+            ((eqv? event EVENT_BUTTON1DOWN)
+             (NYI)))
+           #t)))
+      (define (mkmk-vale label value value-display validate)
+        (lambda (area row col)
+          (guide-valuelabel
+           in: area size: size label: label
+           label-width: label-width
+           value: value
+           value-display: (lambda (obj) (if (string? obj) obj (object->string obj)))
+           input:
+           (lambda (rect payload event xsw ysw)
+             (cond
+              ((eqv? event EVENT_BUTTON1DOWN)
+               (guide-critical-add!
+                (lambda ()
+                  (letrec
+                      ((this
+                        (guide-value-edit-dialog
+                         name: label
+                         in: dialog-area
+                         done: (lambda _ (dialog-control! close: this))
+                         label: label
+                         keypad: guide-keypad/default
+                         on-key: %%guide-textarea-keyfilter
+                         validate:
+                         (macro-guidot-check-ggb/string-pred validate)
+                         data:
+                         (case-lambda
+                          (() (value))
+                          ((v) (value v) (dialog-control! close: this))))))
+                    (dialog-control! top: this))))))
+             #t))))
+      (define mk-rem
+        (mkmk-vale
+         "remote url" remote-url #f
+         (lambda (str) ;; TBD: correct check
+           (cond
+            (else (> (string-length str) 3))))))
+      (define mk-tag
+        (mkmk-vale
+         "login" remote-tag #f
+         (lambda (str) ;; TBD: correct check
+           (cond
+            (else (> (string-length str) 1))))))
+      (define mk-key
+        (mkmk-vale
+         "key" apikey #f
+         (lambda (str) ;; TBD: correct check
+           (cond
+            (else (> (string-length str) 1))))))
+      (define (mk-go area row col)
+        (guide-button
+         name: 'fossil-run
+         in: area name: "fossil go"
+         label:
+         (let ((ok "go") (no "n/a"))
+           (lambda () (if (and (http-proxy-url) (directory)) ok no)))
+         ;; background-color: background-color color: color
+         guide-callback:
+         (lambda _
+           (guide-critical-add!
+            (let ((mode (mode))
+                  (remote-url (remote-url))
+                  (title (remote-tag))
+                  (key (apikey))
+                  (directory (directory))
+                  (proxy (http-proxy-url)))
+              (lambda ()
+                (output-control! text: #f)
+                (output-control!
+                 insert:
+                 (debug 'fossil (%%fossil-cmd
+                                 mode remote-url
+                                 title: title key: key
+                                 directory: directory
+                                 proxy: proxy)))))
+            async: #t))))
+      (define (mk-kx area row col)
+        (guide-button
+         name: 'close/warning
+         in: area
+         label: "x" ;; background-color: background-color color: color
+         guide-callback:
+         (lambda _
+           (letrec
+               ((this
+                 (guide-button
+                  name: 'close
+                  in: dialog-area
+                  label: "sure" ;; background-color: background-color color: color
+                  guide-callback:
+                  (lambda _
+                    (guide-critical-add!
+                     (lambda ()
+                       (dialog-control! close: this)
+                       (done)))))))
+             (dialog-control! top: this)))))
+      (guide-table-layout
+       (make-mdv-rect-interval xsw 0 xno menu-height)
+       rows: 4 cols: 4
+       mk-generic #f    #f     #f
+       mk-mode    #f    mk-go  mk-kx
+       mk-rem     #f    #f #f
+       mk-tag     #f    mk-key #f)))
+  (define vbuf (make-ggb size: 2))
+  (ggb-insert! vbuf menu)
+  (ggb-insert! vbuf output-textarea)
+  (dialog-control! top: (guide-ggb-layout area vbuf direction: 'topdown fixed: #t name: name))
+  result)
+
 (define (guidot-make-fossil-wiki-constructur
          area #!key
          (font (guide-select-font size: 'medium))
@@ -436,7 +704,9 @@
                    (let ((label "New Wiki Page"))
                      (guide-value-edit-dialog
                       name: label
-                      in: area label: label
+                      in: area
+                      done: (lambda _ (dialog-control close: selfie))
+                      label: label
                       keypad: guide-keypad/default
                       on-key: %%guide-textarea-keyfilter
                       validate:
@@ -573,9 +843,19 @@
      (guidot-fossil-menu
       (make-mdv-rect-interval xsw (- yno menu-height) xno yno)
       interactive:
-      (lambda (constructor #!key (in area))
-        (letrec ((this (constructor in: in done: (lambda _ (dialog-control close: this)))))
-          (dialog-control top: this)))))
+      (let ((dispatch
+             (lambda (this)
+               (match-lambda
+                ((? guide-payload? next)
+                 (guide-critical-add!
+                  (lambda ()
+                    (dialog-control close: this)
+                    (dialog-control top: next))
+                  async: #t))
+                (else (dialog-control close: this))))))
+        (lambda (constructor #!key (in area))
+          (letrec ((this (constructor in: in done: (dispatch this))))
+            (dialog-control top: this))))))
     (unbox selfie)))
 
 (define (guidot-fossil-browser
@@ -648,9 +928,19 @@
      (make-mdv-rect-interval xsw 0 xno menu-height)
      ;; (make-mdv-rect-interval xsw (- yno menu-height) xno yno)
      interactive:
-     (lambda (constructor #!key (in area))
-       (letrec ((this (constructor in: in done: (lambda _ (dialog-control! close: this)))))
-         (dialog-control! top: this)))
+     (let ((dispatch
+            (lambda (this)
+              (match-lambda
+               ((? guide-payload? next)
+                (guide-critical-add!
+                 (lambda ()
+                   (dialog-control! close: this)
+                   (dialog-control! top: next))
+                 async: #t))
+               (else (dialog-control! close: this))))))
+       (lambda (constructor #!key (in area))
+         (letrec ((this (constructor in: in done: (dispatch this))))
+           (dialog-control! top: this))))
      mode: mode))
   (define output-control!)
   (define work-view
