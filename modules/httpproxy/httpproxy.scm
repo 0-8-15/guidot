@@ -46,6 +46,12 @@ EOF
 (define httpproxy-connect-set!)
 (define httpproxy-atphone-set!)
 
+(define $httpproxy-log-requests
+  (let ((status #f))
+    (case-lambda
+     (() status)
+     ((val) (set! status val)))))
+
 (define make-httpproxy
   (let ((max-line-length 1024)
         (http-proxy-connect-line #f)
@@ -112,6 +118,8 @@ EOF
                (m (with-exception-catcher
                    handle-replloop-exception
                    (lambda () (rx~ http-proxy-connect-line ln1)))))
+          (when ($httpproxy-log-requests)
+            (println port: (current-error-port) "HTTPproxy request: " ln1))
           (if m
               (connect (rxm-ref m 1) (string->number (rxm-ref m 2)) (rxm-ref m 3))
               (let ((m (rx~ http-proxy-request-line ln1)))
