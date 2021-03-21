@@ -2,11 +2,25 @@
 
 ;;** Debug Helpers
 
-(define (handle-debug-exception e #!optional location)
+(define (handle-debug-exception
+         exn #!optional location #!key
+         (context (continuation-capture identity)))
   (let ((port (current-error-port)))
-    (debug (or location 'EXN) e)
+    (println port: port (or location handle-debug-exception))
+    (display-exception-in-context exn context (current-error-port))
+    (display-continuation-backtrace context (current-error-port))
     (display-exception e port))
   #!void)
+
+(define (with-debug-exception-catcher
+         proc
+         #!optional (location 'with-debug-exception-catcher)
+         #!key
+         (context (continuation-capture identity)))
+  (let ((context context)) ;; be sure to bind it here
+    (with-exception-catcher
+     (lambda (exn) (handle-debug-exception exn location context: context))
+     proc)))
 
 ;;** Once Only Continuations
 
