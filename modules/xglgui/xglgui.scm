@@ -1019,7 +1019,11 @@
                (local-on-key event x y)
                #t)
               (else (local-on-key event x y))))
-            ((reload:)
+            ((reload:) ;;  Bad style!
+             ;;
+             ;; NOTE: This is to document possible style as bad.  TBD:
+             ;; detail why it is bad.
+             (MATURITY -1 "control operation embedded GUI event" loc: guide-line-input)
              (set! value-buffer (input->buffer data))
              (guide-critical-add!
               (lambda ()
@@ -1527,6 +1531,7 @@
               data: data
               validate: check-valid))
        (refresh-line! (lambda (rect)
+                        ;; FIXME: this begs for trouble!
                         ((guide-payload-on-any-event line) rect line reload: 0 0)))
        (control-panel
         (and title
