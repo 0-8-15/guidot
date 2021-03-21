@@ -344,6 +344,42 @@
     (ggb-for-each ggb (lambda (i v) (string-set! result i v)) start end)
     result))
 
+(define (ggb->string/encoding-utf8 obj #!optional (start 0) (end (ggb-length ggb)))
+  ;; Beware: UTF8 encoding *within* gambit strings seems questionable.
+  (let* ((len (ggb-length obj))
+         (i -1)
+         (n 0)
+         (result (make-string len)))
+    (define (shift!)
+      (set! i (+ i 1))
+      (when (eqv? i (##string-length result))
+        (let ((replacement (make-string (* 2 (##string-length result)))))
+          (substring-move! result 0 i replacement 0)
+          (set! result replacement))))
+    (ggb-for-each
+     obj
+     (lambda (i c)
+       (set! n (+ n 1))
+       (cond
+        ((##fx< c 128)
+         (shift!)
+         (##string-set! result i (##integer->char c)))
+        ((##fx< c 2048)
+         (shift!)
+         (##string-set! result i (##integer->char (##fxior (##fxarithmetic-shift-right c 6) 192)))
+         (shift!)
+         (##string-set! result i (##integer->char (##fxior (##fxand c 63) 128))))
+        (else
+         (shift!)
+         (##string-set! result i (##integer->char (##fxior (##fxarithmetic-shift-right c 12) 224)))
+         (shift!)
+         (##string-set! result i (##integer->char (##fxior (##fxand (##fxarithmetic-shift-right c 6) 63) 128)))
+         (shift!)
+         (##string-set! result i (##integer->char (##fxior (##fxand c 63) 128))))))
+     start end)
+    (set! i (+ i 1))
+    (if (< i (##string-length result)) (substring result 0 i) result)))
+
 (define (ggb-goto-left! ggb #!optional (n 1))
   (ggb-goto! ggb (max 0 (min (ggb-length ggb) (fx- (macro-ggb-point ggb) n)))))
 
