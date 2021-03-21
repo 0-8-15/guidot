@@ -90,7 +90,8 @@ EOF
         (println port: (current-error-port) "HTTP FORWARD "
                  host " " port " "  scheme " : " nl1)
         (let ((conn (with-exception-catcher
-                     handle-replloop-exception
+                     (lambda (exn)
+                       (handle-debug-exception exn nl1))
                      (lambda ()
                        (let ((atphone
                               (and atphone-decoder
@@ -104,7 +105,8 @@ EOF
                                          rewrite)))))
                          (cond
                           (atphone (connect-handler "HTTP @phone" atphone port))
-                          (else (connect-handler "HTTP" (clean-ip6addr host) port))))))))
+                          (else (connect-handler "HTTP" (clean-ip6addr host) port)))))
+                     `(httpproxy: ,host))))
           (when (port? conn)
             (display nl1 conn)
             (force-output conn)
