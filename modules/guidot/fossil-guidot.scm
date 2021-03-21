@@ -35,22 +35,62 @@
       (else new)))
    name: "projects directory"))
 
-(define (fossil-command . args)
-  (open-process
-   `(path:
-     "fossil"
-     arguments: ,(append args (list "-R" (fossils-project-filename (current-fossil))))
-     directory: ,(or (fossils-directory) (current-directory))
-     stdin-redirection: #t stdout-redirection: #t stderr-redirection: #t show-console: #f)))
+(define (fossil-command
+         #!key
+         (log (lambda (args) (debug 'fossil-command args)))
+         (directory #f)
+         (repository #t)
+         #!rest args)
+  (let* ((working-directory (or (fossils-directory) (current-directory)))
+         (arguments
+          `(path:
+            "fossil"
+            arguments:
+            ,(cond
+              ((not repository) args)
+              ((eq? repository #t)
+               (append args (list "-R" (path-normalize (fossils-project-filename (current-fossil))))))
+              ((string? repository) ;; TBD: file,exists,etc...
+               (append args (list "-R" repository)))
+              (else args))
+            directory: ,directory
+            stdin-redirection: #t stdout-redirection: #t stderr-redirection: #t show-console: #f)))
+    (assume
+     (begin
+       (when (procedure? log)
+         (log `(cwd: ,(current-directory) arguments: . ,arguments)))
+       #t)
+     "unreachable")
+    (open-process arguments)))
 
-(define (fossil-command/json)
-  (open-process
-   `(path:
-     "fossil"
-     arguments: ("json" "-json-input" "-"
-                 "-R" ,(fossils-project-filename (current-fossil)))
-     directory: ,(or (fossils-directory) (current-directory))
-     stdin-redirection: #t stdout-redirection: #t stderr-redirection: #f show-console: #f)))
+(define (fossil-command/json
+         #!key
+         (log (lambda (args) (debug 'fossil-command/json args)))
+         (directory #f)
+         (repository #t))
+  (let* ((working-directory (or (fossils-directory) (current-directory)))
+         (arguments
+          (let ((args '("json" "-json-input" "-"))
+                (stderr-redirection #f))
+            `(path:
+              "fossil"
+              arguments:
+              ,(cond
+                ((not repository) args)
+                ((eq? repository #t)
+                 (append args (list "-R" (path-normalize (fossils-project-filename (current-fossil))))))
+                ((string? repository) ;; TBD: file,exists,etc...
+                 (append args (list "-R" repository)))
+                (else args))
+              directory: ,directory
+              stdin-redirection: #t stdout-redirection: #t stderr-redirection: stderr-redirection show-console: #f))))
+    (assume
+     (begin
+       (when (procedure? log)
+         (log `(cwd: ,(current-directory) arguments: . ,arguments)))
+       #t)
+     "unreachable")
+    (open-process arguments)))
 
 (define-values
     (fossil-object-type? fossil-object-type->string)
@@ -86,7 +126,8 @@
          (once #t)
          (title #f) (key #f)
          (proxy #f)
-         (into #f))
+         (into #f)
+         (log (lambda (args) (debug '%%fossil-cmd args))))
   (let ((auth
          (cond
           ((and title key (not (or (equal? title "") (equal? key ""))))
@@ -121,11 +162,14 @@
                `(,cmd-str ,@admin ,@auth ,@proxy ,@once-only ,url ,new-repository)))
             (else `(,cmd-str ,url ,@admin ,@auth ,@proxy ,@once-only)))))
       (open-process
-       `(path:
-         "fossil"
-         arguments: ,arguments
-         directory: ,working-directory
-         stdin-redirection: #t stdout-redirection: #t stderr-redirection: #t show-console: #f)))))
+       (let ((arguments
+              `(path:
+                "fossil"
+                arguments: ,arguments
+                directory: ,working-directory
+                stdin-redirection: #t stdout-redirection: #t stderr-redirection: #t show-console: #f)))
+         (assume (begin (when (procedure? log) (log `(cwd: ,(path-normalize working-directory)  arguments: . ,arguments))) #t) "unreachable")
+         arguments)))))
 
 ;;*** Internal Utilities
 (define (fossil-help-basic-parse-output-to-commands port)
@@ -532,11 +576,12 @@
                 (output-control! text: #f)
                 (output-control!
                  insert:
-                 (debug 'fossil (%%fossil-cmd
-                                 mode remote-url
-                                 title: title key: key
-                                 directory: directory
-                                 proxy: proxy)))))
+                 (%%fossil-cmd
+                  mode remote-url
+                  title: title key: key
+                  directory: directory
+                  log: (lambda (args) (debug 'fossil-go args))
+                  proxy: proxy))))
             async: #t))))
       (define (mk-kx area row col)
         (guide-button
