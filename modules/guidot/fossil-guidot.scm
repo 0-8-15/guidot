@@ -130,11 +130,15 @@
 ;;*** Internal Utilities
 (define (fossil-help-basic-parse-output-to-commands port)
   ;; crude, stupid, simple, just get it done
-  (read-line port) ;; Usage...
-  (read-line port) ;; Common commands.....
+  (define line1 (read-line port)) ;; Usage...
+  (when (eof-object? (read-line port)) ;; Common commands.....
+    (error "failed" line1))
   (sort!
    string<?
-   (let loop ((lines (string-split-char (port->string port) #\newline)))
+   (let loop ((lines
+               (let ((str (port->string port)))
+                 (unless (string? str) (error "failed" line1))
+                 (string-split-char str #\newline))))
      ;; Schmerzhaft ist besser als Einzelhaft, oder umgekehrt?
      (cond
       ((null? lines) '()) ;; should not happend
