@@ -1538,7 +1538,7 @@
              (let ((buttons 4)
                    (color (guide-select-color-4))
                    (background-color (guide-select-color-3))
-                   (button-size (* 16/10 line-height)))
+                   (button-size (* 10/16 line-height)))
                (make-guide-table
                 (make-mdvector
                  (range (vector buttons 1))
