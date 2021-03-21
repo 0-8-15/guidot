@@ -7,6 +7,7 @@
          (context (continuation-capture identity)))
   (let ((port (current-error-port)))
     (println port: port (or location handle-debug-exception))
+    (display-exception exn port)
     (display-exception-in-context exn context (current-error-port))
     (display-continuation-backtrace context (current-error-port))
     (display-exception e port))
