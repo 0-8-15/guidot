@@ -37,7 +37,7 @@
 
 ;; (ggb->vector ggb) --> vector -- fresh vector with elements from GGB
 
-;; (ggb->string ggb) --> string -- fresh string with elements from GGB
+;; (ggb->string ggb [encoding UTF-8]) --> string -- fresh string with elements from GGB
 ;; (fails when buffer contains no strings.)
 
 ;; (ggb-goto-left! GGB #!optional n)
@@ -339,11 +339,6 @@
     (ggb-for-each ggb (lambda (i v) (vector-set! result i v)) start end)
     result))
 
-(define (ggb->string ggb #!optional (start 0) (end (ggb-length ggb)))
-  (let ((result (make-string (fx- end start))))
-    (ggb-for-each ggb (lambda (i v) (string-set! result i v)) start end)
-    result))
-
 (define (ggb->string/encoding-utf8 ggb #!optional (start 0) (end (ggb-length ggb)))
   ;; Beware: UTF8 encoding *within* gambit strings seems questionable.
   (let* ((len (ggb-length ggb))
@@ -379,6 +374,14 @@
      start end)
     (set! i (+ i 1))
     (if (< i (##string-length result)) (substring result 0 i) result)))
+
+(define (ggb->string ggb #!optional (start 0) (end (ggb-length ggb)) #!key (encoding 'UTF-8))
+  (case encoding
+    ((UTF-8) (ggb->string/encoding-utf8 ggb start end))
+    (else
+     (let ((result (make-string (fx- end start))))
+       (ggb-for-each ggb (lambda (i v) (string-set! result i v)) start end)
+       result))))
 
 (define (ggb-goto-left! ggb #!optional (n 1))
   (ggb-goto! ggb (max 0 (min (ggb-length ggb) (fx- (macro-ggb-point ggb) n)))))
