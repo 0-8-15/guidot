@@ -344,9 +344,9 @@
     (ggb-for-each ggb (lambda (i v) (string-set! result i v)) start end)
     result))
 
-(define (ggb->string/encoding-utf8 obj #!optional (start 0) (end (ggb-length ggb)))
+(define (ggb->string/encoding-utf8 ggb #!optional (start 0) (end (ggb-length ggb)))
   ;; Beware: UTF8 encoding *within* gambit strings seems questionable.
-  (let* ((len (ggb-length obj))
+  (let* ((len (ggb-length ggb))
          (i -1)
          (n 0)
          (result (make-string len)))
@@ -357,7 +357,7 @@
           (substring-move! result 0 i replacement 0)
           (set! result replacement))))
     (ggb-for-each
-     obj
+     ggb
      (lambda (i c)
        (set! n (+ n 1))
        (cond
