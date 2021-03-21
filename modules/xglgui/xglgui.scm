@@ -867,20 +867,18 @@
 (define (guide-line-input
          #!key
          (in (current-guide-gui-interval))
-         (font (guide-select-font size: 'medium))
+         (data (let ((state "n/a")) (case-lambda (() state) ((val) (set! state val)))))
+         (validate #f)
+         (on-key %%guide-textarea-keyfilter);; filter characters to handle
+         (size 'medium)
+         (font (guide-select-font size: size))
          (horizontal-align 'center)
          (vertical-align 'center)
          (line-height 20)
-         (data (let ((state "n/a")) (case-lambda (() state) ((val) (set! state val)))))
-         (validate #f)
-         (size 'small)
          (color (guide-select-color-2))
          (hightlight-color (guide-select-color-4))
          (name 'guide-line-input))
-  (define (%%value-buffer->string ggb #!optional (start 0) (end (ggb-length ggb)))
-    (let ((result (make-string (- end start))))
-      (ggb-for-each ggb (lambda (i v) (string-set! result i (integer->char v))) start end)
-      result))
+  (define %%value-buffer->string ggb->string/encoding-utf8)
   (define (input->buffer data)
     (utf8string->ggb
      (let ((x (data)))
@@ -951,7 +949,7 @@
           #t))
 
        (set-cursor-position!
-        (lambda (x y)
+        (lambda (x y) ;; TBD: move as introspection feature into guide-figure
           (let ((target-column
                  (bind-exit
                   (lambda (return)
@@ -966,32 +964,48 @@
             (ggb-goto! value-buffer target-column)
             (update-cursor!))))
 
-       (on-key
+       (handle-key
+        (lambda (p/r key mod)
+          (cond
+           ((eqv? key EVENT_KEYRIGHT) (ggb-goto-right! value-buffer) (update-cursor!))
+           ((eqv? key EVENT_KEYLEFT) (ggb-goto-left! value-buffer) (update-cursor!))
+           ((eqv? key EVENT_KEYHOME) (ggb-goto! value-buffer 0) (update-cursor!))
+           ((eqv? key EVENT_KEYEND)
+            (ggb-goto! value-buffer (ggb-length value-buffer)) (update-cursor!))
+           ((eqv? key EVENT_KEYBACKSPACE)
+            (ggb-delete! value-buffer -1)
+            (when (procedure? validate) (validate value-buffer))
+            (value! text: (%%value-buffer->string value-buffer))
+            (set! value-draw (value!))
+            (update-cursor!))
+           ((eqv? key EVENT_KEYDELETE)
+            (ggb-delete! value-buffer 1)
+            (when (procedure? validate) (validate value-buffer))
+            (value! text: (%%value-buffer->string value-buffer))
+            (set! value-draw (value!))
+            (update-cursor!))
+           ((eqv? key EVENT_KEYENTER)
+            ;; (data (%%value-buffer->string value-buffer))
+            (set! value-buffer (input->buffer data))
+            (value! text: (ggb->vector value-buffer))
+            (set! value-draw (value!))
+            (update-cursor!))
+           ((eqv? key #\null)) ;; should have been ignored, more harm than good
+           ((char? key)
+            (ggb-insert! value-buffer (char->integer key))
+            (when (procedure? validate) (validate value-buffer))
+            (value! text: (%%value-buffer->string value-buffer))
+            (set! value-draw (value!))
+            (update-cursor!))
+           (else (debug "ignored key" (list 'guide-line-input key))))))
+
+       (local-on-key ;; rename for clarity
         (lambda (p/r key mod)
           (or
            (eq? press: p/r) ;; ignore press - maybe more
-           (cond
-            ((eqv? key EVENT_KEYRIGHT) (ggb-goto-right! value-buffer) (update-cursor!))
-            ((eqv? key EVENT_KEYLEFT) (ggb-goto-left! value-buffer) (update-cursor!))
-            ((eqv? key EVENT_KEYBACKSPACE)
-             (ggb-delete! value-buffer -1)
-             (when (procedure? validate) (validate value-buffer))
-             (value! text: (%%value-buffer->string value-buffer))
-             (set! value-draw (value!))
-             (update-cursor!))
-            ((eqv? key EVENT_KEYENTER)
-             ;; (data (%%value-buffer->string value-buffer))
-             (set! value-buffer (input->buffer data))
-             (value! text: (ggb->vector value-buffer))
-             (set! value-draw (value!))
-             (update-cursor!))
-            ((char? key)
-             (ggb-insert! value-buffer (char->integer key))
-             (when (procedure? validate) (validate value-buffer))
-             (value! text: (%%value-buffer->string value-buffer))
-             (set! value-draw (value!))
-             (update-cursor!))
-            (else (debug "ignored key" (list 'guide-line-input key)))))))
+           (let ((x (on-key p/r key mod)))
+             (if x (%%guide-post-speculative (handle-key p/r key mod)) #t)))))
+
        (redraw! (vector
                  (lambda () (and value-draw (value-draw)))
                  (lambda () (cursor-draw))))
@@ -1002,8 +1016,9 @@
              (cond
               ((eqv? x EVENT_KEYENTER)
                (data (%%value-buffer->string value-buffer)) ;; speculative
-               (%%guide-post-speculative (on-key event x y)))
-              (else (%%guide-post-speculative (on-key event x y)))))
+               (local-on-key event x y)
+               #t)
+              (else (local-on-key event x y))))
             ((reload:)
              (set! value-buffer (input->buffer data))
              (guide-critical-add!
