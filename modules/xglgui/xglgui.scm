@@ -342,7 +342,7 @@
    (line-height (set! font (guide-select-font height: line-height)))
    (font (set! line-height (guide-font-height font)))
    (else
-    (MATURITY -1 "at least one key out of (line-height font) is reguired" loc: guide-textarea-payload name)
+    (MATURITY -1 "at least one key out of (line-height font) is required" loc: guide-textarea-payload name)
     (set! font (guide-select-font size: 'medium))
     (set! line-height (guide-font-height font))))
   ;;
