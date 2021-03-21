@@ -29,7 +29,7 @@ EOF
 EOF
 ))))
 
-(define (capture-domain! domain-name #!key (handler #f))
+(define (capture-domain! domain-name #!key (handler #f) (at-phone-decoder (lambda (x) #f)))
 
   ;; Connect to this domain and get the page below back from any port.
   (define domain-rx
@@ -126,6 +126,8 @@ end-of-page-body
   (on-socks-connect (replacement-connect-procedure 'socks-connect-capture (on-socks-connect)))
 
   (on-ot0cli-connect (replacement-connect-procedure 'cli-connect-capture (on-ot0cli-connect)))
+
+  (%%fossils%at-phone-decoder at-phone-decoder)
 
   #f
   ;;

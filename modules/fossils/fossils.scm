@@ -1,3 +1,5 @@
+(define %%fossils%at-phone-decoder (make-parameter (lambda (x) #f)))
+
 (include "capture-domain.scm")
 
 (register-command!
@@ -154,7 +156,7 @@
              (unit-id (beaver-local-unit-id))
              (m2 (and m (uri-parse (rxm-ref m 2)))))
         (cond
-         ((and m2 (equal? (at-phone-decoder m2) unit-id))
+         ((and m2 (equal? ((%%fossils%at-phone-decoder) m2) unit-id))
           (receive (host headers) (fossils-copy-http-headers-catching-host (current-input-port))
             (let* ((baseurl (string-append scheme  host "/" (rxm-ref m 2)))
                    (notfound (fossils-fallback-name unit-id))
@@ -219,15 +221,15 @@ EOF
                  (thread-start!
                   (make-thread
                    (lambda ()
-                     (with-exception-catcher
-                      handle-debug-exception
+                     (with-debug-exception-catcher
                       (lambda ()
                         (parameterize
                             ;; There should be a simpler way!
                             ((current-input-port srv) (current-output-port srv))
                           (let ((conn (fossils-http-serve* local repository #f scheme)))
                             (ports-connect! conn conn srv srv)
-                            (process-status conn))))))
+                            (process-status conn))))
+                      `(fossils-http-serve ,repository)))
                    repository))
                  port))))
     fossils-http-serve))
@@ -260,7 +262,7 @@ EOF
           (lambda (line)
             (let* ((m (rx~ brk line))
                    (m2 (and m (uri-parse (rxm-ref m 2))))
-                   (id (and m2 (at-phone-decoder m2))))
+                   (id (and m2 ((%%fossils%at-phone-decoder) m2))))
               (cond
                ((or (not id) (equal? id unit-id))
                 (let ((conn (fossils-http-serve #t (fossils-directory) line)))
