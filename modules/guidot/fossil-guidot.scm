@@ -449,7 +449,6 @@
                       (dialog-control! top: next))
                     async: #t))
                   (_ (dialog-control! close: this)))
-                 (debug 'content (dialog-control! 'content))
                  #t))))
       (when insert (dialog-control! insert this))
       this)))
@@ -469,7 +468,6 @@
                       (dialog-control! top: next))
                     async: #t))
                   (_ (dialog-control! close: this)))
-                 (debug 'content (dialog-control! 'content))
                  #t))))
       (when insert (dialog-control! insert this))
       this)))
@@ -530,13 +528,21 @@
          (lambda (rect payload event x y)
            (cond
             ((eqv? event EVENT_BUTTON1DOWN)
-             ((%%guidot-interactive dialog-control! insert: top:)
-              (lambda (area control)
-                (guidot-fossil-wiki
-                 area
-                 ;; dialog-control: dialog-control!
-                 dismiss: control))
-              in: (guide-payload-measures output-textarea))))
+             (cond
+              (#t ;; bad hack
+               (guide-critical-add!
+                (lambda ()
+                  (ggb-clear! vbuf)
+                  (ggb-insert! vbuf (guidot-fossil-wiki dialog-area)))
+                async: #f))
+              (else
+               ((%%guidot-interactive dialog-control! insert: top:)
+                (lambda (area control)
+                  (guidot-fossil-wiki
+                   area
+                   ;; dialog-control: dialog-control!
+                   dismiss: control))
+                in: (guide-payload-measures output-textarea))))))
            #t)))
       (define (mkmk-vale label value value-display validate)
         (lambda (area row col)
@@ -787,7 +793,7 @@
                ;; ignoring the response here
                (json-read port))))))
       this)
-    (let ((tl-options '#("create" "list" "timeline" "close")))
+    (let ((tl-options '#("create" "list" "timeline"#; "close")))
       (guidot-frame
        (lambda (area)
          (guide-list-select-payload
