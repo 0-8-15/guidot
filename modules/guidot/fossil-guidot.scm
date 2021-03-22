@@ -978,24 +978,12 @@
       in: (make-mdv-rect-interval xsw ysw xno (- yno menu-height))
       command: "wiki" dismiss: dismiss)
      notify: (and (not (unbox selfie)) selfie))
-    (dialog-control
-     top:
-     (guidot-fossil-menu
-      (make-mdv-rect-interval xsw (- yno menu-height) xno yno)
-      interactive:
-      (let ((dispatch
-             (lambda (this)
-               (match-lambda
-                ((? guide-payload? next)
-                 (guide-critical-add!
-                  (lambda ()
-                    (dialog-control close: this)
-                    (dialog-control top: next))
-                  async: #t))
-                (else (dialog-control close: this))))))
-        (lambda (constructor #!key (in area))
-          (letrec ((this (constructor in: in done: (dispatch this))))
-            (dialog-control top: this))))))
+    (let ((interactive (%%guidot-interactive/kw dialog-control insert: top:)))
+      (dialog-control
+       top:
+       (guidot-fossil-menu
+        (make-mdv-rect-interval xsw (- yno menu-height) xno yno)
+        interactive: interactive)))
     (unbox selfie)))
 
 (define (guidot-fossil-browser
