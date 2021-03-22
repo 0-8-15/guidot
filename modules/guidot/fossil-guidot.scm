@@ -349,6 +349,7 @@
   ;; derived
   (define-values (xsw xno ysw yno) (guide-boundingbox->quadrupel area))
   (define total-height (- yno ysw))
+  (define output-font (guide-select-font height: (floor (* 10/16 menu-height))))
   ;; GUI
   (define menu
     (make-guide-table
@@ -420,6 +421,7 @@
             in: area
             data: (lambda _ #f)
             rows: 120
+            font: output-font
             horizontal-align: 'left
             vertical-align: 'bottom
             readonly: #t
@@ -503,6 +505,7 @@
               (and pn (string-append "http://127.0.0.1:" (number->string pn))))))
          (name "fossil transfer"))
   (define menu-height 200)
+  (define output-font (guide-select-font height: (floor (* 10/16 menu-height))))
   (define label-width 1/4)
   (define mode (make-pin 'clone))
   (define mode->string symbol->string)
@@ -526,11 +529,12 @@
   (define-values (output-textarea output-control!)
     (guide-textarea-payload
      in: (make-mdv-rect-interval xsw 0 xno (- yno menu-height))
+     readonly: #t
      data: (lambda _ #f)
      rows: 120
+     font: output-font
      horizontal-align: 'left
      vertical-align: 'bottom
-     readonly: #t
      wrap: #t
      name: "fossil output"))
   (define menu
@@ -866,7 +870,8 @@
                                 port)
                                (close-output-port port)
                                ;; ignoring the response here
-                               (debug 'create-wiki-response (json-read port)))))))))))
+                               (debug 'create-wiki-response (json-read port))))
+                           async: #t)))))))
                    notify: selfie))
                 #t)
                ((equal? ssc "timeline")
@@ -1133,6 +1138,7 @@
             in: area
             data: (lambda _ #f)
             rows: 120
+            font: font
             horizontal-align: 'left
             vertical-align: 'bottom
             readonly: #t
