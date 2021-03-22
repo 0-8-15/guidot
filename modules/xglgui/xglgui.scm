@@ -1829,13 +1829,13 @@
        label: "nothing"
        guide-callback:
        (cond
-        ((procedure? done)
-         (lambda (rect payload event x y) (done #f)))
         ((procedure? action)
          (lambda (rect payload event x y)
            (with-exception-catcher
             (lambda (lmb) #t)
             (lambda () (macro-guide-sanitize-payload-result (action -1 0))))))
+        ((procedure? done)
+         (lambda (rect payload event x y) (done)))
         ((procedure? guide-callback)
          (macro-guide-sanitize-payload-result
           (guide-callback rect payload event x y)))
@@ -2170,7 +2170,11 @@
      name: 'close
      in: (make-mdv-rect-interval (- xno button-size) 0 xno button-size)
      label: "x" background-color: background-color color: color
-     guide-callback: done))
+     guide-callback:
+     (lambda (rect payload event x y)
+       (cond
+        ((procedure? done) (macro-guide-sanitize-payload-result (done)))
+        (else #f)))))
   (let ((buffer (make-ggb size: 2)))
     (ggb-insert! buffer close-button)
     (ggb-insert! buffer listing)
