@@ -338,7 +338,7 @@
            ((eqv? event EVENT_BUTTON1DOWN)
             (NYI)))
           #t)))))
-   in: area))
+   in: area name: name))
 
 ;;*** Help
 
@@ -368,7 +368,8 @@
                ((eqv? event EVENT_BUTTON1DOWN)
                 (basic (not (basic)))))
               #t))))))
-     in: (make-mdv-rect-interval xsw 0 xno menu-height)))
+     in: (make-mdv-rect-interval xsw 0 xno menu-height)
+     name: "Fossil Help Menu"))
   (define output-control!)
   (define work-view
     (make-guide-table
@@ -433,6 +434,46 @@
   (ggb-insert! vbuf work-view)
   (guide-ggb-layout area vbuf direction: 'topdown fixed: #t name: "fossil help browser"))
 
+(define (%%guidot-interactive dialog-control! #!key (insert #f))
+  (lambda (constructor #!key in (done #f))
+    (letrec ((this
+              (constructor
+               in
+               (lambda args
+                 (match
+                  args
+                  ((? guide-payload? next)
+                   (guide-critical-add!
+                    (lambda ()
+                      (dialog-control! close: this)
+                      (dialog-control! top: next))
+                    async: #t))
+                  (_ (dialog-control! close: this)))
+                 (debug 'content (dialog-control! 'content))
+                 #t))))
+      (when insert (dialog-control! insert this))
+      this)))
+
+(define (%%guidot-interactive/kw dialog-control! #!key (insert #f))
+  (lambda (constructor #!key in (done #f))
+    (letrec ((this
+              (constructor
+               in: in done:
+               (lambda args
+                 (match
+                  args
+                  ((? guide-payload? next)
+                   (guide-critical-add!
+                    (lambda ()
+                      (dialog-control! close: this)
+                      (dialog-control! top: next))
+                    async: #t))
+                  (_ (dialog-control! close: this)))
+                 (debug 'content (dialog-control! 'content))
+                 #t))))
+      (when insert (dialog-control! insert this))
+      this)))
+
 (define (guidot-fossil-transfer-dialog
          area #!key
          (done NYI)
@@ -477,24 +518,8 @@
   (define menu
     (let ((size 'small))
       (define (mk-generic area row col)
-        (guidot-fossil-menu
-         area
-         interactive:
-         (lambda (constructor #!key (in area))
-           (letrec ((this (constructor
-                           in: in done:
-                           (lambda args
-                             (match
-                              args
-                              ((? guide-payload? next)
-                               (guide-critical-add!
-                                (lambda ()
-                                  (dialog-control! close: this)
-                                  (dialog-control! top: next))
-                                async: #t))
-                              (_ (dialog-control! close: this)))
-                             #t))))
-             (dialog-control! top: this)))))
+        (let ((interactive (%%guidot-interactive/kw dialog-control! insert: top:)))
+          (guidot-fossil-menu area interactive: interactive)))
       (define (mk-mode area row col)
         (guide-valuelabel
          in: area size: size label: "mode"
@@ -502,14 +527,16 @@
          value: mode
          value-display: mode->string
          input:
-         (lambda (rect payload event xsw ysw)
+         (lambda (rect payload event x y)
            (cond
             ((eqv? event EVENT_BUTTON1DOWN)
-             (guide-critical-add!
-              (lambda ()
-                ;; (dialog-control! close: this)
-                (dialog-control! top: (guidot-fossil-wiki dialog-area)))
-              async: #t)))
+             ((%%guidot-interactive dialog-control! insert: top:)
+              (lambda (area control)
+                (guidot-fossil-wiki
+                 area
+                 ;; dialog-control: dialog-control!
+                 dismiss: control))
+              in: (guide-payload-measures output-textarea))))
            #t)))
       (define (mkmk-vale label value value-display validate)
         (lambda (area row col)
@@ -532,13 +559,15 @@
                          done: (lambda _ (dialog-control! close: this))
                          label: label
                          keypad: guide-keypad/default
-                         on-key: %%guide-textarea-keyfilter
+                         on-key:
+                         (lambda (p/r key m)
+                           (let ((x (%%guide-textarea-keyfilter p/r key m)))
+                             (when (and x (or (eqv? key #\return) (eqv? key EVENT_KEYENTER)))
+                               (guide-critical-add! (lambda () (dialog-control! close: this))))
+                             x))
                          validate:
                          (macro-guidot-check-ggb/string-pred validate)
-                         data:
-                         (case-lambda
-                          (() (value))
-                          ((v) (value v) (dialog-control! close: this))))))
+                         data: value)))
                     (dialog-control! top: this))))))
              #t))))
       (define mk-rem
@@ -607,13 +636,25 @@
                        (dialog-control! close: this)
                        (done)))))))
              (dialog-control! top: this)))))
-      (guide-table-layout
-       (make-mdv-rect-interval xsw 0 xno menu-height)
-       rows: 4 cols: 4
-       mk-generic #f    #f     #f
-       mk-mode    #f    mk-go  mk-kx
-       mk-rem     #f    #f #f
-       mk-tag     #f    mk-key #f)))
+      (cond
+       ((< (mdv-rect-interval-width area) 600)
+        (guide-table-layout
+         (make-mdv-rect-interval xsw 0 xno (floor (* 5/4 menu-height)))
+         rows: 5 cols: 4
+         mk-generic #f    #f     #f
+         mk-mode    #f    mk-go  mk-kx
+         mk-rem     #f    #f #f
+         mk-tag     #f    #f #f
+         mk-key     #f    #f #f
+         ))
+       (else
+        (guide-table-layout
+         (make-mdv-rect-interval xsw 0 xno menu-height)
+         rows: 4 cols: 4
+         mk-generic #f    #f     #f
+         mk-mode    #f    mk-go  mk-kx
+         mk-rem     #f    #f #f
+         mk-tag     #f    mk-key #f)))))
   (define vbuf (make-ggb size: 2))
   (ggb-insert! vbuf menu)
   (ggb-insert! vbuf output-textarea)
@@ -746,7 +787,7 @@
                ;; ignoring the response here
                (json-read port))))))
       this)
-    (let ((tl-options '#("create" "list" "timeline")))
+    (let ((tl-options '#("create" "list" "timeline" "close")))
       (guidot-frame
        (lambda (area)
          (guide-list-select-payload
@@ -802,7 +843,7 @@
                                (debug 'create-wiki-response (json-read port)))))))))))
                    notify: selfie))
                 #t)
-               (else
+               ((equal? ssc "timeline")
                 (guide-critical-add!
                  (lambda ()
                    (dismiss)
@@ -866,7 +907,8 @@
                        fixed: #f)
                       notify: all)))
                  async: #t)
-                #t))))))
+                #t)
+               (else ((debug 'close dismiss)) #t))))))
        in: area
        border-ratio: 1/4
        color: color background: background
@@ -949,7 +991,7 @@
            (a 140))
       (color-rgba r g b a)))
   (define frame-background (guide-background default: in: area))
-  (define-values (result-payload dialog-control!) (guidot-layers area))
+  (define-values (result-payload dialog-control!) (guidot-layers area name: name))
   (define (json-commands)
     (define json-commands-ggb (make-ggb))
     (define (def! name refinement)
