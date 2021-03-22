@@ -2079,7 +2079,7 @@
       (let ((receiver
              (make-pin
               initial: '()
-              name: "GGCS (critical sections): a list of suspended computation")))
+              name: "GGCS (critical sections): a list of suspended computations")))
         (wire!
          receiver
          extern: receiver
