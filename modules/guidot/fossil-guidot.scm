@@ -436,6 +436,16 @@
 
 (define (%%guidot-interactive dialog-control! #!key (insert #f))
   (lambda (constructor #!key in (done #f))
+    (cond-expand
+     (debug
+      (set!
+       constructor
+       (let ((constructor constructor))
+         (lambda args
+           (with-debug-exception-catcher
+            (lambda ()
+              (apply constructor args)))))))
+     (else))
     (letrec ((this
               (constructor
                in
@@ -455,6 +465,16 @@
 
 (define (%%guidot-interactive/kw dialog-control! #!key (insert #f))
   (lambda (constructor #!key in (done #f))
+    (cond-expand
+     (debug
+      (set!
+       constructor
+       (let ((constructor constructor))
+         (lambda args
+           (with-debug-exception-catcher
+            (lambda ()
+              (apply constructor args)))))))
+     (else))
     (letrec ((this
               (constructor
                in: in done:
