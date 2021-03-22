@@ -363,6 +363,10 @@ NULL;
       ((2 about) (beaverchat-about-payload #f area))
       ((0 calculator) (make-calculator-payload area))
       ((1) (make-beaverchat-payload launch-url beaver-domain in: area keypad: guide-keypad/de))
+      ;;;; ((16) (guidot-fossil-help-browser area))
+      ;;((17) (guidot-fossil-wiki area))
+      ;;;; ((18) (guidot-fossil-browser area))
+      ((3) (guidot-fossil-transfer-dialog area))
       (else (guide-button in: (make-mdv-rect-interval 0 0 100 100)))))
 
   ;; No longer: Wired to globals, may now be instanciated more than once.
@@ -370,7 +374,7 @@ NULL;
   ;; (guide-define-payload "chat" 'once (beaverchat-payload-config launch-url beaver-domain))
 
   (kick/sync
-   (visible-tl-options '#("calculator" "chat" "about"))
+   (visible-tl-options '#("calculator" "chat" "about" "advanced"))
    (PIN:toplevel-selection 0))
   (let ((area (make-mdv-rect-interval 0 0 320 474))
         (conversion beaverchat-payload-sel)
@@ -424,7 +428,7 @@ NULL;
 (cond-expand
  ((and debug (not android))
   (kick
-   (visible-tl-options '#("calculator" "chat" "about"))
+   (visible-tl-options '#("calculator" "chat" "about" "advanced"))
    (PIN:toplevel-selection 1))
   (define (avant!)
     (load "dev.scm")
