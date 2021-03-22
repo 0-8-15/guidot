@@ -56,18 +56,20 @@
      ((guide-payload? obj)
       (ggb-delete-first-match! dialog (lambda (x) (eq? x obj)))
       (cond-expand
-       (debug (when (eqv? (vector-length before) (ggb-length dialog))
-                (MATURITY -1 "layer payload close failed" name obj)))
-       (else))
-      #t)
+       (debug
+        (when (eqv? (vector-length before) (ggb-length dialog))
+          (MATURITY -1 "layer payload close failed" name obj))
+        #t)
+       (else #t)))
      ((and (box? obj) (guide-payload? (unbox obj)))
       (let ((payload (unbox obj)))
         (ggb-delete-first-match! dialog (lambda (x) (eq? x payload))))
       (cond-expand
-       (debug (when (eqv? (vector-length before) (ggb-length dialog))
-                (MATURITY -1 "layer payload close failed" name obj)))
-       (else))
-      #t)
+       (debug
+        (when (eqv? (vector-length before) (ggb-length dialog))
+          (MATURITY -1 "layer payload close failed" name obj))
+        #t)
+       (else #t)))
      (else (error "invalid layer payload" name key more))))
   (results
    (guide-ggb-layout area dialog direction: 'layer fixed: #t name: name)
