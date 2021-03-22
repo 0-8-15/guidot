@@ -83,7 +83,7 @@
                  (append args (list "-R" repository)))
                 (else args))
               directory: ,directory
-              stdin-redirection: #t stdout-redirection: #t stderr-redirection: stderr-redirection show-console: #f))))
+              stdin-redirection: #t stdout-redirection: #t stderr-redirection: ,stderr-redirection show-console: #f))))
     (assume
      (begin
        (when (procedure? log)
@@ -505,7 +505,11 @@
          (lambda (rect payload event xsw ysw)
            (cond
             ((eqv? event EVENT_BUTTON1DOWN)
-             (NYI)))
+             (guide-critical-add!
+              (lambda ()
+                ;; (dialog-control! close: this)
+                (dialog-control! top: (guidot-fossil-wiki dialog-area)))
+              async: #t)))
            #t)))
       (define (mkmk-vale label value value-display validate)
         (lambda (area row col)
@@ -640,16 +644,27 @@
     (define (wiki-list off)
       (guidot-frame
        (let ((options
-              (let ((json (json-read (fossil-command "json" command "list"))))
-                (cdr (assq 'payload json)))))
+              (let ((json
+                     (let ((port (fossil-command/json)))
+                       (json-write '((command . "wiki/list")) port)
+                       (close-output-port port)
+                       (json-read port))))
+                (cond
+                 ((eof-object? json) '())
+                 (else (cdr (assq 'payload json)))))))
          (lambda (area)
-           (guide-list-select-payload
-            area (lambda () options)
-            action:
-            (lambda (n x)
-              (wiki-selected (vector-ref options n))
-              (off)
-              (%%guide-post-speculative (begin (dialog-control top: (with-page)) #t))))))
+           (cond
+            ((null? options)
+             (let ((label "wiki list empty"))
+               (guide-button name: label in: area label: label guide-callback: off)))
+            (else
+             (guide-list-select-payload
+              area (lambda () options)
+              action:
+              (lambda (n x)
+                (wiki-selected (vector-ref options n))
+                (off)
+                (%%guide-post-speculative (begin (dialog-control top: (with-page)) #t))))))))
        in: area
        border-ratio: 1/4
        color: color background: background
@@ -791,7 +806,11 @@
                 (guide-critical-add!
                  (lambda ()
                    (dismiss)
-                   (let* ((result (json-read (fossil-command "json" command ssc)))
+                   (let* ((result #;(json-read (fossil-command "json" command ssc))
+                           (let ((port (fossil-command/json)))
+                             (json-write `((command . ,(string-append command "/" ssc))) port)
+                             (close-output-port port)
+                             (json-read port)))
                           (rows 50)
                           (buffer (make-ggb size: 2))
                           (all (box #f)))
@@ -811,10 +830,14 @@
                        (lambda _
                          (call-with-output-string
                           (lambda (p)
-                            (let* ((results (cdr (assq 'timeline (cdr (assq 'payload result)))))
+                            (let* ((results
+                                    (cond
+                                     ((eof-object? result) '#())
+                                     (else (cdr (assq 'timeline (cdr (assq 'payload result)))))))
                                    (limit (vector-length results)))
                               (do ((i 0 (+ i 1)))
-                                  ((eqv? i limit))
+                                  ((eqv? i limit)
+                                   (when (eqv? limit 0) (display "no results" p)))
                                 (let* ((result (vector-ref results i))
                                        (timestamp (cdr (assq 'timestamp result)))
                                        (comment (cdr (assq 'comment result))))
