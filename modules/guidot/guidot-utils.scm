@@ -48,16 +48,27 @@
      ((box? notify) (set-box! notify payload) payload))
     payload)
   (define (close! obj)
+    (cond-expand
+     (debug (define before (ggb->vector dialog)))
+     (else))
     (check-not-observable-speculative! name key more)
     (cond
      ((guide-payload? obj)
       (ggb-delete-first-match! dialog (lambda (x) (eq? x obj)))
+      (cond-expand
+       (debug (when (eqv? (vector-length before) (ggb-length dialog))
+                (MATURITY -1 "layer payload close failed" name obj)))
+       (else))
       #t)
      ((and (box? obj) (guide-payload? (unbox obj)))
       (let ((payload (unbox obj)))
         (ggb-delete-first-match! dialog (lambda (x) (eq? x payload))))
+      (cond-expand
+       (debug (when (eqv? (vector-length before) (ggb-length dialog))
+                (MATURITY -1 "layer payload close failed" name obj)))
+       (else))
       #t)
-     (else (error "invalid payload" name key more))))
+     (else (error "invalid layer payload" name key more))))
   (results
    (guide-ggb-layout area dialog direction: 'layer fixed: #t name: name)
    (lambda (key . more)
@@ -70,7 +81,8 @@
         (cond
          ((stm-atomic?) (apply close! more))
          (else (guide-critical-add! (lambda () (apply close! more))))))
-       (else (error "invalid key" name key more))))))
+       ((content) (ggb->vector dialog))
+       (else (error "invalid layer control key" name key more))))))
 
 (define (guidot-texteditor-menu
          edit-control
