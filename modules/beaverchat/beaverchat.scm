@@ -909,8 +909,10 @@
                          ((positive? (beaver-proxy-port-number))
                           (let ((url (string-append "http://127.0.0.1:" (number->string (beaver-proxy-port-number))))
                                 (via (if (< x (/ w 2)) 'webview 'extern)))
-                            (%%guide-post-speculative
-                             (kick (box (lambda () (webview-launch! url via: via)))))))
+                            (guide-critical-add!
+                             (lambda () (webview-launch! url via: via))
+                             async: #t)
+                            #t))
                          (else #t)))))
                    (lambda (in col row)
                      (let* ((last (memoize-last (lambda (v) (number->string (length v))) eq?))
