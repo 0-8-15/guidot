@@ -9,8 +9,7 @@
     (println port: port (or location handle-debug-exception))
     (display-exception exn port)
     (display-exception-in-context exn context port)
-    (display-continuation-backtrace context port  #t #t 10 10 0)
-    (display-exception e port))
+    (display-continuation-backtrace context port  #t #t 10 10 0))
   #!void)
 
 (define (with-debug-exception-catcher
