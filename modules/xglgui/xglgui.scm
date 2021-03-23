@@ -892,7 +892,14 @@
        (h (- yno ysw))
        (border-width (* h 1/20))
        (line-height+border (+ border-width line-height))
-       (value-buffer (input->buffer data))
+       (value-display-max-width (- w (* 2 border-width)))
+       (font-size-treshold (guide-font-height font))
+       (value-buffer (input->buffer data)) ;; central value
+       (value-display-offset 0)
+       (value-buffer-as-string "")
+       (update-value-string!
+        (lambda ()
+          (set! value-buffer-as-string (%%value-buffer->string value-buffer value-display-offset))))
        (value!
         (let ((label! (make-guide-label-view)))
           (label! horizontal-align: horizontal-align)
@@ -901,7 +908,7 @@
           (label! color: color)
           (label! size: w line-height)
           (label! position: xsw (round (+ ysw border-width)))
-          (label! text: (%%value-buffer->string value-buffer))
+          (label! text: value-buffer-as-string)
           label!))
        (value-draw (value!))
 
@@ -911,42 +918,58 @@
         ;; TBD: this is a bit overly simple and needlessly expensive
         ;; at runtime
         (lambda ()
-          (let* ((total (%%value-buffer->string value-buffer))
-                 (before (%%value-buffer->string value-buffer 0 (ggb-point value-buffer)))
-                 (glv-before (MATURITY-1:utf8string->guide-glyphvector before font))
-                 (glv-total (MATURITY-1:utf8string->guide-glyphvector total font))
-                 (width-before (if glv-before (MATURITY+0:guide-glypvector-width glv-before) 0))
-                 (width-total (if glv-total (MATURITY+0:guide-glypvector-width glv-total) 0))
-                 (label! (make-guide-label-view)))
-            (label! horizontal-align: horizontal-align)
-            (label! vertical-align: vertical-align)
-            (label! font: font)
-            (label! color: hightlight-color)
-            (label! size: w line-height)
-            (label!
-             position:
-             (round (+ xsw
-                       (case horizontal-align
-                         ((left) width-total)
-                         ((center) (* 1/2 width-total))
-                         (else 0))
-                       (- width-before width-total)))
-             (round (+ ysw border-width)))
-            (label! text: '#(124)) ;; a vertical bar ("|")
-            (let ((draw
-                   (if #t ;; blink
-                       (let ((on (label!)))
-                         (lambda ()
-                           (let* ((n0 ##now)
-                                  (n0f (floor n0)))
-                             (when (and (eq? (guide-focus) this-payload)
-                                        (< (- n0 n0f) 1/2))
-                               (on)))))
-                       (label!))))
-              (set! cursor-draw draw)))
-          (guide-wakeup!)
-          ;; no longer: tail position of key handler - return "event handled"
-          #t))
+          (let loop ()
+            (let ((point (ggb-point value-buffer)))
+              (cond
+               ((> value-display-offset point) (set! value-display-offset point))))
+            (update-value-string!)
+            (let* ((total value-buffer-as-string)
+                   (before (%%value-buffer->string value-buffer value-display-offset (ggb-point value-buffer)))
+                   (glv-before (MATURITY-1:utf8string->guide-glyphvector before font))
+                   (glv-total (MATURITY-1:utf8string->guide-glyphvector total font))
+                   (width-before (if glv-before (MATURITY+0:guide-glypvector-width glv-before) 0))
+                   (width-total (if glv-total (MATURITY+0:guide-glypvector-width glv-total) 0)))
+              (cond
+               ((> width-before value-display-max-width)
+                (set! value-display-offset (+ value-display-offset 1))
+                (loop))
+               ((and (> value-display-offset 0)
+                     (< width-total (- value-display-max-width font-size-treshold)))
+                (set! value-display-offset (- value-display-offset 1))
+                (loop))
+               (else
+                (value! text: value-buffer-as-string)
+                (set! value-draw (value!))
+                (let ((label! (make-guide-label-view)))
+                  (label! horizontal-align: horizontal-align)
+                  (label! vertical-align: vertical-align)
+                  (label! font: font)
+                  (label! color: hightlight-color)
+                  (label! size: w line-height)
+                  (label!
+                   position:
+                   (round (+ xsw
+                             (case horizontal-align
+                               ((left) width-total)
+                               ((center) (* 1/2 width-total))
+                               (else 0))
+                             (- width-before width-total)))
+                   (round (+ ysw border-width)))
+                  (label! text: '#(124)) ;; a vertical bar ("|")
+                  (let ((draw
+                         (if #t ;; blink
+                             (let ((on (label!)))
+                               (lambda ()
+                                 (let* ((n0 ##now)
+                                        (n0f (floor n0)))
+                                   (when (and (eq? (guide-focus) this-payload)
+                                              (< (- n0 n0f) 1/2))
+                                     (on)))))
+                             (label!))))
+                    (set! cursor-draw draw)))
+                (guide-wakeup!)
+                ;; no longer: tail position of key handler - return "event handled"
+                #t))))))
 
        (set-cursor-position!
         (lambda (x y) ;; TBD: move as introspection feature into guide-figure
@@ -959,9 +982,10 @@
                        (lambda (i c)
                          (let ((glyph (MATURITY+1:ln-ttf:font-ref font c)))
                            (if glyph (set! w (+ w (ttf:glyph-advancex glyph)))))
-                         (if (< x w) (return i))))
-                      (ggb-length value-buffer))))))
-            (ggb-goto! value-buffer target-column)
+                         (if (< x w) (return i)))
+                       value-display-offset)
+                      (- (ggb-length value-buffer) value-display-offset))))))
+            (ggb-goto! value-buffer (+ value-display-offset target-column))
             (update-cursor!))))
 
        (handle-key
@@ -975,27 +999,20 @@
            ((eqv? key EVENT_KEYBACKSPACE)
             (ggb-delete! value-buffer -1)
             (when (procedure? validate) (validate value-buffer))
-            (value! text: (%%value-buffer->string value-buffer))
-            (set! value-draw (value!))
             (update-cursor!))
            ((eqv? key EVENT_KEYDELETE)
             (ggb-delete! value-buffer 1)
             (when (procedure? validate) (validate value-buffer))
-            (value! text: (%%value-buffer->string value-buffer))
-            (set! value-draw (value!))
             (update-cursor!))
            ((eqv? key EVENT_KEYENTER)
             ;; (data (%%value-buffer->string value-buffer))
+            (set! value-display-offset 0)
             (set! value-buffer (input->buffer data))
-            (value! text: (ggb->vector value-buffer))
-            (set! value-draw (value!))
             (update-cursor!))
            ((eqv? key #\null)) ;; should have been ignored, more harm than good
            ((char? key)
             (ggb-insert! value-buffer (char->integer key))
             (when (procedure? validate) (validate value-buffer))
-            (value! text: (%%value-buffer->string value-buffer))
-            (set! value-draw (value!))
             (update-cursor!))
            (else (debug "ignored key" (list 'guide-line-input key))))))
 
@@ -1010,36 +1027,50 @@
                  (lambda () (and value-draw (value-draw)))
                  (lambda () (cursor-draw))))
        (events
-        (lambda (rect payload event x y)
-          (case event
-            ((press: release:)
-             (cond
-              ((eqv? x EVENT_KEYENTER)
-               (data (%%value-buffer->string value-buffer)) ;; speculative
-               (local-on-key event x y)
+        (let ((armed #f))
+          (lambda (rect payload event x y)
+            (case event
+              ((press: release:)
+               (cond
+                ((eqv? x EVENT_KEYENTER)
+                 (data (%%value-buffer->string value-buffer)) ;; speculative
+                 (local-on-key event x y)
+                 #t)
+                (else (local-on-key event x y))))
+              ((reload:) ;;  Bad style!
+               ;;
+               ;; NOTE: This is to document possible style as bad.  TBD:
+               ;; detail why it is bad.
+               (MATURITY -1 "control operation embedded GUI event" loc: guide-line-input)
+               (set! value-display-offset 0)
+               (set! value-buffer (input->buffer data))
+               (guide-critical-add!
+                (lambda ()
+                  (when (procedure? validate) (validate value-buffer))
+                  (value! text: (%%value-buffer->string value-buffer))
+                  (set! value-draw (value!))
+                  (update-cursor!))
+                async: #f)
                #t)
-              (else (local-on-key event x y))))
-            ((reload:) ;;  Bad style!
-             ;;
-             ;; NOTE: This is to document possible style as bad.  TBD:
-             ;; detail why it is bad.
-             (MATURITY -1 "control operation embedded GUI event" loc: guide-line-input)
-             (set! value-buffer (input->buffer data))
-             (guide-critical-add!
-              (lambda ()
-                (when (procedure? validate) (validate value-buffer))
-                (value! text: (%%value-buffer->string value-buffer))
-                (set! value-draw (value!))
-                (update-cursor!))
-              async: #f)
-             #t)
-            (else
-             (cond
-              ((eqv? event EVENT_BUTTON1UP)
-               (set-cursor-position! x y)
-               (guide-focus this-payload)
-               #t)
-              (else (mdvector-rect-interval-contains/xy? in x y))))))))
+              (else
+               (cond
+                ((eqv? event EVENT_BUTTON1DOWN)
+                 (set! armed (vector x value-display-offset))
+                 #t)
+                ((eqv? event EVENT_BUTTON1UP)
+                 (set-cursor-position! x y)
+                 (set! armed #f)
+                 (guide-focus this-payload)
+                 #t)
+                ((and (eqv? event EVENT_MOTION) armed)
+                 (let ((x0 (vector-ref armed 0))
+                       (o0 (vector-ref armed 1)))
+                   (set! value-display-offset
+                         (max 0
+                              (min (ggb-length value-buffer)
+                                   (+ o0 (round (/ (- x0 x) font-size-treshold)))))))
+                 #t)
+                (else (mdvector-rect-interval-contains/xy? in x y)))))))))
     (when (procedure? validate) (validate value-buffer))
     (update-cursor!)
     (let ((result ;; a letrec* on `this-payload`
@@ -1610,6 +1641,11 @@
               (guide-event-dispatch-to-payload rect kpd event x y))
              ((guide-payload-contains/xy? control-panel x y)
               (guide-event-dispatch-to-payload rect control-panel event x y))
+             ((guide-payload-contains/xy? line x y)
+              (guide-event-dispatch-to-payload rect line event x y))
+             (else #t)))
+           ((eqv? event EVENT_MOTION)
+            (cond
              ((guide-payload-contains/xy? line x y)
               (guide-event-dispatch-to-payload rect line event x y))
              (else #t)))
