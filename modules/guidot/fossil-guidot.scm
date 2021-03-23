@@ -42,26 +42,22 @@
          (repository #t)
          #!rest args)
   (let* ((working-directory (or (fossils-directory) (current-directory)))
+         (stderr-redirection #f)
          (arguments
-          `(path:
-            "fossil"
-            arguments:
-            ,(cond
-              ((not repository) args)
-              ((eq? repository #t)
-               (append args (list "-R" (path-normalize (fossils-project-filename (current-fossil))))))
-              ((string? repository) ;; TBD: file,exists,etc...
-               (append args (list "-R" repository)))
-              (else args))
-            directory: ,directory
-            stdin-redirection: #t stdout-redirection: #t stderr-redirection: #t show-console: #f)))
+          (cond
+           ((not repository) args)
+           ((eq? repository #t)
+            (append args (list "-R" (path-normalize (fossils-project-filename (current-fossil))))))
+           ((string? repository) ;; TBD: file,exists,etc...
+            (append args (list "-R" repository)))
+           (else args))))
     (assume
      (begin
        (when (procedure? log)
          (log `(cwd: ,(current-directory) arguments: . ,arguments)))
        #t)
      "unreachable")
-    (open-process arguments)))
+    (semi-fork "fossil" arguments stderr-redirection directory: directory)))
 
 (define (fossil-command/json
          #!key
@@ -69,28 +65,23 @@
          (directory #f)
          (repository #t))
   (let* ((working-directory (or (fossils-directory) (current-directory)))
+         (stderr-redirection #f)
          (arguments
-          (let ((args '("json" "-json-input" "-"))
-                (stderr-redirection #f))
-            `(path:
-              "fossil"
-              arguments:
-              ,(cond
-                ((not repository) args)
-                ((eq? repository #t)
-                 (append args (list "-R" (path-normalize (fossils-project-filename (current-fossil))))))
-                ((string? repository) ;; TBD: file,exists,etc...
-                 (append args (list "-R" repository)))
-                (else args))
-              directory: ,directory
-              stdin-redirection: #t stdout-redirection: #t stderr-redirection: ,stderr-redirection show-console: #f))))
+          (let ((args '("json" "-json-input" "-")))
+            (cond
+             ((not repository) args)
+             ((eq? repository #t)
+              (append args (list "-R" (path-normalize (fossils-project-filename (current-fossil))))))
+             ((string? repository) ;; TBD: file,exists,etc...
+              (append args (list "-R" repository)))
+             (else args)))))
     (assume
      (begin
        (when (procedure? log)
          (log `(cwd: ,(current-directory) arguments: . ,arguments)))
        #t)
      "unreachable")
-    (open-process arguments)))
+    (semi-fork "fossil" arguments stderr-redirection directory: directory)))
 
 (define-values
     (fossil-object-type? fossil-object-type->string)
