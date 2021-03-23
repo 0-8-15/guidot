@@ -1622,6 +1622,7 @@
                     (debug 'value-edit-ignored-key x)
                     #f))))
            (else (mdvector-rect-interval-contains/xy? in x y))))))
+    (guide-focus line)
     (let ((result
            (make-guide-payload
             name: name in: in widget: #f
