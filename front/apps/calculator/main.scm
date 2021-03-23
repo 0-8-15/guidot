@@ -415,7 +415,7 @@ NULL;
   ;; end of invocation independent initializations
   (log-status "Starting from " dir (object->string (args)))
   (init-beaverchat! dir use-origin: use-origin) ;; MUST be first
-  (capture-domain! (capdom) handler: fossils-directory-handler)
+  (capture-domain! (capdom) handler: fossils-directory-handler at-phone-decoder: at-phone-decoder)
   (lwip-tcp-service-register! 80 fossils-directory-service)
   (log-status "beaver.dam done")
   (let ((job (lambda () (beaver-process-commands (args)))))
