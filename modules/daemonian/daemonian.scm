@@ -148,13 +148,14 @@ NULL;
   )
  (else))
 
-(define (semi-fork cmd args #!optional (stderr #f))
+(define (semi-fork cmd args #!optional (stderr #f) #!key (directory #f))
   ;; (debug 'semi-fork `(,cmd . ,args))
   (log-debug "semi-fork " 1 cmd " on " args)
   (cond-expand
    (android
     (let ((datadir
-           (path-directory (force daemonian-directory-files))
+           (or (path-directory (force daemonian-directory-files))
+               (error "data directory not found"))
            #;(jscheme-eval
             `(let* ((app ,(android-app-class))
                     (this ((method "me" app)))
@@ -168,7 +169,7 @@ NULL;
                             (getParent (method "getParent" "java.io.File")))
                         (lambda (ctx) (getParent (getFilesDir ctx)))))
                      )
-           (getDataDir (getApplicationContext this)))))))
+                 (getDataDir (getApplicationContext this)))))))
       (define (file-exists-and-executable? fn)
         (and (file-exists? fn)
              (not (eqv? (bitwise-and (file-mode fn) #b001000000) 0))))
@@ -180,61 +181,63 @@ NULL;
       (define (cached-executable cmd)
         (let ((cachedpath (cached-executable-path cmd)))
           (and (file-exists-and-executable? cachedpath) cachedpath)))
-      (if datadir
-          (let loop ((exe (string-append datadir "lib/lib" cmd ".so") #;(make-pathname (list (object->string datadir) "lib") (string-append "lib" cmd) ".so"))
-                (envt (list
-                       (string-append "HOME=" (force daemonian-directory-files)))))
-            (let* ((exists? (file-exists? exe))
-                   (executable? (and exists? (not (eqv? (bitwise-and (file-mode exe) #b001000000) 0)))))
-              (cond
-               ((and exists? executable?)
-                (with-exception-catcher
-                 (lambda (exn) (log-debug "open-process failed " 1 (debug 'fail (exception-->printable exn))) #f)
-                 (lambda ()
-                   (open-process
-                    `(path: ,exe arguments: ,args
-                            environment: ,envt
-                            stdout-redirection: #t stdin-redirection: #t
-                            stderr-redirection: ,stderr)))))
-               ((cached-executable cmd) => (lambda (cached) (loop cached envt)))
-               (else
-                (log-error "executable: " exe " exists: " exists? " executable: " executable?)
-                (let ((exe (cached-executable-path cmd)))
-                  (log-error "cached executable: " exe " exists: " (file-exists? exe) " executable: " (file-exists-and-executable? exe)))
-                ;;(log-error "data dir: " datadir "\n" (android-ls-lR datadir))
-                (let ((p (android-PackageCodePath))
-                      (cachedir (cache-path)))
-                  (log-error "package code path: " p "\n" (android-ls-lR p) (android-file p))
-                  (with-exception-catcher
-                   (lambda (exn) (log-error "unzip ran into: " exn))
-                   (lambda () (log-error "content: " (android-run->string "unzip" "-lq" p))))
-                  (if (and
-                       (or (android-run-in/boolean
-                            cachedir "unzip" "-d" cachedir p (apk-executable-path cmd))
-                           (begin
-                             (log-error
-                              "Error: "
-                              (android-run-in->string
-                               cachedir "unzip" "-d" cachedir p (apk-executable-path cmd)))
-                             #f))
-                       (or (file-exists-and-executable? (cached-executable-path cmd))
-                           (android-run-in/boolean cachedir "chmod" "+x" (cached-executable-path cmd))
-                           (begin
-                             (log-error
-                              "Error: " (android-run-in->string cachedir "chmod" "+x" (cached-executable-path cmd)))
-                             (log-error " Dir " (android-ls-lR (string-append datadir "cache")))
-                             #f))
-                       (cached-executable cmd))
-                      (loop (cached-executable cmd) envt)
-                      (begin
-                        (log-error "FAILED to extract cmd " cmd " from archive " p)
-                        #f))))))))))
+      (let loop ((exe (string-append datadir "lib/lib" cmd ".so") #;(make-pathname (list (object->string datadir) "lib") (string-append "lib" cmd) ".so"))
+                 (envt (list
+                        (string-append "HOME=" (force daemonian-directory-files)))))
+        (let* ((exists? (file-exists? exe))
+               (executable? (and exists? (not (eqv? (bitwise-and (file-mode exe) #b001000000) 0)))))
+          (cond
+           ((and exists? executable?)
+            (with-exception-catcher
+             (lambda (exn) (log-debug "open-process failed " 1 (debug 'fail (exception-->printable exn))) #f)
+             (lambda ()
+               (open-process
+                `(path: ,exe arguments: ,args
+                        environment: ,envt
+                        directory: ,directory
+                        stdout-redirection: #t stdin-redirection: #t
+                        stderr-redirection: ,stderr)))))
+           ((cached-executable cmd) => (lambda (cached) (loop cached envt)))
+           (else
+            (log-error "executable: " exe " exists: " exists? " executable: " executable?)
+            (let ((exe (cached-executable-path cmd)))
+              (log-error "cached executable: " exe " exists: " (file-exists? exe) " executable: " (file-exists-and-executable? exe)))
+            ;;(log-error "data dir: " datadir "\n" (android-ls-lR datadir))
+            (let ((p (android-PackageCodePath))
+                  (cachedir (cache-path)))
+              (log-error "package code path: " p "\n" (android-ls-lR p) (android-file p))
+              (with-exception-catcher
+               (lambda (exn) (log-error "unzip ran into: " exn))
+               (lambda () (log-error "content: " (android-run->string "unzip" "-lq" p))))
+              (if (and
+                   (or (android-run-in/boolean
+                        cachedir "unzip" "-d" cachedir p (apk-executable-path cmd))
+                       (begin
+                         (log-error
+                          "Error: "
+                          (android-run-in->string
+                           cachedir "unzip" "-d" cachedir p (apk-executable-path cmd)))
+                         #f))
+                   (or (file-exists-and-executable? (cached-executable-path cmd))
+                       (android-run-in/boolean cachedir "chmod" "+x" (cached-executable-path cmd))
+                       (begin
+                         (log-error
+                          "Error: " (android-run-in->string cachedir "chmod" "+x" (cached-executable-path cmd)))
+                         (log-error " Dir " (android-ls-lR (string-append datadir "cache")))
+                         #f))
+                   (cached-executable cmd))
+                  (loop (cached-executable cmd) envt)
+                  (begin
+                    (log-error "FAILED to extract cmd " cmd " from archive " p)
+                    #f)))))))))
    (linux
-    (open-process `(path: ,(system-cmdargv 0) arguments: (,(daemonian-semifork-key) ,cmd . ,args) stdout-redirection: #t stdin-redirection: #t)))
+    (open-process
+     `(path: ,(system-cmdargv 0) arguments: (,(daemonian-semifork-key) ,cmd . ,args)
+             directory: ,directory stdout-redirection: #t stdin-redirection: #t)))
    (else
     (with-exception-catcher
      (lambda (exn) (log-debug "open-process failed " 1 (debug 'fail (exception-->printable exn))) #f)
-     (lambda () (open-process `(path: #;"/proc/self/exe" ,(system-cmdargv 0) arguments: (,(daemonian-semifork-key) ,cmd . ,args) stdout-redirection: #t stdin-redirection: #t show-console: #f)))))))
+     (lambda () (open-process `(path: #;"/proc/self/exe" ,(system-cmdargv 0) arguments: (,(daemonian-semifork-key) ,cmd . ,args) directory: ,directory stdout-redirection: #t stdin-redirection: #t show-console: #f)))))))
 
 (define (semi-run cmd args)
   (let ((port (semi-fork cmd args)))
