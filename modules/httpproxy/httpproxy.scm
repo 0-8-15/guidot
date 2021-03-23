@@ -105,8 +105,7 @@ EOF
                                          rewrite)))))
                          (cond
                           (atphone (connect-handler "HTTP @phone" atphone port))
-                          (else (connect-handler "HTTP" (clean-ip6addr host) port)))))
-                     `(httpproxy: ,host))))
+                          (else (connect-handler "HTTP" (clean-ip6addr host) port))))))))
           (when (port? conn)
             (display nl1 conn)
             (force-output conn)
