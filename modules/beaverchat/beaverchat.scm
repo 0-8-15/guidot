@@ -704,13 +704,11 @@
                       (let* ((pn (chat-number->neatstring (car e) "-"))
                              (url (string-append "http://" pn "." (beaver-domain) "/index"))
                              (via (if (< x 1/4) 'webview 'extern)))
-                        (case 2
-                        ((1)
-                         (%%guide-critical-call (delay (launch-url url via: via)))
-                         #t)
-                        (else
-                         (%%guide-post-speculative
-                          (kick! (box (lambda () (launch-url url via: via)))))))))
+                        ;; %%guide-post-speculative should be enough!
+                        (guide-critical-add!
+                         (lambda () (launch-url url via: via))
+                         async: #t)
+                        #t))
                      ((> x 2/3) (dialog-set! (nick-dialog (car e) #t)) #t)
                      (else (activate-chat-partner! (car e)))))
                    (else (dialog-set! (nick-dialog (car e) #f))))))
