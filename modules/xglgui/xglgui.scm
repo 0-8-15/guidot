@@ -1570,7 +1570,7 @@
                         (lambda () ;; FIXME: how comes this closes the dialog?
                           (kick! (lambda ()
                                    (data (clipboard-paste))
-                                   (lambda () (lambda () (refresh-line! rect) #f)))))
+                                   (refresh-line! rect) #f)))
                         async: #t)
                        #t)))
                   (lambda (area row col)
