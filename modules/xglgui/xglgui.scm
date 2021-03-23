@@ -2150,7 +2150,8 @@
                   (make-thread
                    (cond
                     ((procedure? obj) obj)
-                    (else (lambda () (force obj)))))))))
+                    (else (lambda () (force obj))))
+                   obj)))))
           (critical-calls (cons wrapped (critical-calls)))))
        (else
         (cond
