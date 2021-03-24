@@ -1446,14 +1446,14 @@
           (k-pg (list (integer->char 167) label: '#(167))))
       (vector
        ;; I   -- lower case characters
-       #\q        #\w #\e #\r #\t #\y #\u  #\i  #\o   #\p
+       #\q        #\w #\e #\r #\t #\z #\u  #\i  #\o   #\p
        #\a        #\s #\d #\f #\g #\h #\j  #\k  #\l   k-del
-       k-shift    #f  #\z #\x #\c #\v #\b  #\n  #\m   #t
+       k-shift    #f  #\y #\x #\c #\v #\b  #\n  #\m   #t
        k-toggle   #f  #\, k-space #f #f #f #\.  k-ret #f
        ;; II  -- upper case characters
-       #\Q        #\W #\E #\R #\T #\Y #\U  #\I  #\O   #\P
+       #\Q        #\W #\E #\R #\T #\Z #\U  #\I  #\O   #\P
        #\A        #\S #\D #\F #\G #\H #\J  #\K  #\L   k-del
-       k-shift-on #f  #\Z #\X #\C #\V #\B  #\N  #\M   #t
+       k-shift-on #f  #\Y #\X #\C #\V #\B  #\N  #\M   #t
        k-toggle   #f  #\, k-space #f #f #f #\.  k-ret #f
        ;; III -- numeric & lower case graphics
        #\1        #\2 #\3 #\4 #\5 #\6 #\7  #\8  #\9   #\0
