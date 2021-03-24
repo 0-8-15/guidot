@@ -1790,11 +1790,10 @@
           view!))
        (kpd (keypad
              ;; FIXME: normalize x/y to be zero based
-             in: (make-x0y0x1y1-interval/coerce
-                  xsw ysw
-                  xno
-                  (let ((intented (vector-ref edit-position 1)))
-                    (if (> intented line-height) intented (+ ysw line-height))))
+             in: (let ((intented (vector-ref edit-position 1))
+                       (kpd-lines 4))
+                   (let ((min-kpd-height (* kpd-lines line-height)))
+                     (make-x0y0x1y1-interval/coerce xsw ysw xno (+ ysw (max min-kpd-height intented)))))
              action:
              (lambda (p/r key mod)
                (let ((key (if on-key (on-key p/r key mod) key)))
