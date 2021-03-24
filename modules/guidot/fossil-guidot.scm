@@ -776,7 +776,7 @@
                                          (cond
                                           ((>= status 0) (number->string (/ status 256)))
                                           (else (number->string status)))
-                                         " output:\n" str)))
+                                         " output:\n" (if (eof-object? str) "none" str))))
                                   (log-error "fossil fail on wiki/list " 1 msg)
                                   msg)))
                       results: (lambda (pl ctrl) pl))))
