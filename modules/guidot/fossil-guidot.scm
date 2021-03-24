@@ -90,6 +90,31 @@
      "unreachable")
     (semi-fork "fossil" arguments stderr-redirection directory: working-directory)))
 
+(define (fossil-command/json+failed
+         ;; to be used when failed to figure out the errors
+         #!key
+         (log (lambda (args) (debug 'fossil-command/json args)))
+         (directory (fossils-directory))
+         (repository #t))
+  (let ((working-directory (or directory (current-directory)))
+        (stderr-redirection #t)
+        (arguments
+         (let ((args '("json" "-json-input" "-")))
+           (cond
+            ((not repository) args)
+            ((eq? repository #t)
+             (append args (list "-R" (fossils-project-filename (current-fossil)))))
+            ((string? repository) ;; TBD: file,exists,etc...
+             (append args (list "-R" repository)))
+            (else args)))))
+    (assume
+     (begin
+       (when (procedure? log)
+         (log `(ERRORcheck cwd: ,working-directory arguments: . ,arguments)))
+       #t)
+     "unreachable")
+    (semi-fork "fossil" arguments stderr-redirection directory: working-directory)))
+
 (define-values
     (fossil-object-type? fossil-object-type->string)
   (values
