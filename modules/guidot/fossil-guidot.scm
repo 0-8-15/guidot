@@ -748,10 +748,38 @@
                        (close-output-port port)
                        (json-read port))))
                 (cond
-                 ((eof-object? json) '())
+                 ((eof-object? json) json)
                  (else (cdr (assq 'payload json)))))))
          (lambda (area)
            (cond
+            ((eof-object? options)
+             (guide-button
+              name: "fossil failed" in: area guide-callback: off
+              label: (guide-textarea-payload
+                      readonly: #t wrap: #t
+                      in: (make-mdv-rect-interval 0 0 (mdv-rect-interval-width area) (mdv-rect-interval-height area))
+                      rows: 3
+                      horizontal-align: 'left
+                      vertical-align: 'bottom
+                      font: (guide-select-font size: 'small)
+                      ;; color: color-2 hightlight-color: color-4
+                      ;; background: #f
+                      data: (lambda _
+                              (let ((port (fossil-command/json+failed)))
+                                (json-write '((command . "wiki/list")) port)
+                                (close-output-port port)
+                                (let* ((str (read-line port #f))
+                                       (status (process-status port))
+                                       (msg
+                                        (string-append
+                                         "Fossil return code "
+                                         (cond
+                                          ((>= status 0) (number->string (/ status 256)))
+                                          (else (number->string status)))
+                                         " output:\n" str)))
+                                  (log-error "fossil fail on wiki/list " 1 msg)
+                                  msg)))
+                      results: (lambda (pl ctrl) pl))))
             ((null? options)
              (let ((label "wiki list empty"))
                (guide-button name: label in: area label: label guide-callback: off)))
