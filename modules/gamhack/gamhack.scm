@@ -183,11 +183,15 @@
 
 ;;** Connecting Ports
 
+(define port-copy-data-timeout (make-parameter 660))
+
+(define port-copy-initial-timeout (make-parameter 60))
+
 (define (port-copy-through in out #!optional (MTU 3000))
   ;; Copy `in` to `out` and close the input side of `in` and the
   ;; output side of `out` when EOF is reached on `in`.
   (let ((buffer (%allocate-u8vector MTU)))
-    (input-port-timeout-set! in (socks-connect-timeout))
+    (input-port-timeout-set! in (port-copy-initial-timeout))
     (let loop ((buffer buffer)
                (offset 0)
                (n 0)
@@ -205,7 +209,7 @@
               (begin
                 (force-output out)
                 (unless (macro-output-port-closed? out)
-                  (input-port-timeout-set! in (socks-data-timeout))
+                  (input-port-timeout-set! in (port-copy-data-timeout))
                   (loop buffer 0 0 mtu corout)))
               (error "lost on output connection" out))))))))
 

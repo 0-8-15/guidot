@@ -17,7 +17,8 @@
 
 (define-macro (lwip-timeout outstanding) 180) ;; TODO: calculate better timeout
 
-(define lwip-connect-timeout (make-parameter 60))
+;; (define lwip-connect-timeout (make-parameter 60))
+(define lwip-connect-timeout port-copy-initial-timeout)
 
 (define lwip-close-timeout (make-parameter 60))
 

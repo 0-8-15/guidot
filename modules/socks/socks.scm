@@ -9,9 +9,9 @@
 
 ;;;** Utilitarian Garbage
 
-(define socks-data-timeout (make-parameter 660))
+(define socks-data-timeout port-copy-data-timeout)
 
-(define socks-connect-timeout (lambda args (apply lwip-connect-timeout args)))
+(define socks-connect-timeout lwip-connect-timeout)
 
 (define debug-trace-request-forwarding (make-parameter #f))
 
