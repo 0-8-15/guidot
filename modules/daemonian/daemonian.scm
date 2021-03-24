@@ -191,6 +191,13 @@ NULL;
             (with-exception-catcher
              (lambda (exn) (log-debug "open-process failed " 1 (debug 'fail (exception-->printable exn))) #f)
              (lambda ()
+               (cond-expand
+                (debug
+                 (log-debug
+                  "semi-fork " 1
+                  `(path: ,exe arguments: ,args environment: ,envt directory: ,directory
+                          stdout-redirection: #t stdin-redirection: #t stderr-redirection: ,stderr)))
+                (else))
                (open-process
                 `(path: ,exe arguments: ,args
                         environment: ,envt
