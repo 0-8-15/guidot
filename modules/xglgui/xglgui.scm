@@ -824,6 +824,11 @@
           (check-not-observable-speculative! 'textarea-mutation key more)
           (apply
            (lambda (data #!key (wrap wrap))
+             (define (finalize-insert)
+               (when wrap
+                 (ggb2d-goto! value-buffer position: 'absolute row: 1 col: 0)
+                 (linebreak-again!)
+                 (update-cursor!)))
              (cond
               ((char? data)
                (guide-focus this-payload)
@@ -849,13 +854,11 @@
                      (call-with-input-string
                       data
                       (lambda (port) (ggb2d-insert-port! value-buffer port)))
-                     (update-cursor!))))))
+                     (finalize-insert))))))
               ((input-port? data)
                ;; maybe better char-by-char?
                (ggb2d-insert-port! value-buffer data)
-               (ggb2d-goto! value-buffer position: 'absolute row: 1 col: 0)
-               (linebreak-again!)
-               (update-cursor!))
+               (finalize-insert))
               (else #f)))
            more))
          (else (error "invalid command key" 'guide-textarea-payload key)))))))
