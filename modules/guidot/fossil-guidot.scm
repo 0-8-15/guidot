@@ -146,6 +146,7 @@
 (define (%%fossil-cmd
          cmd url//proto #!key
          (directory #f)
+         (input #f)
          (once #t)
          (title #f) (key #f)
          (proxy #f)
@@ -172,27 +173,30 @@
          (cond
           (proxy `("-proxy" ,proxy))
           (else (error "proxy port required for fossil command" cmd))))
+        (stderr-redirection #t)
         (working-directory (or directory (current-directory))))
-    (let ((arguments
-           (case cmd
-            ((clone)
-             (let* ((relative-path
-                     (or into
-                         (date->string
-                          (time-utc->date (make-srfi19:time 'time-utc 0 (current-seconds)))
-                          "~1.fossil")))
-                    (new-repository (if #t relative-path (make-pathname working-directory relative-path))))
-               `(,cmd-str ,@admin ,@auth ,@proxy ,@once-only ,url ,new-repository)))
-            (else `(,cmd-str ,url ,@admin ,@auth ,@proxy ,@once-only)))))
-      (open-process
-       (let ((arguments
-              `(path:
-                "fossil"
-                arguments: ,arguments
-                directory: ,working-directory
-                stdin-redirection: #t stdout-redirection: #t stderr-redirection: #t show-console: #f)))
-         (assume (begin (when (procedure? log) (log `(cwd: ,(path-normalize working-directory)  arguments: . ,arguments))) #t) "unreachable")
-         arguments)))))
+    (let* ((arguments
+            (case cmd
+              ((clone)
+               (let* ((relative-path
+                       (or into
+                           (date->string
+                            (time-utc->date (make-srfi19:time 'time-utc 0 (current-seconds)))
+                            "~1.fossil")))
+                      (new-repository (if #t relative-path (make-pathname working-directory relative-path))))
+                 `(,cmd-str ,@admin ,@auth ,@proxy ,@once-only ,url ,new-repository)))
+              (else `(,cmd-str ,url ,@admin ,@auth ,@proxy ,@once-only))))
+           (port
+            (semi-fork "fossil" arguments stderr-redirection directory: working-directory)))
+      (assume (begin (when (procedure? log)
+                       (log `(cwd: ,(path-normalize working-directory) arguments: . ,arguments))) #t)
+              "unreachable")
+      (cond
+       ((not input) (close-output-port port))
+       ((string? input)
+        (display input port)
+        (close-output-port port)))
+      port)))
 
 ;;*** Internal Utilities
 (define (fossil-help-basic-parse-output-to-commands port)
