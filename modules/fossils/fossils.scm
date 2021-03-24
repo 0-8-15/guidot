@@ -16,8 +16,11 @@
                 `(path: "fossil" arguments: ,args
                         stdin-redirection: #t stdout-redirection: #t show-console: #f))))
      (when (port? conn)
-       (ports-connect! conn conn (current-input-port) (current-output-port))
-       (exit (/ (process-status conn) 256))))))
+       (parameterize
+           ((port-copy-initial-timeout 2)
+            (port-copy-data-timeout 1))
+         (ports-connect! conn conn (current-input-port) (current-output-port))
+       (exit (/ (process-status conn) 256)))))))
 
 (define (fossils-fallback-name unit-id)
   (beaver-unit-id->string unit-id "-"))
