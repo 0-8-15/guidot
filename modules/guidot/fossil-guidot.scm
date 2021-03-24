@@ -818,8 +818,8 @@
                  (lambda () edit-control!)
                  in: area
                  font: font
-                 save-callback: (lambda _ (page-content (edit-control! 'string)))
-                 reload-callback:
+                 action-save-callback: (lambda _ (page-content (edit-control! 'string)))
+                 action-reload-callback:
                  (lambda _
                    (%%guide-post-speculative
                     (begin
@@ -834,7 +834,7 @@
                                       (edit-control! insert: content))))))))
                         (kick! (box update)))
                       #t)))
-                 close-callback:
+                 action-close-callback:
                  (lambda _ (dialog-control close: this)
                    #t)
                  name: "wiki editor menu")

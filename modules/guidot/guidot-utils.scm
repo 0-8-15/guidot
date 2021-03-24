@@ -94,12 +94,14 @@
          (color (guide-select-color-4))
          (background-color (guide-select-color-3))
          (border-ratio 1/10)
-         (save-label "save")
-         (save-callback NYI)
-         (reload-label "reload")
-         (reload-callback NYI)
-         (close-label "X")
-         (close-callback NYI)
+         (action-save-label "S")
+         (action-save-callback NYI)
+         (action-reload-label "R")
+         (action-reload-callback NYI)
+         (action-close-label "X")
+         (action-close-callback NYI)
+         (action-label-copy "M")
+         (action-paste-label "MR")
          (name "text editor menu"))
   (let* ((w (mdv-rect-interval-width in))
          (area (make-mdv-rect-interval 0 0 w (round (* 8/5 (guide-font-height font))))))
@@ -111,7 +113,7 @@
        (lambda (in row col)
          (guide-button
           in: in
-          label: "copy"
+          label: action-label-copy
           font: font
           color: color
           background-color: background-color
@@ -129,7 +131,7 @@
          (lambda (in row col)
            (guide-button
             in: in
-            label: "paste"
+            label: action-paste-label
             font: font
             color: color
             background-color: background-color
@@ -137,29 +139,29 @@
        (lambda (in row col)
          (guide-button
           in: in
-          label: save-label
+          label: action-save-label
           font: font
           color: color
           background-color: background-color
-          guide-callback: save-callback))
+          guide-callback: action-save-callback))
        ;; reload
        (lambda (in row col)
          (guide-button
           in: in
-          label: reload-label
+          label: action-reload-label
           font: font
           color: color
           background-color: background-color
-          guide-callback: reload-callback))
+          guide-callback: action-reload-callback))
        ;; close
        (lambda (in row col)
          (guide-button
           in: in
-          label: close-label
+          label: action-close-label
           font: font
           color: color
           background-color: background-color
-          guide-callback: close-callback))))
+          guide-callback: action-close-callback))))
      in: area
      name: name
      border-ratio: border-ratio)))
