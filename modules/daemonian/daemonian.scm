@@ -376,15 +376,19 @@ NULL;
       (exit 0))
      (else (error "daemonize: illegal argument" thunk))))))
 
+(define $cerberus-report-exit (make-parameter #f))
+
 (define (cerberus-watch
          once #!key
          (input #f) (post-exit-delay 1) (max-fast-restarts 5) (restart-time-limit 10))
   (let loop ((start (current-time)))
     (let fast ((i 1))
       (or (once)
-          (let ((end (current-time)))
-            (if (< (- (time->seconds end) (time->seconds start))
-                   restart-time-limit)
+          (let* ((end (current-time))
+                 (duration (- (time->seconds end) (time->seconds start))))
+            (let ((report ($cerberus-report-exit)))
+              (when report (report once duration)))
+            (if (< duration restart-time-limit)
                 (if (< i max-fast-restarts)
                     (begin
                       (and post-exit-delay (thread-sleep! post-exit-delay))
@@ -492,7 +496,7 @@ EOF
   (delay
     (let ((port #f))
       (define (reset!)
-        (set! port (open-output-string))
+        (set! port (open-string))
         (set! null-output-port port))
       (thread-start!
        (make-thread
