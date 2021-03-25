@@ -802,7 +802,7 @@
                    ((string? v) v)
                    (else (object->string v)))))))
        (info
-        (let* ((rng (range '#(1 3)))
+        (let* ((rng (range '#(1 4)))
                (yoff 60)
                (border-ratio 1/10)
                (area (make-x0y0x1y1-interval/coerce
@@ -824,7 +824,7 @@
                        (guide-valuelabel in: in label: "kick-style" value: check success: val1)))
                    (lambda (in col row)
                      (let* ((last (memoize-last conv eq?))
-                            (check (lambda () (last (ot0cli-server)))))
+                            (check (lambda () (last (ot0-online)))))
                        (guide-valuelabel in: in label: "vpn" value: check success: val1)))
                    ))))
           (make-guide-table (make-mdvector rng constructors) in: area border-ratio: border-ratio)))
