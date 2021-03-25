@@ -78,7 +78,7 @@
            (cond
             ((not repository) args)
             ((eq? repository #t)
-             (append args (list "-R" (fossils-project-filename (current-fossil)))))
+             (append args (list "-R" (path-normalize (fossils-project-filename (current-fossil))))))
             ((string? repository) ;; TBD: file,exists,etc...
              (append args (list "-R" repository)))
             (else args)))))
@@ -103,7 +103,7 @@
            (cond
             ((not repository) args)
             ((eq? repository #t)
-             (append args (list "-R" (fossils-project-filename (current-fossil)))))
+             (append args (list "-R" (path-normalize (fossils-project-filename (current-fossil))))))
             ((string? repository) ;; TBD: file,exists,etc...
              (append args (list "-R" repository)))
             (else args)))))
