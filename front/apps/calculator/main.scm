@@ -420,7 +420,7 @@ NULL;
   (log-status "beaver.dam done")
   (let ((job (lambda () (beaver-process-commands (args)))))
     (cond-expand
-     ((or debug linux) #f)
+     ((or #;debug linux) #f)
      (else (kick/sync! forward-logging-to-daemonian!)))
     (log-status "begin of log for run in \"" dir "\" with arguments " (object->string (args)))
     (thread-start! (make-thread job 'beaver))))
