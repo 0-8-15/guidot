@@ -184,16 +184,69 @@
 (define (make-about-payload #!key in)
   (debugger-about-payload in: in))
 
-(let ()
+(define (test-guide-size-select-toplevel-payload
+         area cmdline #!key
+         (on-started (lambda (process result) (exit (/ (or result 0) 256)))))
+  ;; Status: very experimental
+  ;;
+  ;; TBD: recurse into `guide-toplevel-payload` update when selection changed
+  (let ((continue
+         (lambda (size)
+           ;; (semi-fork& `("-size" ,size ,@cmdline))
+           (let ((process
+                  (open-process
+                   `(path: ,(system-cmdargv 0) arguments: ("-size" ,size  . ,cmdline)
+                           stdin-redirection: #f stdout-redirection: #f stderr-redirection: #f))))
+             (guide-critical-add!
+              (lambda ()
+                ;; under gambit we must wait for the process to be
+                ;; really started otherwise ... no idea, but we end
+                ;; up in a tight loop.
+                (let ((synchronization-point (process-status process 0.5 #f)))
+                  ;; now, we know the process is set up properly
+                  (on-started process synchronization-point)))
+              async: #t)
+             #t)))
+        (options '#("320x480" "dev" "1920x1200")))
+    (guide-toplevel-payload
+     #; (guide-button in: area guide-callback: (lambda _ (continue "dev")))
+     (guide-list-select-payload
+      area (lambda _ options)
+      line-height: 60
+      action: (lambda (n x) (continue (vector-ref options n)))))))
+
+(define main-guide-area (make-mdv-rect-interval 0 0 320 480)) ;; deprecated temporary
+
+(let ((area (make-mdv-rect-interval 0 0 320 480))
+      (verbose #f))
   (define (load-file-with-arguments file args)
-    (with-exception-catcher
-     (lambda (exn)
-       (debug "While loading" file)
-       (handle-replloop-exception exn)
-       (cond-expand
-        (android (exit 1))
-        (else #f)))
-     (lambda () (load (debug 'loading file)))))
+    #;(load file)
+    (call-with-input-file file
+      (lambda (port)
+        (define ce (box #f))
+        (define context (box #f))
+        (with-exception-catcher
+         (lambda (exn)
+           (let ((port (current-error-port))
+                 (context (unbox context)))
+             (println port: port "loading " file " in:")
+             (pretty-print (unbox ce) port)
+             (display-exception exn port)
+             (display-exception-in-context exn context port)
+             (display-continuation-backtrace context port  #t #t 10 10 0)))
+         (lambda ()
+           (let ((verbose verbose))
+             (when verbose (debug 'loading file))
+             #;(load (debug 'loading file))
+             (do ((expression (read port) (read port)))
+                 ((eof-object? expression))
+               (set-box! ce expression)
+               (when verbose
+                 (let ((ep (current-error-port)))
+                   (println port: ep "Eval #" expression-number)
+                   (pretty-print expression ep)))
+               (continuation-capture (lambda (cc) (set-box! context cc)))
+               (eval expression))))))))
   (define parse
     (match-lambda
      ((CMD)
@@ -205,13 +258,24 @@
        (else (replloop) (exit 0))))
      ((CMD (? (lambda (key) (equal? (daemonian-semifork-key) key))) loadkey . more)
       (daemonian-execute-registered-command loadkey more))
-     ((CMD "-l" FILE . more)
-      (load-file-with-arguments FILE more))
      ((CMD "-version" . more)
       (begin
         (println (system-appversion))
         (exit 0)))
+     ((CMD "-size" SIZE . more)
+      (match
+       SIZE
+       ((or "dev" "640x1200") (begin (set! main-guide-area (make-mdv-rect-interval 0 0 640 1200)) (parse more)))
+       ((or "large" "1920x1200") (begin (set! main-guide-area (make-mdv-rect-interval 0 0 1920 1200)) (parse more)))
+       ("320x480" (begin (set! main-guide-area (make-mdv-rect-interval 0 0 320 480)) (parse more)))
+       ("ask" (test-guide-size-select-toplevel-payload area more))
+       (otherwise
+        (println port: (current-error-port) "Unhandled size " (system-cmdargv 0) " did not parse: " (object->string otherwise))
+        (exit 23))))
+     ((CMD "-l" FILE . more)
+      (load-file-with-arguments FILE more))
      ((CMD (? file-exists? FILE) . more) (parse `(,CMD "-l" ,FILE ,@more)))
+     ((CMD "-v" . more) (begin (set! verbose #t) (parse more)))
      ((CMD . more)
       (println port: (current-error-port) "Warning: " CMD " did not parse: " (object->string more))
       (println port: (current-error-port) "Assuming: " (object->string `(,(daemonian-semifork-key) "beaver" ,@more)))
