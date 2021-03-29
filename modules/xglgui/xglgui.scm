@@ -2193,7 +2193,8 @@
   (define line-height (guide-font-height font))
   (define button-size line-height)
   (define listing
-    (let* ((port (open-directory (list path: (directory) ignore-hidden: ignore-hidden)))
+    (let* ((directory (or (directory) (current-directory)))
+           (port (open-directory (list path: directory ignore-hidden: ignore-hidden)))
            (files (list->vector (filter filter-pred (read-all port)))))
       (guide-list-select-payload
        (let ((selection-height ;; not correct yet
