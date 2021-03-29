@@ -5,13 +5,16 @@
 (include "debugger.scm")
 
 (define (guidot-insert-scheme-interpreter!
-         plane ;; GGB (expected to be used as `direction: 'layer`
+         plane ;; GGB (expected to be used as `direction: 'layer`) or control proc
          #!key
          (in (error "required keyword parameter" 'guidot-insert-scheme-interpreter! 'in))
          ) ;; end of keyword list -- for diffability on a line itself
-  (define (add-at-end! pl)
-    (ggb-goto! plane (ggb-length plane))
-    (ggb-insert! plane pl))
+  (define (add-at-end! pl #!optional (ref #f))
+    (cond
+     ((ggb? plane)
+      (ggb-goto! plane (ggb-length plane))
+      (ggb-insert! plane pl))
+     ((procedure? plane) (plane top: pl notify: ref))))
   (let*
       ((area in)
        (dialog-area
@@ -172,25 +175,30 @@
                               (cond
                                ((eqv? event EVENT_BUTTON1UP)
                                 (%%guide-post-speculative
-                                 (add-at-end!
-                                  (guide-value-edit-dialog
-                                   name: label
-                                   in: dialog-area label: label
-                                   keypad: guide-keypad/numeric
-                                   validate:
-                                   (macro-guidot-check-ggb/string-pred
-                                    (lambda (str)
-                                      (let ((n (string->number str)))
-                                        (and n (or (eqv? n 0) (positive? n))))))
-                                   data:
-                                   (case-lambda
-                                    (() (timeout))
-                                    ((val)
-                                     (timeout val)
-                                     (ggb-delete-first-match!
-                                      plane
-                                      (lambda (x) (equal? (guide-payload-name x) label)))
-                                     #t))))))
+                                 (let ((this (box #f)))
+                                   (add-at-end!
+                                    (guide-value-edit-dialog
+                                     name: label
+                                     in: dialog-area label: label
+                                     keypad: guide-keypad/numeric
+                                     validate:
+                                     (macro-guidot-check-ggb/string-pred
+                                      (lambda (str)
+                                        (let ((n (string->number str)))
+                                          (and n (or (eqv? n 0) (positive? n))))))
+                                     data:
+                                     (case-lambda
+                                      (() (timeout))
+                                      ((val)
+                                       (timeout val)
+                                       (cond
+                                        ((ggb? plane)
+                                         (ggb-delete-first-match!
+                                          plane
+                                          (lambda (x) (equal? (guide-payload-name x) label))))
+                                        ((procedure? plane) (plane close: this)))
+                                       #t)))
+                                    this))))
                                (else #t))))))))
                      in: area
                      name: 'eval-options
@@ -241,8 +249,7 @@
                 (set! error-control! ctrl)
                 pl)
               name: 'expression-errors))))
-    (ggb-insert!
-     plane
+    (add-at-end!
      (make-guide-table
       (make-mdvector
        (range '#(2 2))
