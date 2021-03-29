@@ -215,7 +215,35 @@
       line-height: 60
       action: (lambda (n x) (continue (vector-ref options n)))))))
 
+(define (test-guide-select-registered-payload area)
+  (let* ((options (guide-payload-names))
+         (select
+          (lambda (n x)
+            (guide-toplevel-payload ((guide-payload-ref (vector-ref options n)) area)))))
+    (guide-toplevel-payload
+     (guide-list-select-payload
+      area (lambda _ options)
+      line-height: 40
+      action: select))))
+
 (define main-guide-area (make-mdv-rect-interval 0 0 320 480)) ;; deprecated temporary
+
+(guide-define-payload-calculator! "calculator")
+(guide-define-payload "status" 'ephemeral (lambda (area) (debugger-about-payload in: area)))
+(guide-define-payload "Fossil Help" 'ephemeral guidot-fossil-help-browser)
+(guide-define-payload "Fossil Wiki" 'ephemeral guidot-fossil-wiki)
+(guide-define-payload
+ "Fossil Tranfer" 'ephemeral
+ (lambda (area)
+   (guidot-fossil-transfer-dialog
+    area done: (lambda _ (test-guide-select-registered-payload area)))))
+(guide-define-payload "Fossil ZZ" 'ephemeral guidot-fossil-browser)
+(guide-define-payload
+ "debugger" 'once
+ (lambda (area)
+   (receive (result dialog-control!) (guidot-layers area name: "Scheme Interpreter")
+     (guidot-insert-scheme-interpreter! dialog-control! in: area)
+     result)))
 
 (let ((area (make-mdv-rect-interval 0 0 320 480))
       (verbose #f))
@@ -247,6 +275,21 @@
                    (pretty-print expression ep)))
                (continuation-capture (lambda (cc) (set-box! context cc)))
                (eval expression))))))))
+  (define (with-area-parse CMD SIZE parse more)
+    (define (setsize! interval)
+      (set! area interval)
+      (set! main-guide-area interval) ;; TBD: get rid of that one
+      (parse `(,CMD . ,more)))
+    (match
+     SIZE
+     ((or "dev" "640x1200")  (setsize! (make-mdv-rect-interval 0 0 640 1200)))
+     ((or "large" "1920x1200") (setsize! (make-mdv-rect-interval 0 0 1920 1200)))
+     ("320x480" (setsize! (make-mdv-rect-interval 0 0 320 480)))
+     ("ask" (test-guide-size-select-toplevel-payload area more))
+     (otherwise
+      (println port: (current-error-port) "Unhandled size "
+               (system-cmdargv 0) " did not parse: " (object->string otherwise))
+      (exit 23))))
   (define parse
     (match-lambda
      ((CMD)
@@ -262,20 +305,24 @@
       (begin
         (println (system-appversion))
         (exit 0)))
-     ((CMD "-size" SIZE . more)
-      (match
-       SIZE
-       ((or "dev" "640x1200") (begin (set! main-guide-area (make-mdv-rect-interval 0 0 640 1200)) (parse more)))
-       ((or "large" "1920x1200") (begin (set! main-guide-area (make-mdv-rect-interval 0 0 1920 1200)) (parse more)))
-       ("320x480" (begin (set! main-guide-area (make-mdv-rect-interval 0 0 320 480)) (parse more)))
-       ("ask" (test-guide-size-select-toplevel-payload area more))
-       (otherwise
-        (println port: (current-error-port) "Unhandled size " (system-cmdargv 0) " did not parse: " (object->string otherwise))
-        (exit 23))))
+     ((CMD "-size" SIZE . more) (with-area-parse CMD SIZE parse more))
      ((CMD "-l" FILE . more)
       (load-file-with-arguments FILE more))
      ((CMD (? file-exists? FILE) . more) (parse `(,CMD "-l" ,FILE ,@more)))
-     ((CMD "-v" . more) (begin (set! verbose #t) (parse more)))
+     ((CMD "-v" . more) (begin (set! verbose #t) (parse (cons CMD more))))
+     ((CMD "-gui" . more)
+      (cond
+       ((null? more)
+        (let* ((options (guide-payload-names))
+               (select
+                (lambda (n x)
+                  (guide-toplevel-payload ((guide-payload-ref (vector-ref options n)) area)))))
+          (guide-toplevel-payload
+           (guide-list-select-payload
+            area (lambda _ options)
+            line-height: 60
+            action: select))))
+       (else (guide-toplevel-payload ((guide-payload-ref (car more)) area)))))
      ((CMD . more)
       (println port: (current-error-port) "Warning: " CMD " did not parse: " (object->string more))
       (println port: (current-error-port) "Assuming: " (object->string `(,(daemonian-semifork-key) "beaver" ,@more)))
