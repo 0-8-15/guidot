@@ -647,7 +647,7 @@
 
 (define-values
     ;; optional sugar: mapping from names to payload constructors
-    (guide-define-payload guide-payload-ref)
+    (guide-define-payload guide-payload-ref guide-payload-names)
   (let ((defined (make-table))
         ;; payload-contructor? should become a specialized/tagged procedure
         (payload-contructor? procedure?))
@@ -655,12 +655,12 @@
       ;; This locking is supposed to be useless overhead; just to be
       ;; safe we run into exceptions when missued.
       (let ((once (make-mutex constructor)))
-        (lambda (rect interval)
+        (lambda (interval)
           (if (mutex? once)
               (let ((seen once))
                 (mutex-lock! seen)
                 (when (mutex? once)
-                  (set! once (constructor rect interval)))
+                  (set! once (constructor interval)))
                 (mutex-unlock! seen)
                 once)
               once))))
@@ -680,9 +680,12 @@
           (table-set! defined name)))
     (define (guide-payload-ref name . default)
       (apply table-ref defined name default))
+    (define (guide-payload-names)
+      (list->vector (sort! string<? (map car (table->list defined)))))
     (values
      guide-define-payload
-     guide-payload-ref)))
+     guide-payload-ref
+     guide-payload-names)))
 
 ;;** Colors
 
