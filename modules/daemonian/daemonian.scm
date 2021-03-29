@@ -240,11 +240,11 @@ NULL;
    (linux
     (open-process
      `(path: ,(system-cmdargv 0) arguments: (,(daemonian-semifork-key) ,cmd . ,args)
-             directory: ,directory stdout-redirection: #t stdin-redirection: #t)))
+             directory: ,directory stdout-redirection: #t stdin-redirection: #t stderr-redirection: ,stderr)))
    (else
     (with-exception-catcher
      (lambda (exn) (log-debug "open-process failed " 1 (debug 'fail (exception-->printable exn))) #f)
-     (lambda () (open-process `(path: #;"/proc/self/exe" ,(system-cmdargv 0) arguments: (,(daemonian-semifork-key) ,cmd . ,args) directory: ,directory stdout-redirection: #t stdin-redirection: #t show-console: #f)))))))
+     (lambda () (open-process `(path: #;"/proc/self/exe" ,(system-cmdargv 0) arguments: (,(daemonian-semifork-key) ,cmd . ,args) directory: ,directory stdout-redirection: #t stdin-redirection: #t stderr-redirection: ,stderr show-console: #f)))))))
 
 (define (semi-run cmd args)
   (let ((port (semi-fork cmd args)))
