@@ -797,6 +797,10 @@
          (else small.fnt))))
     select-font))
 
+;;** Style
+
+(include "guide-style.scm")
+
 ;;** GUI Widgets (payloads)
 
 ;;*** Widget Utilities
