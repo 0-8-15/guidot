@@ -40,7 +40,7 @@
   ;; Note: as long as we have a plain ggb as INPUT, there is no way to
   ;; properly lock (using mutices at least).
   (define (push! payload #!key (notify #f))
-    (assume (guide-payload? payload) "invalid" name payload)
+    (assume (guide-payload? payload) "invalid layer payload" name payload)
     (check-not-observable-speculative! name key more)
     (ggb-goto! dialog (ggb-length dialog))
     (ggb-insert! dialog payload)
