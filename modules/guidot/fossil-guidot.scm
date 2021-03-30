@@ -926,6 +926,12 @@
                (json-read port))))))
       this)
     (let ((tl-options '#("create" "list" "timeline"#; "close")))
+      (define (no-fossil-selected area done)
+        (guide-button
+         name: 'close
+         in: area
+         label: "No Fossil selected"
+         guide-callback: done))
       (guidot-frame
        (lambda (area)
          (guide-list-select-payload
@@ -934,6 +940,11 @@
           (lambda (n x)
             (let ((ssc (vector-ref tl-options n)))
               (cond
+               ((not (current-fossil))
+                (dismiss)
+                ((%%guidot-interactive dialog-control insert: top:)
+                 no-fossil-selected in: area)
+                #t)
                ((equal? ssc "list")
                 (dismiss)
                 (letrec ((edit (wiki-list (lambda _ (dialog-control close: edit)))))
