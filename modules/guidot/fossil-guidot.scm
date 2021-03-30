@@ -35,6 +35,18 @@
       (else new)))
    name: "projects directory"))
 
+(define current-fossil-remote-url
+  (make-pin
+   initial: #f
+   name: "remote url for current fossil"))
+
+(wire!
+ current-fossil post:
+ (lambda ()
+   (let ((fossil (current-fossil)))
+     (current-fossil-remote-url
+      (and fossil (read-line (fossil-command "remote-url")))))))
+
 (define (fossil-command
          #!key
          (log (lambda (args) (debug 'fossil-command args)))
