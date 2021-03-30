@@ -28,7 +28,12 @@
 (define fossils-directory
   (make-pin
    initial: #f
-   pred: (lambda (v) (or (not v) (string? v)))
+   pred:
+   (lambda (v)
+     (or (not v)
+         (and (string? v)
+              (file-exists? v)
+              (eq? (file-type v) 'directory))))
 ;;   filter: (lambda (old new) (if old old new)) ;; once only
    name: "projects directory"))
 
