@@ -228,12 +228,13 @@
 
 (define main-guide-area (make-mdv-rect-interval 0 0 320 480)) ;; deprecated temporary
 
+(guide-define-payload "beaver start" 'ephemeral guidot-beaver-select-path-payload)
 (guide-define-payload-calculator! "calculator")
 (guide-define-payload "status" 'ephemeral (lambda (area) (debugger-about-payload in: area)))
 (guide-define-payload "Fossil Help" 'ephemeral guidot-fossil-help-browser)
 (guide-define-payload "Fossil Wiki" 'ephemeral guidot-fossil-wiki)
 (guide-define-payload
- "Fossil Tranfer" 'ephemeral
+ "Fossil Transfer" 'ephemeral
  (lambda (area)
    (guidot-fossil-transfer-dialog
     area done: (lambda _ (test-guide-select-registered-payload area)))))
@@ -244,6 +245,12 @@
    (receive (result dialog-control!) (guidot-layers area name: "Scheme Interpreter")
      (guidot-insert-scheme-interpreter! dialog-control! in: area)
      result)))
+
+(guide-define-payload
+ "Beaver Chat" 'ephemeral
+ (lambda (area)
+   (make-beaverchat-payload launch-url beaver-domain in: area keypad: guide-keypad/de)))
+(guide-define-payload "Beaver Chat About" 'ephemeral beaverchat-about-payload)
 
 (let ((area (make-mdv-rect-interval 0 0 320 480))
       (verbose #f))
