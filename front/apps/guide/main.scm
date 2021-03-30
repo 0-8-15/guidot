@@ -310,6 +310,10 @@
       (load-file-with-arguments FILE more))
      ((CMD (? file-exists? FILE) . more) (parse `(,CMD "-l" ,FILE ,@more)))
      ((CMD "-v" . more) (begin (set! verbose #t) (parse (cons CMD more))))
+     ((CMD "+repl" . more)
+      (begin
+        (thread-start! (make-thread replloop))
+        (parse `(,CMD ,@more))))
      ((CMD "-gui" . more)
       (cond
        ((null? more)
