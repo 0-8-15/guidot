@@ -518,7 +518,7 @@
          (size 'medium)
          (input (beaverchat-required-key-parameter data: beaverchat-service-address-edit))
          (output input)
-         (success (beaverchat-required-key-parameter done: beaverchat-service-address-edit))
+         (success (beaverchat-required-key-parameter success: beaverchat-service-address-edit))
          (validate
           (lambda (str)
             (or (string-empty? str)
@@ -555,6 +555,39 @@
            (when output (output val))
            (success val))
          (fail val))))))
+
+(define (guidot-beaver-select-path-payload
+         area #!optional
+         (done #f))
+  ;; TBD: find better check that this is a valid directory
+  (unless done
+    (let ((before (guide-toplevel-payload)))
+      (set! done (lambda _ (guide-toplevel-payload before)))))
+  (cond
+   ((ot0-context) (done))
+   (else
+    (let ((val (current-directory)))
+      (guide-path-select
+       in: area name: "Beaver Directory Selection"
+       ;; directory: current-directory
+       selected:
+       (case-lambda
+        (() val)
+        ((dir)
+         (when (equal? dir "..")
+           (set! dir (path-directory (fossils-directory))))
+         (when (and (file-exists? dir)
+                    (eq? (file-type dir) 'directory))
+           (set! val dir) ;; beware intensional side effect while speculative!
+           (ot0-global-context-set! 0 dir #t)
+           done)))
+       ignore-hidden: #f
+       filter-pred:
+       (lambda (x)
+         (cond
+          ((or (equal? x ".") (equal? x "..")))
+          (else (and (file-exists? x) (eq? (file-type x) 'directory)))))
+       done: done)))))
 
 (define (make-beaverchat-payload
          launch-url beaver-domain
@@ -738,6 +771,31 @@
          (else (guide-event-dispatch-to-payload rect chat-payload event x y))))
       (update-to-display!)
       (unless (chat-address) (dial-dialog!))
+      (unless (ot0-context)
+        (dialog-set!
+         (let ((val (current-directory))
+               (done (lambda _ (dial-dialog!))))
+           (guide-path-select
+            in: area
+            ;; directory: current-directory
+            selected:
+            (case-lambda
+             (() val)
+             ((dir)
+              (when (equal? dir "..")
+                (set! dir (path-directory (fossils-directory))))
+              (when (and (file-exists? dir)
+                         (eq? (file-type dir) 'directory))
+                (set! val dir) ;; beware intensional side effect while speculative!
+                (ot0-global-context-set! 0 dir #t)
+                dial-dialog!)))
+            ignore-hidden: #f
+            filter-pred:
+            (lambda (x)
+              (cond
+               ((or (equal? x ".") (equal? x "..")))
+               (else (and (file-exists? x) (eq? (file-type x) 'directory)))))
+            done: done))))
       (unless (null? (chat-messages))
         (if (stm-atomic?) ;; not speculative
             (chat-ctrl! load: (chat-messages))
@@ -765,7 +823,7 @@
 
 ;; About
 
-(define (beaverchat-about-payload dummy interval)
+(define (beaverchat-about-payload interval)
   (let*
       ((xsw (mdvector-interval-lower-bound interval 0))
        (ysw (mdvector-interval-lower-bound interval 1))

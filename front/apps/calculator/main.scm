@@ -360,7 +360,7 @@ NULL;
   (define (beaverchat-payload-sel number #!optional (area (make-mdv-rect-interval 0 0 320 474)))
     (foreground-service! #t)
     (case number
-      ((2 about) (beaverchat-about-payload #f area))
+      ((2 about) (beaverchat-about-payload area))
       ((0 calculator) (make-calculator-payload area))
       ((1) (make-beaverchat-payload launch-url beaver-domain in: area keypad: guide-keypad/de))
       ;;;; ((16) (guidot-fossil-help-browser area))
