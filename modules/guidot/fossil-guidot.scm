@@ -261,123 +261,125 @@
 (define (guidot-fossil-menu
          area #!key
          (size 'small)
+         (font (guide-select-font size: size))
          (interactive (lambda (constructor #!key in done) #f))
          ;; pins
          (mode (make-pin initial: 'all pred: symbol? name: "Fossil Access Mode"))
          ;; finally
          (name "Fossil Status Menu"))
+  (define line-height (guide-font-height font))
+  (define status-items 3)
   (define label-width 1/4)
   (define (top-area rect)
     (receive (xsw xno ysw yno)
         ;; FIXME inconsistent argument/result ordering!
         (guide-boundingbox->quadrupel (guide-rectangle-measures rect))
-      (make-mdv-rect-interval xsw ysw xno (- yno 84))))
-  (make-guide-table
-   (make-mdvector
-    (range '#(2 2))
-    (vector
-     (lambda (area row col)
-       (guide-valuelabel
-        in: area size: size label: "directory"
-        label-width: label-width
-        value: fossils-directory
-        value-display: (lambda (x) (if x x "n/a"))
-        input:
-        (lambda (rect payload event xsw ysw)
-          (cond
-           ((eqv? event EVENT_BUTTON1DOWN)
-            (interactive
-             ;; (lambda (#!key in done) (guide-button in: in guide-callback: done))
-             (lambda (#!key in done)
-               (guide-path-select
-                in: (top-area rect)
-                directory: fossils-directory
-                selected:
-                (case-lambda
-                 (() (fossils-directory))
-                 ((x)
-                  (when (equal? x "..")
-                    (set! x (path-directory (fossils-directory))))
-                  (when (and (file-exists? x)
-                             (eq? (file-type x) 'directory))
-                    (fossils-directory x))))
-                ignore-hidden: #f
-                filter-pred:
-                (lambda (x)
-                  (cond
-                   ((or (equal? x ".") (equal? x "..")))
-                   (else (and (file-exists? x) (eq? (file-type x) 'directory)))))
-                done: done))
-             in: (guide-rectangle-measures rect))))
-          #t)))
-     (lambda (area row col)
-       (guide-valuelabel
-        in: area size: size label: "project"
-        label-width: label-width
-        value: current-fossil
-        value-display: (lambda (x) (if x x "n/a"))
-        input:
-        (lambda (rect payload event xsw ysw)
-          (cond
-           ((eqv? event EVENT_BUTTON1DOWN)
-            (interactive
-             (lambda (#!key in done)
-               (guide-path-select
-                in: (top-area rect)
-                directory: fossils-directory
-                selected: current-fossil
-                filter-pred:
-                (lambda (x)
-                  (let ((x (make-pathname (fossils-directory) x)))
-                    (and (file-exists? x) (eq? (file-type x) 'regular))))
-                done: done))
-             in: (guide-rectangle-measures rect))))
-          #t)))
-     (lambda (area row col)
-       (guide-valuelabel
-        in: area size: size label: "mode"
-        label-width: label-width
-        value: mode
-        value-display: (lambda (x) (case x ((all) "all") ((checkout) "checkout") (else "BROKEN")))
-        input:
-        (lambda (rect payload event xsw ysw)
-          (cond
-           ((eqv? event EVENT_BUTTON1DOWN)
-            (case (mode)
-              ((all)
-               (mode 'checkout) ;; pretent it works aready
-               (interactive
-                ;; (lambda (#!key in done) (guide-button in: in guide-callback: done))
-                (lambda (#!key in done)
-                  (guide-critical-add!
-                   (lambda ()
-                     (thread-sleep! 5)
-                     (done)
-                     (kick (mode 'all)))
-                   async: #t)
-                  (guide-button
-                   in: in label: "NYI"
-                   guide-callback:
-                   (lambda _
-                     (mode 'all)
-                     (%%guide-post-speculative (done)))))
-                in: (guide-rectangle-measures rect)))
-              ((checkout) (mode 'all))
-              (else (mode #f)))))
-          #t)))
-     (lambda (area row col)
-       (guide-valuelabel
-        in: area size: size label: ""
-        label-width: label-width
-        value: (lambda _ #f)
-        value-display: (lambda (x) (if x "" ""))
-        input:
-        (lambda (rect payload event xsw ysw)
-          (cond
-           ((eqv? event EVENT_BUTTON1DOWN)
-            (NYI)))
-          #t)))))
-   in: area name: name))
+      (make-mdv-rect-interval xsw ysw xno (floor (- yno (* 16/10 status-items line-height))))))
+  (guide-table-layout
+   area rows: status-items cols: 1 name: name
+   (lambda (area row col)
+     (guide-valuelabel
+      in: area font: font label: "directory"
+      label-width: label-width
+      value: fossils-directory
+      value-display: (lambda (x) (if x x "n/a"))
+      input:
+      (lambda (rect payload event xsw ysw)
+        (cond
+         ((eqv? event EVENT_BUTTON1DOWN)
+          (interactive
+           ;; (lambda (#!key in done) (guide-button in: in guide-callback: done))
+           (lambda (#!key in done)
+             (guide-path-select
+              in: (top-area rect)
+              directory: fossils-directory
+              selected:
+              (case-lambda
+               (() (fossils-directory))
+               ((x)
+                (when (equal? x "..")
+                  (set! x (path-directory (fossils-directory))))
+                (fossils-directory x)))
+              ignore-hidden: #f
+              filter-pred:
+              (lambda (x)
+                (cond
+                 ((not x))
+                 ((or (equal? x ".") (equal? x "..")))
+                 (else (and (file-exists? x) (eq? (file-type x) 'directory)))))
+              done: done))
+           in: (guide-rectangle-measures rect))))
+        #t)))
+   (lambda (area row col)
+     (guide-valuelabel
+      in: area size: size label: "project"
+      label-width: label-width
+      value: current-fossil
+      value-display: (lambda (x) (if x x "n/a"))
+      input:
+      (lambda (rect payload event xsw ysw)
+        (cond
+         ((eqv? event EVENT_BUTTON1DOWN)
+          (interactive
+           (lambda (#!key in done)
+             (guide-path-select
+              in: (top-area rect)
+              directory: fossils-directory
+              selected: current-fossil
+              filter-pred:
+              (lambda (x)
+                (or (not x)
+                    (let ((x (make-pathname (fossils-directory) x)))
+                      (and (file-exists? x) (eq? (file-type x) 'regular)))))
+              done: done))
+           in: (guide-rectangle-measures rect))))
+        #t)))
+   (lambda (area row col)
+     (guide-valuelabel
+      in: area size: size label: "mode"
+      label-width: label-width
+      value: mode
+      value-display: (lambda (x) (case x ((all) "all") ((checkout) "checkout") (else "BROKEN")))
+      input:
+      (lambda (rect payload event xsw ysw)
+        (cond
+         ((eqv? event EVENT_BUTTON1DOWN)
+          (case (mode)
+            ((all)
+             (mode 'checkout) ;; pretent it works aready
+             (interactive
+              ;; (lambda (#!key in done) (guide-button in: in guide-callback: done))
+              ;;
+              ;; Very nice example, keep it here for a while!
+              (lambda (#!key in done)
+                (guide-critical-add!
+                 (lambda ()
+                   (thread-sleep! 5)
+                   (done)
+                   (kick (mode 'all)))
+                 async: #t)
+                (guide-button
+                 in: in label: "NYI"
+                 guide-callback:
+                 (lambda _
+                   (mode 'all)
+                   (%%guide-post-speculative (done)))))
+              in: (guide-rectangle-measures rect)))
+            ((checkout) (mode 'all))
+            (else (mode #f)))))
+        #t)))
+   (lambda (area row col)
+     (guide-valuelabel
+      in: area size: size label: ""
+      label-width: label-width
+      value: (lambda _ #f)
+      value-display: (lambda (x) (if x "" ""))
+      input:
+      (lambda (rect payload event xsw ysw)
+        (cond
+         ((eqv? event EVENT_BUTTON1DOWN)
+          (NYI)))
+        #t)))))
 
 ;;*** Help
 
@@ -543,10 +545,13 @@
             (let ((pn (beaver-proxy-port-number)))
               (and pn (string-append "http://127.0.0.1:" (number->string pn))))))
          (name "fossil transfer"))
-  (define menu-height 200)
-  (define output-font (guide-select-font height: (floor (* 10/16 menu-height))))
+  (define menu-font (guide-select-font size: 'small))
+  (define output-font menu-font)
+  (define menu-line-height (guide-font-height menu-font))
+  (define status-items 3)
+  (define menu-height (ceiling (* status-items menu-line-height)))
   (define label-width 1/4)
-  (define mode (make-pin 'clone))
+  (define mode (make-pin 'sync))
   (define mode->string symbol->string)
   (define remote-tag
     (cond
@@ -558,7 +563,7 @@
      ((pin? remote-fossil-key) remote-fossil-key)
      ((procedure? remote-fossil-key) (make-pin (remote-fossil-key)))
      (else (make-pin (or remote-fossil-key "")))))
-  (define remote-url (make-pin ""))
+  (define remote-url current-fossil-remote-url)
   (define directory fossils-directory)
   ;; derived
   (define dialog-area area)
@@ -583,37 +588,69 @@
           (guidot-fossil-menu area interactive: interactive)))
       (define (mk-mode area row col)
         (guide-valuelabel
-         in: area size: size label: "mode"
+         in: area font: menu-font label: "mode"
          label-width: label-width
          value: mode
          value-display: mode->string
          input:
-         (lambda (rect payload event x y)
-           (cond
-            ((eqv? event EVENT_BUTTON1DOWN)
+         (let ((active (make-pin #f)))
+           (define (off was) (active #f) was) ;; tail position only!
+           (lambda (rect payload event x y)
              (cond
-              (#t ;; bad hack
-               (guide-critical-add!
-                (lambda ()
-                  (ggb-clear! vbuf)
-                  (ggb-insert! vbuf (guidot-fossil-wiki dialog-area)))
-                async: #f))
-              (else
-               ((%%guidot-interactive dialog-control! insert: top:)
-                (lambda (area control)
-                  (guidot-fossil-wiki
-                   area
-                   ;; dialog-control: dialog-control!
-                   dismiss: control))
-                in: (guide-payload-measures output-textarea))))))
-           #t)))
+              ((eqv? event EVENT_BUTTON1DOWN)
+               (cond
+                ((active) => off)
+                (else
+                 (let ((interactive (%%guidot-interactive dialog-control! insert: top:))
+                       (area (guide-payload-measures output-textarea)))
+                   (interactive
+                    (lambda (area control)
+                      (active control)
+                      (let ((options '#("clone" "sync" "pull" "push" "wiki")))
+                        (guide-list-select-payload
+                         (guide-payload-measures output-textarea)
+                         (lambda () options)
+                         action:
+                         (lambda (n x)
+                           (cond
+                            ((eqv? n -1) ;; example
+                             (interactive
+                              (lambda (area control)
+                                (guide-button
+                                 in: area label: "gut"
+                                 guide-callback: control))
+                              in:
+                              (case 2
+                                ((1) (make-mdv-rect-interval 0 0 xno menu-height))
+                                (else (guide-payload-measures output-textarea)))))
+                            ((eqv? n 0) ;; clone
+                             (current-fossil #f)
+                             (current-fossil-remote-url "")
+                             (interactive
+                              (lambda (area control)
+                                (beaverchat-service-address-edit ;; placeholder
+                                 in: area label: "XXX" input: current-fossil-remote-url
+                                 success: control))
+                              in: area))
+                            ((eqv? n 4) ;; wiki
+                             (guide-critical-add!
+                              (lambda ()
+                                (ggb-clear! vbuf)
+                                (ggb-insert! vbuf (guidot-fossil-wiki dialog-area)))
+                              async: #f))
+                            (else (mode (string->symbol (vector-ref options n)))))
+                           ;; close
+                           (off (active))))))
+                    in: area))
+                 #t)))
+              (else #t))))))
       (define (mkmk-vale label value value-display validate)
         (lambda (area row col)
           (guide-valuelabel
            in: area size: size label: label
            label-width: label-width
            value: value
-           value-display: (lambda (obj) (if (string? obj) obj (object->string obj)))
+           value-display: (or value-display (lambda (obj) (if (string? obj) obj (object->string obj))))
            input:
            (lambda (rect payload event xsw ysw)
              (cond
@@ -641,10 +678,10 @@
              #t))))
       (define mk-rem
         (mkmk-vale
-         "remote url" remote-url #f
+         "remote" remote-url (lambda (x) (if x x "n/a"))
          (lambda (str) ;; TBD: correct check
            (cond
-            (else (> (string-length str) 3))))))
+            (else (>= (string-length str) 3))))))
       (define mk-tag
         (mkmk-vale
          "login" remote-tag #f
@@ -708,9 +745,11 @@
       (cond
        ((< (mdv-rect-interval-width area) 600)
         (guide-table-layout
-         (make-mdv-rect-interval xsw 0 xno (floor (* 5/4 menu-height)))
-         rows: 5 cols: 4
+         (make-mdv-rect-interval xsw 0 xno (floor (* 7 21/10 menu-line-height)))
+         rows: 7 cols: 4
          mk-generic #f    #f     #f
+         #t         #f    #f     #f
+         #t         #f    #f     #f
          mk-mode    #f    mk-go  mk-kx
          mk-rem     #f    #f #f
          mk-tag     #f    #f #f
@@ -718,16 +757,18 @@
          ))
        (else
         (guide-table-layout
-         (make-mdv-rect-interval xsw 0 xno menu-height)
-         rows: 4 cols: 4
+         (make-mdv-rect-interval xsw 0 xno (floor (* 6 21/10 menu-line-height)))
+         rows: 6 cols: 4
          mk-generic #f    #f     #f
+         #t         #f    #f     #f
+         #t         #f    #f     #f
          mk-mode    #f    mk-go  mk-kx
          mk-rem     #f    #f #f
          mk-tag     #f    mk-key #f)))))
   (define vbuf (make-ggb size: 2))
   (ggb-insert! vbuf menu)
   (ggb-insert! vbuf output-textarea)
-  (dialog-control! top: (guide-ggb-layout area vbuf direction: 'topdown fixed: #t name: name))
+  (dialog-control! top: (guide-ggb-layout area vbuf direction: 'topdown fixed: #f name: name))
   result)
 
 (define (guidot-make-fossil-wiki-constructur
