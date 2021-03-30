@@ -2191,7 +2191,7 @@
          (name 'guide-path-select))
   (define-values (xsw xno ysw yno) (guide-boundingbox->quadrupel in))
   (define line-height (guide-font-height font))
-  (define button-size line-height)
+  (define button-size (* 14/10 line-height))
   (define listing
     (let* ((directory (or (directory) (current-directory)))
            (port (open-directory (list path: directory ignore-hidden: ignore-hidden)))
@@ -2206,18 +2206,35 @@
          (when (and (fixnum? n) (>= n 0) (< n (vector-length files)))
            (selected (vector-ref files n)))
          (%%guide-post-speculative (done))))))
-  (define close-button
-    (guide-button
-     name: 'close
-     in: (make-mdv-rect-interval (- xno button-size) 0 xno button-size)
-     label: "x" background-color: background-color color: color
-     guide-callback:
-     (lambda (rect payload event x y)
-       (cond
-        ((procedure? done) (macro-guide-sanitize-payload-result (done)))
-        (else #f)))))
-  (let ((buffer (make-ggb size: 2)))
-    (ggb-insert! buffer close-button)
+  (define menu
+    (let ((buttons 2))
+      (guide-table-layout
+       (make-x0y0x1y1-interval/coerce
+        (- xno (* 11/10 buttons button-size)) 0
+        xno button-size)
+       rows: 1 cols: buttons
+       name: "menu"
+       (lambda (area row col)
+         (guide-button
+          name: 'clear in: area
+          label: "C" background-color: background-color color: color
+          guide-callback:
+          (lambda (rect payload event x y)
+            (selected #f)
+            (cond
+             ((procedure? done) (macro-guide-sanitize-payload-result (done)))
+             (else #f)))))
+       (lambda (area row col)
+         (guide-button
+          name: 'close in: area
+          label: "x" background-color: background-color color: color
+          guide-callback:
+          (lambda (rect payload event x y)
+            (cond
+             ((procedure? done) (macro-guide-sanitize-payload-result (done)))
+             (else #f))))))))
+  (let ((buffer (make-ggb size: 3)))
+    (ggb-insert! buffer menu)
     (ggb-insert! buffer listing)
     (guide-ggb-layout
      in buffer name: name direction: 'topdown
