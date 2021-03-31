@@ -333,7 +333,9 @@
             area (lambda _ options)
             line-height: 60
             action: select))))
-       (else (guide-toplevel-payload ((guide-payload-ref (car more)) area)))))
+       (else
+        (guide-toplevel-payload ((guide-payload-ref (car more)) area))
+        (when (pair? (cdr more)) (parse (cons CMD (cdr more)))))))
      ((CMD . more)
       (println port: (current-error-port) "Warning: " CMD " did not parse: " (object->string more))
       (println port: (current-error-port) "Assuming: " (object->string `(,(daemonian-semifork-key) "beaver" ,@more)))
