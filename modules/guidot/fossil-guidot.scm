@@ -33,7 +33,7 @@
       ((and (string? new)) ;; remove `.fossil` extension
        (path-strip-extension new))
       (else new)))
-   name: "projects directory"))
+   name: "current fossil"))
 
 (define current-fossil-remote-url
   (make-pin
