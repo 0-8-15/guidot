@@ -1,8 +1,8 @@
-(define %%capture-domain-magic "")
+(define $beaver-capture-domain (make-parameter #f))
 
 (http-proxy-on-illegal-proxy-request
  (lambda (line)
-   (let ((domain %%capture-domain-magic))
+   (let ((domain (or ($beaver-capture-domain) "")))
      (display #<<EOF
 HTTP/1.0 200 OK
 Content-type: text/html; charset=utf-8
@@ -35,7 +35,7 @@ EOF
   (define domain-rx
     #;(convert-domain-name-to-regex domain-name)
     (begin
-      (set! %%capture-domain-magic domain-name)
+      ($beaver-capture-domain domain-name)
       ;; Bad KLUDGE, better use SRE
       (rx (string-append "(?:([^.]+)\\.)?" (rx-replace/all (rx "\\.") domain-name "\\.")))))
 
