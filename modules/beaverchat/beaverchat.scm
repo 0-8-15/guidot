@@ -449,6 +449,11 @@
             ((promise? ,obj) ,obj)
             (else #t))))))))
 
+(define-macro (%%macro-guidot-capture-guide-toplevel)
+  (let ((before (gensym 'before)))
+    `(let ((,before (guide-toplevel-payload)))
+       (lambda _ (guide-toplevel-payload ,before)))))
+
 (define (beaverchat-required-key-parameter key location)
   (error "required key parameter" key location))
 
@@ -514,6 +519,7 @@
 (define (beaverchat-service-address-edit
          #!key
          (in (beaverchat-required-key-parameter in: beaverchat-service-address-edit))
+         (done (%%macro-guidot-capture-guide-toplevel))
          (label (beaverchat-required-key-parameter label: beaverchat-service-address-edit))
          (size 'medium)
          (input (beaverchat-required-key-parameter data: beaverchat-service-address-edit))
@@ -554,11 +560,13 @@
          (begin
            (when output (output val))
            (success val))
-         (fail val))))))
+         (fail val))))
+   done: done))
 
 (define (guidot-beaver-select-path-payload
          area #!optional
-         (done #f))
+         (done #f) #!key
+         (network-id 18374687579166474240))
   ;; TBD: find better check that this is a valid directory
   (unless done
     (let ((before (guide-toplevel-payload)))
@@ -579,7 +587,19 @@
          (when (and (file-exists? dir)
                     (eq? (file-type dir) 'directory))
            (set! val dir) ;; beware intensional side effect while speculative!
-           (ot0-global-context-set! 0 dir #t)
+           (guide-critical-add!
+            (let ((args
+                   `(
+                     "-B" ,dir
+                     ip: on
+                     -S control ,control-port :
+                     -service ot0 start "\"*:0\"" join: ,network-id
+                     ;; join: ,(debug-adhoc-network-id) -S vpn tcp register ,(debug-adhoc-network-port) beaver-cmd3 :
+                     ;; -S tcp register (debug-adhoc-network-port) replloop2 :
+                     -wait
+                     )))
+              (lambda () (beaver-process-commands args)))
+            async: #t)
            done)))
        ignore-hidden: #f
        filter-pred:
