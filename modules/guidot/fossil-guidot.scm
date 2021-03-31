@@ -495,7 +495,7 @@
                (lambda args
                  (match
                   args
-                  ((? guide-payload? next)
+                  (((? guide-payload? next) . _)
                    (guide-critical-add!
                     (lambda ()
                       (dialog-control! close: this)
@@ -503,6 +503,7 @@
                     async: #t))
                   (_ (dialog-control! close: this)))
                  #t))))
+      (when (procedure? done) (done))
       (when insert (dialog-control! insert this))
       this)))
 
@@ -524,7 +525,7 @@
                (lambda args
                  (match
                   args
-                  ((? guide-payload? next)
+                  (((? guide-payload? next) . _)
                    (guide-critical-add!
                     (lambda ()
                       (dialog-control! close: this)
@@ -532,6 +533,7 @@
                     async: #t))
                   (_ (dialog-control! close: this)))
                  #t))))
+      (when (procedure? done) (done))
       (when insert (dialog-control! insert this))
       this)))
 
