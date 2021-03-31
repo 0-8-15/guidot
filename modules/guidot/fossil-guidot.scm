@@ -374,11 +374,12 @@
                  guide-callback:
                  (lambda _
                    (mode 'all)
-                   (%%guide-post-speculative (done)))))
-              in: (guide-rectangle-measures rect)))
-            ((checkout) (mode 'all))
-            (else (mode #f)))))
-        #t)))
+                   done)))
+              in: (guide-rectangle-measures rect))
+             #t)
+            ((checkout) (mode 'all) done)
+            (else (mode #f) done)))
+         (else #t)))))
    (lambda (area row col)
      (guide-valuelabel
       in: area size: size label: ""
@@ -552,7 +553,7 @@
 
 (define (guidot-fossil-transfer-dialog
          area #!key
-         (done NYI)
+         (done (%%macro-guidot-capture-guide-toplevel))
          (remote-fossil-title #f)
          (remote-fossil-key #f)
          (http-proxy-url
