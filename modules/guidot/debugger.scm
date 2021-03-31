@@ -157,6 +157,15 @@
 ;;** Debuggger
 
 (define (guidot-debugger-about-page-content-constructors)
+  (define (select-registered)
+    (let* ((options (guide-payload-names))
+           (area (current-guide-gui-interval))
+           (select
+            (lambda (n x)
+              (guide-toplevel-payload ((guide-payload-ref (vector-ref options n)) area)))))
+      (guide-list-select-payload
+       area (lambda _ options)
+       action: select)))
   (define (beaver-number-display x) (if x (beaver-number->unicode-vector x) '#()))
   (define conv
     (lambda (v)
@@ -172,7 +181,7 @@
        (guide-button
         in: area
         label: "(C) JFW [Corona edition: 2020-2021]"
-        guide-callback: (lambda (rect payload event xsw ysw) (active next: #f) #t)))
+        guide-callback: (lambda (rect payload event xsw ysw) (active next: (select-registered)) #t)))
      (lambda (area buffer active)
        (guide-valuelabel in: area label: "Version" value: (system-appversion)))
      (lambda (area buffer active)
@@ -222,16 +231,16 @@
         in: area size: size label: "lwIP"
         value: lwIP
         value-equal: eq? value-display: guidot-display/boolean))
-     (lambda (area buffer active)
+     #;(lambda (area buffer active)
        (guide-valuelabel
         in: area size: size label: "beaver id"
         value: beaver-local-unit-id
-        value-equal: eq? value-display: beaver-number-display))
+        value-equal: eq? value-display: (lambda (x) (number->string x 16))))
      (lambda (area buffer active)
        (guide-valuelabel
         in: area size: size label: "beaver number"
         value: beaver-local-unit-id
-        value-equal: eq? value-display: beaver-number-display))
+        value-equal: eq? value-display: (lambda (v) (and v (beaver-unit-id->unicode-vector v)))))
      (lambda (area buffer active)
        (guide-valuelabel
         in: area size: size label: "use deamonize"
@@ -244,7 +253,12 @@
            ((eqv? event EVENT_BUTTON1DOWN)
             (%%guide-post-speculative (beaver-use-daemonize (not (beaver-use-daemonize)))))
            (else #t)))))
-     #;(lambda (area buffer active)
+     (lambda (area buffer active)
+       (guide-valuelabel
+        in: area size: size label: "beaver domain"
+        value: $beaver-capture-domain
+        value-equal: eq? value-display: (lambda (x) (or x "n/a"))))
+     (lambda (area buffer active)
        (guide-valuelabel
         in: area size: size label: "fossils directory"
         value: fossils-directory
