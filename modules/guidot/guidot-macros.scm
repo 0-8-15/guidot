@@ -52,3 +52,8 @@
        (let ((,str (make-string (ggb-length ,ggb))))
          (ggb-for-each ,ggb (lambda (,i ,v) (string-set! ,str ,i (integer->char ,v))))
          (,pred ,str)))))
+
+(define-macro (%%macro-guidot-capture-guide-toplevel)
+  (let ((before (gensym 'before)))
+    `(let ((,before (guide-toplevel-payload)))
+       (lambda _ (guide-toplevel-payload ,before)))))
