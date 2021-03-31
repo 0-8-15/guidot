@@ -159,7 +159,7 @@
          cmd url//proto #!key
          (directory #f)
          (input #f)
-         (once #t)
+         (once #f)
          (title #f) (key #f)
          (proxy #f)
          (into #f)
@@ -170,11 +170,15 @@
            `("-httpauth" ,(string-append title ":" key)))
           (else '())))
         (admin '("-A" "u"))
+        (user '("-user" "u"))
         (cmd-str
          (cond
           (else
            (case cmd
              ((clone) "clone")
+             ((sync) "sync")
+             ((pull) "pull")
+             ((push) "push")
              (else (NYIE))))))
         (url (string-append "http://" url//proto))
         (once-only
@@ -190,14 +194,20 @@
     (let* ((arguments
             (case cmd
               ((clone)
-               (let* ((relative-path
-                       (or into
-                           (date->string
-                            (time-utc->date (make-srfi19:time 'time-utc 0 (current-seconds)))
-                            "~1.fossil")))
-                      (new-repository (if #t relative-path (make-pathname working-directory relative-path))))
+               (let ((new-repository
+                      (cond
+                       ((and (string? into) (not (equal? into "")))
+                        into)
+                       (else
+                        (make-pathname
+                         working-directory
+                         (date->string
+                          (time-utc->date (make-srfi19:time 'time-utc 0 (current-seconds)))
+                          "~1.fossil"))))))
                  `(,cmd-str ,@admin ,@auth ,@proxy ,@once-only ,url ,new-repository)))
-              (else `(,cmd-str ,url ,@admin ,@auth ,@proxy ,@once-only))))
+              (else
+               (let ((repository `("-R" ,(path-normalize (fossils-project-filename (current-fossil))))))
+                 `(,cmd-str ,url "-v" ,@user ,@auth ,@proxy ,@once-only ,@repository)))))
            (port
             (semi-fork "fossil" arguments stderr-redirection directory: working-directory)))
       (assume (begin (when (procedure? log)
