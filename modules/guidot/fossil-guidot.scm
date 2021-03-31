@@ -345,8 +345,9 @@
            in: (guide-rectangle-measures rect))))
         #t)))
    (lambda (area row col)
+     (define label "mode")
      (guide-valuelabel
-      in: area size: size label: "mode"
+      in: area size: size name: label label: label
       label-width: label-width
       value: mode
       value-display: (lambda (x) (case x ((all) "all") ((checkout) "checkout") (else "BROKEN")))
