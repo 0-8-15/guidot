@@ -535,6 +535,8 @@
       (when insert (dialog-control! insert this))
       this)))
 
+;;** Transfer Dialog
+
 (define (guidot-fossil-transfer-dialog
          area #!key
          (done NYI)
