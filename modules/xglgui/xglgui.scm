@@ -1579,14 +1579,14 @@
                  (vector
                   (lambda (area row col)
                     (guide-button
-                     name: 'close
+                     name: 'clear
                      in: area
                      label: "C" background-color: background-color color: color
                      guide-callback:
                      (lambda (rect payload event x y) (data "") (refresh-line! rect))))
                   (lambda (area row col)
                     (guide-button
-                     name: 'close
+                     name: 'snarf
                      in: area
                      label: "M" background-color: background-color color: color
                      guide-callback:
@@ -1594,17 +1594,16 @@
                        (clipboard-copy (data)) #t)))
                   (lambda (area row col)
                     (guide-button
-                     name: 'close
+                     name: 'recall
                      in: area
                      label: "R" background-color: background-color color: color
                      guide-callback:
                      (lambda (rect payload event x y)
-                        ;; clipboard-paste may block, run async
+                       ;; clipboard-paste may block, run async
                        (guide-critical-add!
                         (lambda () ;; FIXME: how comes this closes the dialog?
-                          (kick! (lambda ()
-                                   (data (clipboard-paste))
-                                   (refresh-line! rect) #f)))
+                          (let ((value (clipboard-paste)))
+                            (kick! (lambda () (data value) (refresh-line! rect)))))
                         async: #t)
                        #t)))
                   (lambda (area row col)
