@@ -580,11 +580,14 @@
      ((procedure? remote-fossil-key) (make-pin (remote-fossil-key)))
      (else (make-pin (or remote-fossil-key "")))))
   (define remote-url current-fossil-remote-url)
+  (define clone-target (make-pin ""))
+  (define clone-target-pathname (make-pin #f))
   (define directory fossils-directory)
   ;; derived
   (define dialog-area area)
   (define-values (xsw xno ysw yno) (guide-boundingbox->quadrupel area))
   (define-values (result dialog-control!) (guidot-layers area name: name))
+  (define interactive (%%guidot-interactive dialog-control! insert: top:))
   ;; GUI
   (define-values (output-textarea output-control!)
     (guide-textarea-payload
@@ -597,6 +600,101 @@
      vertical-align: 'bottom
      wrap: #t
      name: "fossil output"))
+  (define (conv-empty2false src)
+    (case-lambda
+     (() (or (src) ""))
+     ((val) (src (cond ((string-empty? val) #f) (else val))))))
+  (define (select-local-name area done)
+    (let ((label "Local Project Name"))
+      (guide-value-edit-dialog
+       name: label
+       in: area
+       done: done
+       label: label
+       keypad: guide-keypad/default
+       on-key:
+       (lambda (p/r key m)
+         (let ((x (%%guide-textarea-keyfilter p/r key m)))
+           (when (and x (or (eqv? key #\return) (eqv? key EVENT_KEYENTER)))
+             (done))
+           x))
+       ;; validate: (macro-guidot-check-ggb/string-pred validate)
+       data: clone-target)))
+  (define (select-clone-source area done)
+    (let ((options '#("Beaver Number" "VPN IP" "URL")))
+      (guide-list-select-payload
+       (guide-payload-measures output-textarea)
+       (lambda () options)
+       action:
+       (lambda (n x)
+         (done)
+         (cond
+          ((eqv? n 0) ;; Beaver Number
+           (interactive
+            (lambda (area done)
+              (beaverchat-service-address-edit
+               in: area label: "Beaver Number"
+               input: clone-target
+               done: done
+               success:
+               (lambda _
+                 (define (err text)
+                   (interactive
+                    (lambda (area done)
+                      (guide-button in: area label: text guide-callback: done))
+                    in: area done: done))
+                 (let ((project (clone-target)))
+                   (cond
+                    ((not project) (done))
+                    ((not (fossils-directory)) (err "No Fossil Directory"))
+                    ((not ($beaver-capture-domain)) (err "No Domain Captured"))
+                    ((string-match-unit-id+port? project)
+                     (let* ((project (chat-number->neatstring (unit-id-string->unit-id project) "-"))
+                            (fn (and project (fossils-project-filename project))))
+                       (cond
+                        ((not fn) (done))
+                        ((file-exists? (path-normalize fn)) (err "Already Exists"))
+                        (else
+                         (mode 'clone)
+                         (clone-target-pathname fn)
+                         (current-fossil-remote-url
+                          (string-append
+                           project "." ($beaver-capture-domain) "/"
+                           project ".fossil"))
+                         (done)))))
+                    (else (err (string-append "pardon: '" project "'"))))))))
+            in: area))
+          ((eqv? n 0) ;; VPN IP
+           (interactive
+            (lambda (area done)
+              (beaverchat-service-address-edit
+               in: area label: "[IPv6]:PORT" input: (conv-empty2false current-fossil-remote-url)
+               done: done
+               success: (lambda _ (select-local-name area done))))
+            in: area))
+          (else
+           (interactive
+            (lambda (area done)
+              (let ((label "Clone Source URL"))
+                (guide-value-edit-dialog
+                 name: label
+                 in: area
+                 done: done
+                 label: label
+                 keypad: guide-keypad/default
+                 on-key:
+                 (lambda (p/r key m)
+                   (let ((x (%%guide-textarea-keyfilter p/r key m)))
+                     (when (and x (or (eqv? key #\return) (eqv? key EVENT_KEYENTER)))
+                       (interactive
+                        (lambda (area done)
+                          (select-local-name area done))
+                        in: area done: done))
+                     x))
+                 ;; validate: (macro-guidot-check-ggb/string-pred validate)
+                 data: (conv-empty2false current-fossil-remote-url))))
+            in: area))))
+       name: "select clone source kind")))
   (define menu
     (let ((size 'small))
       (define (mk-generic area row col)
@@ -617,8 +715,7 @@
                (cond
                 ((active) => off)
                 (else
-                 (let ((interactive (%%guidot-interactive dialog-control! insert: top:))
-                       (area (guide-payload-measures output-textarea)))
+                 (let ((area (guide-payload-measures output-textarea)))
                    (interactive
                     (lambda (area control)
                       (active control)
@@ -642,21 +739,22 @@
                             ((eqv? n 0) ;; clone
                              (current-fossil #f)
                              (current-fossil-remote-url "")
-                             (interactive
-                              (lambda (area control)
-                                (beaverchat-service-address-edit ;; placeholder
-                                 in: area label: "XXX" input: current-fossil-remote-url
-                                 success: control))
-                              in: area))
+                             #;(interactive select-clone-source in: area)
+                             (interactive select-clone-source in: area)
+                             (off (active)))
                             ((eqv? n 4) ;; wiki
                              (guide-critical-add!
                               (lambda ()
                                 (ggb-clear! vbuf)
                                 (ggb-insert! vbuf (guidot-fossil-wiki dialog-area)))
-                              async: #f))
-                            (else (mode (string->symbol (vector-ref options n)))))
-                           ;; close
-                           (off (active))))))
+                              async: #f)
+                             ;; close
+                             (off (active)))
+                            (else
+                             (mode (string->symbol (vector-ref options n)))
+                             ;; close
+                             (off (active)))))
+                         name: options)))
                     in: area))
                  #t)))
               (else #t))))))
@@ -726,6 +824,7 @@
                   (title (remote-tag))
                   (key (apikey))
                   (directory (directory))
+                  (into (clone-target-pathname))
                   (proxy (http-proxy-url)))
               (lambda ()
                 (output-control! text: #f)
@@ -735,6 +834,7 @@
                   mode remote-url
                   title: title key: key
                   directory: directory
+                  into: into
                   log: (lambda (args) (debug 'fossil-go args))
                   proxy: proxy))))
             async: #t))))
