@@ -2105,10 +2105,6 @@
     receiver))
 
 (define guide-critical-add! ;; FIXME
-  ;;
-  ;; FIXME: This is better moved into `likely` - we MUST clear the
-  ;; list within the critical section, NOT in some transaction at
-  ;; WHATEVER later time.
   (let ()
     (define critical-calls
       ;; Guide *Global* Critical Section (GGCS)
@@ -2133,10 +2129,13 @@
               (cond
                ((procedure? new) (new))
                (else (force new))))
-            (reverse! new))
-           #f)
-         ;; FIXME: post is actually a little too late to clean up
-         post: (lambda () (when (pair? (receiver)) (receiver '())) #f))
+            ;; This is better moved into `likely` - we MUST clear the
+            ;; list within the critical section.
+            (let* ((tbd (reverse new)))
+              (set-cdr! new '())
+              (set-car! new #f)
+              tbd))
+           #f))
         receiver))
     (lambda (obj #!key (async #f) (once #f))
       (assume (or (procedure? obj) (promise? obj))
