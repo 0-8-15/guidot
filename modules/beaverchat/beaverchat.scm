@@ -563,6 +563,37 @@
          (fail val))))
    done: done))
 
+(let
+    ;; TBD: This might be better promoted to the fossil module --
+    ;; EXCEPT that the fossils module does not depend on lwIP!!!
+    ((later (make-pin initial: #f filter: (lambda (o n) (or o n))))
+     (fossil-server-lwip-port 80))
+  (define (at-phone-decoder str)
+    (let* ((e0 (string-contains (substring str 1 (string-length str)) "/"))
+           (e (if e0 (+ e0 1)  (string-length str))))
+      (if (and (> (string-length str) 1) (or (eqv? (string-ref str 0) #\/) (eqv? (string-ref str 0) #\@)))
+          (unit-id-string->unit-id (substring str 1 e))
+          (unit-id-string->unit-id (if (eqv? e (string-length str)) str (substring str 0 e))))))
+  (wire!
+   later post:
+   (lambda ()
+     (httpproxy-atphone-set! at-phone-decoder)
+     (capture-domain!
+      (beaver-captured-domain)
+      handler: fossils-directory-handler
+      at-phone-decoder: at-phone-decoder
+      network-id: (car (ot0cli-ot0-networks)))
+     (lwip-tcp-service-register! fossil-server-lwip-port fossils-directory-service)))
+  (wire!
+   (list lwIP ot0cli-ot0-networks fossils-directory beaver-captured-domain)
+   post:
+   (lambda ()
+     (cond
+      ((and (lwIP) (pair? (ot0cli-ot0-networks)) (fossils-directory) (beaver-captured-domain))
+       (later #t))
+      ((later)
+       (MATURITY -2 "there is NO WAY to switch services off yet" loc: 'beaverchat))))))
+
 (define (guidot-beaver-select-path-payload
          area #!optional
          (done #f) #!key
@@ -582,6 +613,10 @@
        (case-lambda
         (() val)
         ((dir)
+         (define control-port
+           (cond-expand
+            (win32 1313)
+            (else (make-pathname dir "control"))))
          (when (equal? dir "..")
            (set! dir (path-directory (fossils-directory))))
          (when (and (file-exists? dir)
