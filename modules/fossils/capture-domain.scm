@@ -1,8 +1,12 @@
-(define $beaver-capture-domain (make-parameter #f))
+;; (C) 2020 JFW
+;;
+;; FIXME: This is a really bad hack
+
+(define beaver-captured-domain (make-pin initial: #f pred: (lambda (x) (or (not x) (string? x)))))
 
 (http-proxy-on-illegal-proxy-request
  (lambda (line)
-   (let ((domain (or ($beaver-capture-domain) "")))
+   (let ((domain (or (beaver-captured-domain) "")))
      (display #<<EOF
 HTTP/1.0 200 OK
 Content-type: text/html; charset=utf-8
@@ -29,13 +33,17 @@ EOF
 EOF
 ))))
 
-(define (capture-domain! domain-name #!key (handler #f) (at-phone-decoder (lambda (x) #f)))
+(define (capture-domain!
+         domain-name #!key
+         (handler #f)
+         (at-phone-decoder (lambda (x) #f))
+         (network-id #f))
 
   ;; Connect to this domain and get the page below back from any port.
   (define domain-rx
     #;(convert-domain-name-to-regex domain-name)
     (begin
-      ($beaver-capture-domain domain-name)
+      (beaver-captured-domain domain-name)
       ;; Bad KLUDGE, better use SRE
       (rx (string-append "(?:([^.]+)\\.)?" (rx-replace/all (rx "\\.") domain-name "\\.")))))
 
@@ -102,7 +110,7 @@ end-of-page-body
        ((number? addr)
         (if (equal? addr (beaver-local-unit-id))
             (if handler ((handler) auth) (producer->pipe display-page))
-            (let ((p6 (make-6plane-addr (calculator-adhoc-network-id) addr)))
+            (let ((p6 (and network-id (make-6plane-addr network-id addr))))
               (and p6 (open-lwip-tcp-client-connection p6 port)))))
        ((equal? addr '#u8(127 0 0 1))
         (open-tcp-client `(address: ,addr port-number: ,port)))
