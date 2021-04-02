@@ -2193,11 +2193,10 @@
   (define listing
     (let* ((directory (or (directory) (current-directory)))
            (port (open-directory (list path: directory ignore-hidden: ignore-hidden)))
-           (files (list->vector (filter filter-pred (read-all port)))))
+           (files (list->vector (sort! string<? (filter filter-pred (read-all port))))))
       (guide-list-select-payload
-       (let ((selection-height ;; not correct yet
-              (* (+ (vector-length files) 1) line-height)))
-         (make-mdv-rect-interval xsw 0 xno selection-height))
+       (make-x0y0x1y1-interval/coerce
+        xsw ysw xno (- yno (* 11/10 button-size)))
        (lambda () files)
        action:
        (lambda (n x)
@@ -2208,8 +2207,8 @@
     (let ((buttons 2))
       (guide-table-layout
        (make-x0y0x1y1-interval/coerce
-        (- xno (* 11/10 buttons button-size)) 0
-        xno button-size)
+        (- xno (* 11/10 buttons button-size)) (- yno (* 11/10 button-size))
+        xno yno)
        rows: 1 cols: buttons
        name: "menu"
        (lambda (area row col)
@@ -2231,11 +2230,11 @@
             (cond
              ((procedure? done) (macro-guide-sanitize-payload-result (done)))
              (else #f))))))))
-  (let ((buffer (make-ggb size: 3)))
-    (ggb-insert! buffer menu)
+  (let ((buffer (make-ggb size: 2)))
     (ggb-insert! buffer listing)
+    (ggb-insert! buffer menu)
     (guide-ggb-layout
-     in buffer name: name direction: 'topdown
+     in buffer name: name direction: 'layer
      background: background background-color: background-color
      fixed: #t)))
 
