@@ -157,9 +157,8 @@
 ;;** Debuggger
 
 (define (guidot-debugger-about-page-content-constructors)
-  (define (select-registered)
+  (define (select-registered area)
     (let* ((options (guide-payload-names))
-           (area (current-guide-gui-interval))
            (select
             (lambda (n x)
               (guide-toplevel-payload ((guide-payload-ref (vector-ref options n)) area)))))
@@ -181,7 +180,7 @@
        (guide-button
         in: area
         label: "(C) JFW [Corona edition: 2020-2021]"
-        guide-callback: (lambda (rect payload event xsw ysw) (active next: (select-registered)) #t)))
+        guide-callback: (lambda (rect payload event xsw ysw) (active next: (select-registered (guide-rectangle-measures rect))) #t)))
      (lambda (area buffer active)
        (guide-valuelabel in: area label: "Version" value: (system-appversion)))
      (lambda (area buffer active)

@@ -1303,7 +1303,7 @@
        area selected: wiki-selected
        dialog-control: dialog-control!
        color: frame-color background: frame-background
-       font: font menu-height: menu-height))
+       font: font))
     (ggb->vector json-commands-ggb))
   (define json-commands-mdv
     (let ((vec (json-commands)))
