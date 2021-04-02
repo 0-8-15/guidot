@@ -256,7 +256,7 @@
      (lambda (area buffer active)
        (guide-valuelabel
         in: area size: size label: "beaver domain"
-        value: $beaver-capture-domain
+        value: beaver-captured-domain
         value-equal: eq? value-display: (lambda (x) (or x "n/a"))))
      (lambda (area buffer active)
        (guide-valuelabel

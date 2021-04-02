@@ -60,7 +60,11 @@
          (cond
           ((not repository) args)
           ((eq? repository #t)
-           (append args (list "-R" (path-normalize (fossils-project-filename (current-fossil))))))
+           (let* ((fn (fossils-project-filename (current-fossil)))
+                  (nfn (and fn (path-normalize fn))))
+             (cond
+              (nfn (append args (list "-R" nfn)))
+              (else args))))
           ((string? repository) ;; TBD: file,exists,etc...
            (append args (list "-R" repository)))
           (else args))))
@@ -273,18 +277,20 @@
          (size 'small)
          (font (guide-select-font size: size))
          (interactive (lambda (constructor #!key in done) #f))
+         (overlay-area #f)
          ;; pins
          (mode (make-pin initial: 'all pred: symbol? name: "Fossil Access Mode"))
          ;; finally
          (name "Fossil Status Menu"))
   (define line-height (guide-font-height font))
-  (define status-items 3)
+  (define status-items 2)
   (define label-width 1/4)
   (define (top-area rect)
-    (receive (xsw xno ysw yno)
-        ;; FIXME inconsistent argument/result ordering!
-        (guide-boundingbox->quadrupel (guide-rectangle-measures rect))
-      (make-mdv-rect-interval xsw ysw xno (floor (- yno (* 16/10 status-items line-height))))))
+    (or overlay-area
+        (receive (xsw xno ysw yno)
+            ;; FIXME inconsistent argument/result ordering!
+            (guide-boundingbox->quadrupel (guide-rectangle-measures rect))
+          (make-mdv-rect-interval xsw ysw xno (floor (- yno (* 16/10 status-items line-height)))))))
   (guide-table-layout
    area rows: status-items cols: 1 name: name
    (lambda (area row col)
@@ -333,7 +339,7 @@
           (interactive
            (lambda (#!key in done)
              (guide-path-select
-              in: (top-area rect)
+              in: in
               directory: fossils-directory
               selected: current-fossil
               filter-pred:
@@ -342,7 +348,7 @@
                     (let ((x (make-pathname (fossils-directory) x)))
                       (and (file-exists? x) (eq? (file-type x) 'regular)))))
               done: done))
-           in: (guide-rectangle-measures rect))))
+           in: overlay-area)))
         #t)))
    (lambda (area row col)
      (define label "mode")
@@ -395,7 +401,10 @@
 
 ;;*** Help
 
-(define (guidot-fossil-help-browser area)
+(define (guidot-fossil-help-browser
+         area
+         #!key
+         (done (%%macro-guidot-capture-guide-toplevel)))
   (define menu-height 20)
   (define label-width 1/4)
   (define basic (make-pin #t))
@@ -405,25 +414,24 @@
   (define output-font (guide-select-font height: (floor (* 10/16 menu-height))))
   ;; GUI
   (define menu
-    (make-guide-table
-     (make-mdvector
-      (range '#(1 1))
-      (let ((size 'small))
-        (vector
-         (lambda (area row col)
-           (guide-valuelabel
-            in: area size: size label: "mode"
-            label-width: label-width
-            value: basic
-            value-display: (lambda (x) (if x "basic" "extended"))
-            input:
-            (lambda (rect payload event xsw ysw)
-              (cond
-               ((eqv? event EVENT_BUTTON1DOWN)
-                (basic (not (basic)))))
-              #t))))))
-     in: (make-mdv-rect-interval xsw 0 xno menu-height)
-     name: "Fossil Help Menu"))
+    (let ((size 'small))
+      (guide-table-layout
+       (make-mdv-rect-interval xsw 0 xno menu-height)
+       rows: 1 cols: 2 name: "Fossil Help Menu"
+       (lambda (area row col)
+         (guide-valuelabel
+          in: area size: size label: "mode"
+          label-width: label-width
+          value: basic
+          value-display: (lambda (x) (if x "basic" "extended"))
+          input:
+          (lambda (rect payload event xsw ysw)
+            (cond
+             ((eqv? event EVENT_BUTTON1DOWN)
+              (basic (not (basic)))))
+            #t)))
+       (lambda (area row col)
+         (guide-button in: area label: "x" guide-callback: done)))))
   (define output-control!)
   (define work-view
     (make-guide-table
@@ -433,11 +441,11 @@
        (let ((basic-options
               (apply
                vector
-               (fossil-help-basic-parse-output-to-commands (fossil-command "help"))))
+               (fossil-help-basic-parse-output-to-commands (fossil-command repository: #f "help"))))
              (all-options
               (apply
                vector
-               (fossil-help-all-parse-output-to-commands (fossil-command "help" "-a"))))
+               (fossil-help-all-parse-output-to-commands (fossil-command repository: #f "help" "-a"))))
              (layers (make-ggb size: 1)))
          (define (options) (if (basic) basic-options all-options))
          (ggb-insert! layers #f)
@@ -453,7 +461,7 @@
                  (%%guide-post-speculative/async
                   (begin
                     (output-control! text: #f)
-                    (let ((result (fossil-command "help" (vector-ref (options) n))))
+                    (let ((result (fossil-command repository: #f "help" (vector-ref (options) n))))
                       (output-control! insert: result))))))))
            (wire! basic post: update-options)
            (update-options)
@@ -465,7 +473,7 @@
               (%%guide-post-speculative/async
                (begin
                  (output-control! text: #f)
-                 (let ((result (fossil-command "help" (vector-ref (options) n))))
+                 (let ((result (fossil-command repository: #f "help" (vector-ref (options) n))))
                    (output-control! insert: result))))))
            (guide-ggb-layout area layers fixed: #t direction: 'layer name: "fossil help command selection")))
        (let ((label "1-2"))
@@ -647,20 +655,20 @@
                    (cond
                     ((not project) (done))
                     ((not (fossils-directory)) (err "No Fossil Directory"))
-                    ((not ($beaver-capture-domain)) (err "No Domain Captured"))
+                    ((not (beaver-captured-domain)) (err "No Domain Captured"))
                     ((string-match-unit-id+port? project)
                      (let* ((project (chat-number->neatstring (unit-id-string->unit-id project) "-"))
-                            (fn (and project (fossils-project-filename project))))
+                            (fn (and project (path-normalize (fossils-project-filename project)))))
                        (cond
                         ((not fn) (done))
-                        ((file-exists? (path-normalize fn)) (err "Already Exists"))
+                        ((file-exists? fn) (err "Already Exists"))
                         (else
                          (mode 'clone)
                          (clone-target-pathname fn)
                          (current-fossil-remote-url
                           (string-append
-                           project "." ($beaver-capture-domain) "/"
-                           project ".fossil"))
+                           project "." (beaver-captured-domain) "/"
+                           project "/" project))
                          (done)))))
                     (else (err (string-append "pardon: '" project "'"))))))))
             in: area))
@@ -891,7 +899,6 @@
          area #!key
          (font (guide-select-font size: 'medium))
          (keypad guide-keypad/default)
-         (menu-height 48)
          (dialog-control (NYIE))
          (color
           (let* ((color (guide-select-color-1))
@@ -1051,7 +1058,9 @@
       (guidot-frame
        (lambda (area)
          (guide-list-select-payload
-          area (lambda () tl-options)
+          (receive (xsw xno ysw yno) (guide-boundingbox->quadrupel area)
+            (make-mdv-rect-interval xsw ysw xno (- yno 40)))
+          (lambda () tl-options)
           action:
           (lambda (n x)
             (let ((ssc (vector-ref tl-options n)))
@@ -1182,9 +1191,10 @@
 
 (define (guidot-fossil-wiki
          area #!key
+         (done (%%macro-guidot-capture-guide-toplevel))
          (font (guide-select-font size: 'medium))
          (keypad guide-keypad/default)
-         (menu-height 48)
+         (menu-height 55)
          (dialog-control #f)
          (color
           (let* ((color (guide-select-color-1))
@@ -1213,7 +1223,7 @@
        area selected: selected
        dialog-control: dialog-control
        color: color background: background
-       font: font menu-height: menu-height
+       font: font
        name: name)
       in: (make-mdv-rect-interval xsw ysw xno (- yno menu-height))
       command: "wiki" dismiss: dismiss)
@@ -1223,7 +1233,16 @@
        top:
        (guidot-fossil-menu
         (make-mdv-rect-interval xsw (- yno menu-height) xno yno)
-        interactive: interactive)))
+        interactive: interactive
+        overlay-area: area)))
+    (dialog-control
+     top:
+     (let ((size 20))
+       (guide-button
+        name: 'close
+        in: (make-x0y0x1y1-interval/coerce (- xno size) (- yno size) xno yno)
+        label: "x"
+        guide-callback: done)))
     (unbox selfie)))
 
 (define (guidot-fossil-browser
@@ -1319,11 +1338,11 @@
        (let ((basic-options
               (apply
                vector
-               (fossil-help-basic-parse-output-to-commands (fossil-command "help"))))
+               (fossil-help-basic-parse-output-to-commands (fossil-command repository: #f "help"))))
              #;(all-options
              (apply
              vector
-             (fossil-help-all-parse-output-to-commands (fossil-command "help" "-a")))))
+             (fossil-help-all-parse-output-to-commands (fossil-command repository: #f "help" "-a")))))
          (lambda (area row col)
            (guide-list-select-payload
             area (lambda () basic-options)
