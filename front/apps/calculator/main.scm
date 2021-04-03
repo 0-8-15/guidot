@@ -461,6 +461,13 @@ NULL;
 
 ;; command line
 
+($current-guide-style
+ (guide-style-extent
+  (guide-style-default)
+  locale: 'de
+  ;; end of default style definitions
+  ))
+
 (let ()
   (define (load-file-with-arguments file args)
     (load file))
