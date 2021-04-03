@@ -20,6 +20,14 @@
         (lambda (gd2 gd x y ox oy w2 h2 w h)
           (orig gd2 gd x y ox oy w2 (macro-fix h2) w h))))
 
+;;; Early process semi-fork
+
+(match
+ (command-line)
+ ((CMD (? (lambda (key) (equal? (daemonian-semifork-key) key))) loadkey . more)
+  (daemonian-execute-registered-command loadkey more))
+ (otherwise #t))
+
 ;;;
 
 (define normal-exit exit)
@@ -176,6 +184,8 @@
 
 (register-command! "beaver" beaver-process-commands)
 
+(kick/sync! (lambda () (beaver-captured-domain "bvr")))
+
 (define-macro (%%guide-post-speculative expr)
   ;; either a thunk or a promise -- promise seems NOT to work under
   ;; gamit?
@@ -291,7 +301,7 @@
      SIZE
      ((or "dev" "640x1200")  (setsize! (make-mdv-rect-interval 0 0 640 1200)))
      ((or "large" "1920x1200") (setsize! (make-mdv-rect-interval 0 0 1920 1200)))
-     ("320x480" (setsize! (make-mdv-rect-interval 0 0 320 480)))
+     ((or "small" "320x480") (setsize! (make-mdv-rect-interval 0 0 320 480)))
      ("ask" (test-guide-size-select-toplevel-payload area more))
      (otherwise
       (println port: (current-error-port) "Unhandled size "
