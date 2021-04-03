@@ -1,3 +1,9 @@
+(match
+ (command-line)
+ ((CMD (? (lambda (key) (equal? (daemonian-semifork-key) key))) loadkey . more)
+  (daemonian-execute-registered-command loadkey more))
+ (otherwise #t))
+
 (log-status "Startup")
 
 (define (debug l v)
@@ -350,8 +356,13 @@ NULL;
          (e (if e0 (+ e0 1)  (string-length str))))
     (if (and (> (string-length str) 1) (or (eqv? (string-ref str 0) #\/) (eqv? (string-ref str 0) #\@)))
         (unit-id-string->unit-id (substring str 1 e))
-        (unit-id-string->unit-id (if (fx= e (string-length str)) str (substring str 0 e))))))
+        (unit-id-string->unit-id (if (eqv? e (string-length str)) str (substring str 0 e))))))
 
+
+(define (guidot-eventually! thunk)
+  (cond
+   ((not (stm-atomic?)) (guide-critical-add! thunk async: #t))
+   (else (thread-start! (make-thread thunk)))))
 
 (define (init-beaverchat-gui! launch-url beaver-domain)
 
@@ -366,7 +377,13 @@ NULL;
       ;;;; ((16) (guidot-fossil-help-browser area))
       ;;((17) (guidot-fossil-wiki area))
       ;;;; ((18) (guidot-fossil-browser area))
-      ((3) (guidot-fossil-transfer-dialog area))
+      ((3) (guidot-fossil-transfer-dialog
+            area done:
+            (lambda args
+              (match
+               args
+               (((? guide-payload? next) . _) (guide-toplevel-payload next))
+               (else (guidot-eventually! (lambda () (kick (PIN:toplevel-selection 2)))))))))
       (else (guide-button in: (make-mdv-rect-interval 0 0 100 100)))))
 
   ;; No longer: Wired to globals, may now be instanciated more than once.
@@ -415,8 +432,13 @@ NULL;
   ;; end of invocation independent initializations
   (log-status "Starting from " dir (object->string (args)))
   (init-beaverchat! dir use-origin: use-origin) ;; MUST be first
-  (capture-domain! (capdom) handler: fossils-directory-handler at-phone-decoder: at-phone-decoder)
-  (lwip-tcp-service-register! 80 fossils-directory-service)
+  (kick
+   (capture-domain!
+    (capdom)
+    handler: fossils-directory-handler
+    at-phone-decoder: at-phone-decoder
+    network-id: (calculator-adhoc-network-id)))
+  ;; (lwip-tcp-service-register! 80 fossils-directory-service)
   (log-status "beaver.dam done")
   (let ((job (lambda () (beaver-process-commands (args)))))
     (cond-expand
