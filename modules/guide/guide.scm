@@ -1531,9 +1531,10 @@
          (key-background #!void) ;; FIXME: macro-absent ... ??
          (on-key #f)
          (name 'keypad))
-  (define (%%guide-post-key-event key)
+  (define (%%guide-post-key-event key switch)
     ;; note: still using legacy events encoding
     (define modifiers 0)
+    (and switch (switch #f)) ;; unset switch
     (cond
      ((fixnum? key)
       (if (procedure? on-key)
@@ -1544,11 +1545,13 @@
           (on-key release: key modifiers)
           (%%guide-post-speculative (event-push EVENT_KEYRELEASE (char->integer key) modifiers))))
      (else (error "invalid key" %%guide-post-key-event key))))
-  (define (post-key pat)
+  (define (post-key pat switch)
     (lambda (rect payload event x y)
-      (%%guide-post-key-event pat)))
+      (%%guide-post-key-event pat switch)))
   (define (keybutton
-           in c
+           in ;; area
+           switch ;; #f or keypane switch control procedure
+           c ;; character to produce
            #!key
            (label (string c)) (color color)
            (background key-background)
@@ -1558,7 +1561,7 @@
     (guide-button
      in: in label: label color: color font: font
      padding: padding
-     background: background background-color: background-color guide-callback: (post-key c)))
+     background: background background-color: background-color guide-callback: (post-key c switch)))
   (define (keypane rng spec-vector switch)
     (let* ((len (range-volume rng))
            (start ((mdv-indexer rng) 0 0))
@@ -1572,8 +1575,8 @@
            (if (boolean? pat) pat
                (lambda (in col row)
                  (cond
-                  ((char? pat) (keybutton in pat))
-                  ((and (fixnum? pat) (positive? pat)) (keybutton in pat))
+                  ((char? pat) (keybutton in switch pat))
+                  ((and (fixnum? pat) (positive? pat)) (keybutton in switch pat))
                   ((pair? pat)
                    (cond
                     ((symbol? (car pat))
@@ -1587,7 +1590,7 @@
                            color: color font: font
                            background: background background-color: background-color
                            (cdr pat))))
-                    (else (apply keybutton in pat))))
+                    (else (apply keybutton in switch pat))))
                   (else (error "invalid key spec" guide-make-keypad pat))))))))
       (make-guide-table
        (make-mdvector (range (vector (range-size rng 0) (range-size rng 1))) constructors)
@@ -1602,17 +1605,29 @@
       ((3)
        (let* ((len (range-size rng 2))
               (panes (make-vector len #f)))
-         (let* ((shift 0)
+         (let* ((sticky #f)
+                (shift 0)
                 (toggle 0)
                 (current-pane 0)
                 (switch
                  (lambda (key)
                    (case key
+                     ((#f) ;; unset modifiers if not sticky
+                      (unless sticky
+                        (set! shift 0)
+                        (set! toggle 0)
+                        (set! current-pane (+ shift toggle))))
                      ((shift)
-                      (set! shift (if (eqv? shift 1) 0 1))
+                      (cond
+                       ((and (eqv? shift 1) (not sticky))
+                        (set! sticky #t))
+                       (else (set! shift (if (eqv? shift 1) 0 1))))
                       (set! current-pane (+ shift toggle)))
                      ((toggle)
-                      (set! toggle (if (eqv? toggle 2) 0 2))
+                      (cond
+                       ((and (eqv? toggle 1) (not sticky))
+                        (set! sticky #t))
+                       (else (set! toggle (if (eqv? toggle 2) 0 2))))
                       (set! current-pane (+ shift toggle)))
                      (else (set! current-pane 0))))))
            (do ((i 0 (fx+ i 1)))
