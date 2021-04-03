@@ -1383,7 +1383,7 @@
        )))
    on-key: action))
 
-(define (guide-keypad/default #!key (in (current-guide-gui-interval)) (action #f))
+(define (guide-keypad/english #!key (in (current-guide-gui-interval)) (action #f))
   (guide-make-keypad
    in
    (make-mdvector
@@ -1467,6 +1467,16 @@
        k-toggle-3 #f  #\| k-space #f #f #f #\.  k-ret #f
        )))
    on-key: action))
+
+(define (guide-keypad/default
+         #!key
+         (in (current-guide-gui-interval))
+         (style (guide-current-style))
+         (locale (guide-style-ref style locale:))
+         (action #f))
+  (case locale
+    ((de) (guide-keypad/de in: in action: action))
+    (else (guide-keypad/english in: in action: action))))
 
 ;;** Dialogs
 
