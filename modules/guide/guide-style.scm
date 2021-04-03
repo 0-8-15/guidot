@@ -119,9 +119,12 @@
 (guide-style-declare
  padding: default: '#(1 1 1 1) doc: "Padding"
  pred: #f)
+(guide-style-declare locale: default: 'en pred: #f doc: "ISO locale symbol")
 (guide-style-declare
  done: default: NYI doc: "GUI Continuation"
  pred: procedure?)
+
+(define $current-guide-style (make-parameter #f))
 
 (define guide-style-default
   ;; first use finalizes declaration
@@ -129,3 +132,8 @@
     (case-lambda
      (() (force guide-style-default))
      ((key) (guide-style-ref (force guide-style-default) key)))))
+
+(define guide-current-style
+  (case-lambda
+   (() (or ($current-guide-style) (force guide-style-default)))
+   ((key) (guide-style-ref (or ($current-guide-style) (force guide-style-default)) key))))
