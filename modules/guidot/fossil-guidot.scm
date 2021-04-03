@@ -214,7 +214,11 @@
              ((pull) "pull")
              ((push) "push")
              (else (NYIE))))))
-        (url (string-append "http://" url//proto))
+        (url
+         (cond
+          ((not (string? url//proto)) )
+          ((rx~ (rx "^http://") url//proto) url//proto)
+          (else (string-append "http://" url//proto))))
         (once-only
          (cond
           (once '("-once"))
@@ -313,7 +317,7 @@
          ;; finally
          (name "Fossil Status Menu"))
   (define line-height (guide-font-height font))
-  (define status-items 2)
+  (define status-items 3)
   (define label-width 1/4)
   (define (top-area rect)
     (or overlay-area
@@ -350,8 +354,8 @@
               filter-pred:
               (lambda (x)
                 (cond
-                 ((not x))
-                 ((or (equal? x ".") (equal? x "..")))
+                 ((not x) #f)
+                 ((equal? x ".") #f)
                  (else (and (file-exists? x) (eq? (file-type x) 'directory)))))
               done: done))
            in: (guide-rectangle-measures rect))))
@@ -368,17 +372,18 @@
          ((eqv? event EVENT_BUTTON1DOWN)
           (interactive
            (lambda (#!key in done)
-             (guide-path-select
-              in: in
-              directory: fossils-directory
-              selected: current-fossil
-              filter-pred:
-              (lambda (x)
-                (or (not x)
-                    (let ((x (make-pathname (fossils-directory) x)))
-                      (and (file-exists? x) (eq? (file-type x) 'regular)))))
-              done: done))
-           in: overlay-area)))
+             (let ((directory fossils-directory))
+               (guide-path-select
+                in: in
+                directory: directory
+                selected: current-fossil
+                filter-pred:
+                (lambda (x)
+                  (or (not x)
+                      (let ((x (make-pathname (directory) x)))
+                        (and (file-exists? x) (eq? (file-type x) 'regular)))))
+                done: done)))
+           in: (top-area rect))))
         #t)))
    (lambda (area row col)
      (define label "mode")
@@ -415,19 +420,7 @@
              #t)
             ((checkout) (mode 'all) done)
             (else (mode #f) done)))
-         (else #t)))))
-   (lambda (area row col)
-     (guide-valuelabel
-      in: area size: size label: ""
-      label-width: label-width
-      value: (lambda _ #f)
-      value-display: (lambda (x) (if x "" ""))
-      input:
-      (lambda (rect payload event xsw ysw)
-        (cond
-         ((eqv? event EVENT_BUTTON1DOWN)
-          (NYI)))
-        #t)))))
+         (else #t)))))))
 
 ;;*** Help
 
@@ -781,13 +774,7 @@
                              (interactive select-clone-source in: area)
                              (off (active)))
                             ((eqv? n 4) ;; wiki
-                             (guide-critical-add!
-                              (lambda ()
-                                (ggb-clear! vbuf)
-                                (ggb-insert! vbuf (guidot-fossil-wiki dialog-area)))
-                              async: #f)
-                             ;; close
-                             (off (active)))
+                             (done (guidot-fossil-wiki (current-guide-gui-interval))))
                             (else
                              (mode (string->symbol (vector-ref options n)))
                              ;; close
@@ -852,30 +839,31 @@
          in: area name: "fossil go"
          label:
          (let ((ok "go") (no "n/a"))
-           (lambda () (if (and (http-proxy-url) (directory)) ok no)))
+           (lambda () (if (and (http-proxy-url) (current-fossil-pathname)) ok no)))
          ;; background-color: background-color color: color
          guide-callback:
          (lambda _
-           (guide-critical-add!
-            (let ((mode (mode))
-                  (remote-url (remote-url))
-                  (title (remote-tag))
-                  (key (apikey))
-                  (directory (directory))
-                  (into (clone-target-pathname))
-                  (proxy (http-proxy-url)))
-              (lambda ()
-                (output-control! text: #f)
-                (output-control!
-                 insert:
-                 (%%fossil-cmd
-                  mode remote-url
-                  title: title key: key
-                  directory: directory
-                  into: into
-                  log: (lambda (args) (debug 'fossil-go args))
-                  proxy: proxy))))
-            async: #t))))
+           (when (and (http-proxy-url) (current-fossil-pathname))
+             (guide-critical-add!
+              (let ((mode (mode))
+                    (remote-url (remote-url))
+                    (title (remote-tag))
+                    (key (apikey))
+                    (directory (directory))
+                    (into (clone-target-pathname))
+                    (proxy (http-proxy-url)))
+                (lambda ()
+                  (output-control! text: #f)
+                  (output-control!
+                   insert:
+                   (%%fossil-cmd
+                    mode remote-url
+                    title: title key: key
+                    directory: directory
+                    into: into
+                    log: (lambda (args) (debug 'fossil-go args))
+                    proxy: proxy))))
+              async: #t)))))
       (define (mk-kx area row col)
         (guide-button
          name: 'close/warning
