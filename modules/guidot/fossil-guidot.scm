@@ -457,64 +457,62 @@
          (guide-button in: area label: "x" guide-callback: done)))))
   (define output-control!)
   (define work-view
-    (make-guide-table
-     (make-mdvector
-      (range '#(3 1))
-      (vector
-       (let ((basic-options
-              (apply
-               vector
-               (fossil-help-basic-parse-output-to-commands (fossil-command repository: #f "help"))))
-             (all-options
-              (apply
-               vector
-               (fossil-help-all-parse-output-to-commands (fossil-command repository: #f "help" "-a"))))
-             (layers (make-ggb size: 1)))
-         (define (options) (if (basic) basic-options all-options))
-         (ggb-insert! layers #f)
-         (lambda (area row col)
-           (define (update-options)
-             (ggb-set!
-              layers 0
-              (guide-list-select-payload
-               area options
-               line-height: 21
-               action:
-               (lambda (n x)
-                 (%%guide-post-speculative/async
-                  (begin
-                    (output-control! text: #f)
-                    (let ((result (fossil-command repository: #f "help" (vector-ref (options) n))))
-                      (output-control! insert: result))))))))
-           (wire! basic post: update-options)
-           (update-options)
-           (guide-list-select-payload
-            area
-            options
-            action:
-            (lambda (n x)
-              (%%guide-post-speculative/async
-               (begin
-                 (output-control! text: #f)
-                 (let ((result (fossil-command repository: #f "help" (vector-ref (options) n))))
-                   (output-control! insert: result))))))
-           (guide-ggb-layout area layers fixed: #t direction: 'layer name: "fossil help command selection")))
-       (let ((label "1-2"))
-         (lambda (area row col)
-           (guide-textarea-payload
-            in: area
-            data: (lambda _ #f)
-            rows: 120
-            font: output-font
-            horizontal-align: 'left
-            vertical-align: 'bottom
-            readonly: #t
-            wrap: #t
-            results: (lambda (pl ctrl) (set! output-control! ctrl) pl)
-            name: "fossil output")))
-       #f))
-     in: (make-mdv-rect-interval xsw ysw xno (- yno menu-height))
-     border-ratio: 1/20 name: "Fossil Browser"))
+    (guide-table-layout
+     (make-mdv-rect-interval xsw ysw xno (- yno menu-height))
+     border-ratio: 1/20 name: "Fossil Help Browser"
+     cols: 3 rows: 1
+     (let ((basic-options
+            (apply
+             vector
+             (fossil-help-basic-parse-output-to-commands (fossil-command repository: #f "help"))))
+           (all-options
+            (apply
+             vector
+             (fossil-help-all-parse-output-to-commands (fossil-command repository: #f "help" "-a"))))
+           (layers (make-ggb size: 1)))
+       (define (options) (if (basic) basic-options all-options))
+       (ggb-insert! layers #f)
+       (lambda (area row col)
+         (define (update-options)
+           (ggb-set!
+            layers 0
+            (guide-list-select-payload
+             area options
+             line-height: 21
+             action:
+             (lambda (n x)
+               (%%guide-post-speculative/async
+                (begin
+                  (output-control! text: #f)
+                  (let ((result (fossil-command repository: #f "help" (vector-ref (options) n))))
+                    (output-control! insert: result))))))))
+         (wire! basic post: update-options)
+         (update-options)
+         (guide-list-select-payload
+          area
+          options
+          action:
+          (lambda (n x)
+            (%%guide-post-speculative/async
+             (begin
+               (output-control! text: #f)
+               (let ((result (fossil-command repository: #f "help" (vector-ref (options) n))))
+                 (output-control! insert: result))))))
+         (guide-ggb-layout area layers fixed: #t direction: 'layer name: "fossil help command selection")))
+     (let ((label "1-2"))
+       (lambda (area row col)
+         (guide-textarea-payload
+          in: area
+          data: (lambda _ #f)
+          rows: 120
+          font: output-font
+          horizontal-align: 'left
+          vertical-align: 'bottom
+          readonly: #t
+          wrap: #t
+          results: (lambda (pl ctrl) (set! output-control! ctrl) pl)
+          name: "fossil output")))
+     #f))
   (define vbuf (make-ggb size: 2))
   (ggb-insert! vbuf menu)
   (ggb-insert! vbuf work-view)
@@ -774,7 +772,8 @@
                              (interactive select-clone-source in: area)
                              (off (active)))
                             ((eqv? n 4) ;; wiki
-                             (done (guidot-fossil-wiki (current-guide-gui-interval))))
+                             (done (guidot-fossil-wiki (current-guide-gui-interval)))
+                             (off (active)))
                             (else
                              (mode (string->symbol (vector-ref options n)))
                              ;; close
@@ -1029,8 +1028,7 @@
                         (kick! (box update)))
                       #t)))
                  action-close-callback:
-                 (lambda _ (dialog-control close: this)
-                   #t)
+                 (lambda _ (dialog-control close: this) #t)
                  name: "wiki editor menu")
                 keypad: keypad
                 data: page-content
@@ -1073,139 +1071,134 @@
          in: area
          label: "No Fossil selected"
          guide-callback: done))
-      (guidot-frame
-       (lambda (area)
-         (guide-list-select-payload
-          (receive (xsw xno ysw yno) (guide-boundingbox->quadrupel area)
-            (make-mdv-rect-interval xsw ysw xno (- yno 40)))
-          (lambda () tl-options)
-          action:
-          (lambda (n x)
-            (let ((ssc (vector-ref tl-options n)))
-              (cond
-               ((not (current-fossil))
+      (guide-list-select-payload
+       (receive (xsw xno ysw yno) (guide-boundingbox->quadrupel area)
+         (make-mdv-rect-interval xsw ysw xno (- yno 60)))
+       (lambda () tl-options)
+       action:
+       (lambda (n x)
+         (let ((ssc (vector-ref tl-options n)))
+           (cond
+            ((not (current-fossil))
+             (dismiss)
+             ((%%guidot-interactive dialog-control insert: top:)
+              no-fossil-selected in: area)
+             #t)
+            ((equal? ssc "list")
+             (dismiss)
+             (letrec ((edit (wiki-list (lambda _ (dialog-control close: edit)))))
+               (dialog-control top: edit)
+               #t))
+            ((equal? ssc "create")
+             (dismiss)
+             (let ((selfie (box #f)))
+               (dialog-control
+                top:
+                (let ((label "New Wiki Page"))
+                  (guide-value-edit-dialog
+                   name: label
+                   in: area
+                   done: (lambda _ (dialog-control close: selfie))
+                   label: label
+                   keypad: guide-keypad/default
+                   on-key: %%guide-textarea-keyfilter
+                   validate:
+                   (macro-guidot-check-ggb/string-pred
+                    (lambda (str) ;; TBD: correct check
+                      (cond
+                       ((equal? str "")) ;; abort
+                       (else (> (string-length str) 3)))))
+                   data:
+                   (case-lambda
+                    (() "")
+                    ((val)
+                     (dialog-control close: selfie)
+                     (cond
+                      ((equal? val "")) ;; abort
+                      (else
+                       (guide-critical-add!
+                        (lambda ()
+                          (let ((port (fossil-command/json)))
+                            (json-write
+                             `((command . "wiki/create")
+                               (payload
+                                (name . ,val)
+                                (content . "")
+                                (contentFormat . "raw")))
+                             port)
+                            (close-output-port port)
+                            ;; ignoring the response here
+                            (debug 'create-wiki-response (json-read port))))
+                        async: #t)))))))
+                notify: selfie))
+             #t)
+            ((equal? ssc "timeline")
+             (guide-critical-add!
+              (lambda ()
                 (dismiss)
-                ((%%guidot-interactive dialog-control insert: top:)
-                 no-fossil-selected in: area)
-                #t)
-               ((equal? ssc "list")
-                (dismiss)
-                (letrec ((edit (wiki-list (lambda _ (dialog-control close: edit)))))
-                  (dialog-control top: edit)
-                  #t))
-               ((equal? ssc "create")
-                (dismiss)
-                (let ((selfie (box #f)))
+                (let* ((result #;(json-read (fossil-command "json" command ssc))
+                        (let ((port (fossil-command/json)))
+                          (json-write `((command . ,(string-append command "/" ssc))) port)
+                          (close-output-port port)
+                          (json-read port)))
+                       (rows 50)
+                       (buffer (make-ggb size: 2))
+                       (all (box #f)))
+                  (define-values (xsw xno ysw yno) (guide-boundingbox->quadrupel area))
+                  (ggb-insert!
+                   buffer
+                   (guide-textarea-payload
+                    readonly: #t
+                    in: area
+                    rows: rows
+                    horizontal-align: 'left
+                    vertical-align: 'bottom
+                    font: font
+                    ;; color: color-2 hightlight-color: color-4
+                    ;; background: #f
+                    data:
+                    (lambda _
+                      (call-with-output-string
+                       (lambda (p)
+                         (let* ((results
+                                 (cond
+                                  ((eof-object? result) '#())
+                                  (else (cdr (assq 'timeline (cdr (assq 'payload result)))))))
+                                (limit (vector-length results)))
+                           (do ((i 0 (+ i 1)))
+                               ((eqv? i limit)
+                                (when (eqv? limit 0) (display "no results" p)))
+                             (let* ((result (vector-ref results i))
+                                    (timestamp (cdr (assq 'timestamp result)))
+                                    (comment (cdr (assq 'comment result))))
+                               (display
+                                (date->string
+                                 (time-utc->date (make-srfi19:time 'time-utc 0 timestamp)))
+                                p)
+                               (newline p)
+                               (display comment p)
+                               (newline p)))))))
+                    results: (lambda (pl ctrl) pl)))
+                  (ggb-insert!
+                   buffer
+                   (let ((size 20))
+                     (guide-button
+                      name: 'close
+                      in: (make-x0y0x1y1-interval/coerce (- xno size) (- yno size) xno yno)
+                      label: "x"
+                      guide-callback: (lambda _ (dialog-control close: all)))))
                   (dialog-control
                    top:
-                   (let ((label "New Wiki Page"))
-                     (guide-value-edit-dialog
-                      name: label
-                      in: area
-                      done: (lambda _ (dialog-control close: selfie))
-                      label: label
-                      keypad: guide-keypad/default
-                      on-key: %%guide-textarea-keyfilter
-                      validate:
-                      (macro-guidot-check-ggb/string-pred
-                       (lambda (str) ;; TBD: correct check
-                         (cond
-                          ((equal? str "")) ;; abort
-                          (else (> (string-length str) 3)))))
-                      data:
-                      (case-lambda
-                       (() "")
-                       ((val)
-                        (dialog-control close: selfie)
-                        (cond
-                         ((equal? val "")) ;; abort
-                         (else
-                          (guide-critical-add!
-                           (lambda ()
-                             (let ((port (fossil-command/json)))
-                               (json-write
-                                `((command . "wiki/create")
-                                  (payload
-                                   (name . ,val)
-                                   (content . "")
-                                   (contentFormat . "raw")))
-                                port)
-                               (close-output-port port)
-                               ;; ignoring the response here
-                               (debug 'create-wiki-response (json-read port))))
-                           async: #t)))))))
-                   notify: selfie))
-                #t)
-               ((equal? ssc "timeline")
-                (guide-critical-add!
-                 (lambda ()
-                   (dismiss)
-                   (let* ((result #;(json-read (fossil-command "json" command ssc))
-                           (let ((port (fossil-command/json)))
-                             (json-write `((command . ,(string-append command "/" ssc))) port)
-                             (close-output-port port)
-                             (json-read port)))
-                          (rows 50)
-                          (buffer (make-ggb size: 2))
-                          (all (box #f)))
-                     (define-values (xsw xno ysw yno) (guide-boundingbox->quadrupel area))
-                     (ggb-insert!
-                      buffer
-                      (guide-textarea-payload
-                       readonly: #t
-                       in: area
-                       rows: rows
-                       horizontal-align: 'left
-                       vertical-align: 'bottom
-                       font: font
-                       ;; color: color-2 hightlight-color: color-4
-                       ;; background: #f
-                       data:
-                       (lambda _
-                         (call-with-output-string
-                          (lambda (p)
-                            (let* ((results
-                                    (cond
-                                     ((eof-object? result) '#())
-                                     (else (cdr (assq 'timeline (cdr (assq 'payload result)))))))
-                                   (limit (vector-length results)))
-                              (do ((i 0 (+ i 1)))
-                                  ((eqv? i limit)
-                                   (when (eqv? limit 0) (display "no results" p)))
-                                (let* ((result (vector-ref results i))
-                                       (timestamp (cdr (assq 'timestamp result)))
-                                       (comment (cdr (assq 'comment result))))
-                                  (display
-                                   (date->string
-                                    (time-utc->date (make-srfi19:time 'time-utc 0 timestamp)))
-                                   p)
-                                  (newline p)
-                                  (display comment p)
-                                  (newline p)))))))
-                       results: (lambda (pl ctrl) pl)))
-                     (ggb-insert!
-                      buffer
-                      (let ((size 20))
-                        (guide-button
-                         name: 'close
-                         in: (make-x0y0x1y1-interval/coerce (- xno size) (- yno size) xno yno)
-                         label: "x"
-                         guide-callback: (lambda _ (dialog-control close: all)))))
-                     (dialog-control
-                      top:
-                      (guide-ggb-layout
-                       area
-                       buffer direction: 'layer
-                       background: (guide-background default: in: area) background-color: color
-                       fixed: #f)
-                      notify: all)))
-                 async: #t)
-                #t)
-               (else ((debug 'close dismiss)) #t))))))
-       in: area
-       border-ratio: 1/4
-       color: color background: background
-       name: "wiki toplevel selection"))))
+                   (guide-ggb-layout
+                    area
+                    buffer direction: 'layer
+                    background: (guide-background default: in: area) background-color: color
+                    fixed: #f)
+                   notify: all)))
+              async: #t)
+             #t)
+            (else ((debug 'close dismiss)) #t))))
+       name: name))))
 
 (define (guidot-fossil-wiki
          area #!key
@@ -1349,77 +1342,75 @@
      mode: mode))
   (define output-control!)
   (define work-view
-    (make-guide-table
-     (make-mdvector
-      (range '#(4 1))
-      (vector
-       (let ((basic-options
-              (apply
-               vector
-               (fossil-help-basic-parse-output-to-commands (fossil-command repository: #f "help"))))
-             #;(all-options
-             (apply
+    (guide-table-layout
+     (make-mdv-rect-interval xsw ysw xno (- yno menu-height))
+     border-ratio: 1/20 name: name
+     cols: 4 rows: 1
+     (let ((basic-options
+            (apply
              vector
-             (fossil-help-all-parse-output-to-commands (fossil-command repository: #f "help" "-a")))))
-         (lambda (area row col)
-           (guide-list-select-payload
-            area (lambda () basic-options)
-            action:
-            (lambda (n x)
-              (%%guide-post-speculative/async
-               (begin
-                 (output-control! text: #f)
-                 (let ((result
-                        (cond
-                         (else (fossil-command (vector-ref basic-options n))))))
-                   (output-control! insert: result))))))))
+             (fossil-help-basic-parse-output-to-commands (fossil-command repository: #f "help"))))
+           #;(all-options
+           (apply
+           vector
+           (fossil-help-all-parse-output-to-commands (fossil-command repository: #f "help" "-a")))))
        (lambda (area row col)
          (guide-list-select-payload
-          area
-          (let* ((len (range-size (mdvector-range json-commands-mdv) 1))
-                 (names (make-vector len)))
-            (do ((i 0 (+ i 1)))
-                ((eqv? i len)
-                 (lambda () names))
-              (vector-set! names i (mdvector-ref json-commands-mdv i 0))))
+          area (lambda () basic-options)
           action:
           (lambda (n x)
-            (cond
-             ((mdvector-ref json-commands-mdv n 1) =>
-              (lambda (rest)
-                (letrec
-                    ((tbd
-                      (rest
-                       in: area
-                       command: (mdvector-ref json-commands-mdv n 0)
-                       dismiss:
-                       (lambda _ (dialog-control! close: tbd)))))
-                  (dialog-control! top: tbd)
-                  #t)))
-             (else
-              (%%guide-post-speculative/async
-               (begin
-                 (output-control! text: #f)
-                 (let ((result
-                        (cond
-                         (else (fossil-command "json" (mdvector-ref json-commands-mdv n 0))))))
-                   (output-control! insert: result)))))))))
-       (let ((label "1-2"))
-         (lambda (area row col)
-           (guide-textarea-payload
-            in: area
-            data: (lambda _ #f)
-            rows: 120
-            font: font
-            horizontal-align: 'left
-            vertical-align: 'bottom
-            readonly: #t
-            wrap: #t
-            results: (lambda (pl ctrl) (set! output-control! ctrl) pl)
-            name: "fossil output")))
-       #f))
-     in: (make-mdv-rect-interval xsw ysw xno (- yno menu-height))
-     border-ratio: 1/20 name: name))
+            (%%guide-post-speculative/async
+             (begin
+               (output-control! text: #f)
+               (let ((result
+                      (cond
+                       (else (fossil-command (vector-ref basic-options n))))))
+                 (output-control! insert: result))))))))
+     (lambda (area row col)
+       (guide-list-select-payload
+        area
+        (let* ((len (range-size (mdvector-range json-commands-mdv) 1))
+               (names (make-vector len)))
+          (do ((i 0 (+ i 1)))
+              ((eqv? i len)
+               (lambda () names))
+            (vector-set! names i (mdvector-ref json-commands-mdv i 0))))
+        action:
+        (lambda (n x)
+          (cond
+           ((mdvector-ref json-commands-mdv n 1) =>
+            (lambda (rest)
+              (letrec
+                  ((tbd
+                    (rest
+                     in: area
+                     command: (mdvector-ref json-commands-mdv n 0)
+                     dismiss:
+                     (lambda _ (dialog-control! close: tbd)))))
+                (dialog-control! top: tbd)
+                #t)))
+           (else
+            (%%guide-post-speculative/async
+             (begin
+               (output-control! text: #f)
+               (let ((result
+                      (cond
+                       (else (fossil-command "json" (mdvector-ref json-commands-mdv n 0))))))
+                 (output-control! insert: result)))))))))
+     (let ((label "1-2"))
+       (lambda (area row col)
+         (guide-textarea-payload
+          in: area
+          data: (lambda _ #f)
+          rows: 120
+          font: font
+          horizontal-align: 'left
+          vertical-align: 'bottom
+          readonly: #t
+          wrap: #t
+          results: (lambda (pl ctrl) (set! output-control! ctrl) pl)
+          name: "fossil output")))
+     #f))
   (define vbuf (make-ggb size: 2))
   (ggb-insert! vbuf menu)
   (ggb-insert! vbuf work-view)
