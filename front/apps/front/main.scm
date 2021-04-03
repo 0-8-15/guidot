@@ -6,7 +6,7 @@
 
 (cond
  ((and (>= (system-cmdargc) 3) (equal? (system-cmdargv 1) "-s"))
-  (execute-registered-command))
+  (daemonian-execute-registered-command "-" ... . ...))
  (else #!void))
 
 (cond-expand
