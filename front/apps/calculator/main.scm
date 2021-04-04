@@ -364,11 +364,11 @@ NULL;
    ((not (stm-atomic?)) (guide-critical-add! thunk async: #t))
    (else (thread-start! (make-thread thunk)))))
 
-(define (init-beaverchat-gui! launch-url beaver-domain)
+(define (init-beaverchat-gui! area launch-url beaver-domain)
 
 ;;;  (define field_gradient (list (color:shuffle #xe8e9eaff) (color:shuffle #xe8e9eaff) (color:shuffle #xfefefeff) (color:shuffle #xfefefeff)))
 
-  (define (beaverchat-payload-sel number #!optional (area (make-mdv-rect-interval 0 0 320 474)))
+  (define (beaverchat-payload-sel number area)
     (foreground-service! #t)
     (case number
       ((2 about) (beaverchat-about-payload area))
@@ -390,10 +390,18 @@ NULL;
   ;;
   ;; (guide-define-payload "chat" 'once (beaverchat-payload-config launch-url beaver-domain))
 
+  (guide-define-payload
+   "Beaver Chat" 'ephemeral
+   (lambda (area) (make-beaverchat-payload launch-url beaver-domain in: area)))
+  (guide-define-payload "Beaver Chat About" 'ephemeral beaverchat-about-payload)
+
   (kick/sync
    (visible-tl-options '#("calculator" "chat" "about" "advanced"))
    (PIN:toplevel-selection 0))
-  (let ((area (make-mdv-rect-interval 0 0 320 474))
+  (let ((area
+         (receive (xsw xno ysw yno)
+             ;; FIXME inconsistent argument/result ordering!
+             (guide-boundingbox->quadrupel area) (make-mdv-rect-interval 0 0 320 (floor (- yno 16)))))
         (conversion beaverchat-payload-sel)
         (options visible-tl-options)
         (selection PIN:toplevel-selection))
@@ -405,9 +413,26 @@ NULL;
       (wire! selection post: rebuild)
       (rebuild))))
 
+;; Payloads
+
+(guide-define-payload "status" 'ephemeral (lambda (area) (debugger-about-payload in: area)))
+(guide-define-payload "Fossil Help" 'ephemeral guidot-fossil-help-browser)
+(guide-define-payload "Fossil Wiki" 'ephemeral guidot-fossil-wiki)
+(guide-define-payload "Fossil Transfer" 'ephemeral guidot-fossil-transfer-dialog)
+
+(cond-expand
+ ((or linux debug)
+  (guide-define-payload
+   "debugger" 'once
+   (lambda (area)
+     (receive (result dialog-control!) (guidot-layers area name: "Scheme Interpreter")
+       (guidot-insert-scheme-interpreter! dialog-control! in: area)
+       result))))
+ (else))
+
 ;; Calculator
 
-(define (calculator dir)
+(define (calculator area dir)
   (define control-port
     (cond-expand
      (win32 1313)
@@ -427,7 +452,7 @@ NULL;
   (define (capdom) "bvr")
   (httpproxy-atphone-set! at-phone-decoder)
   (httpproxy-connect-set! ot0cli-connect)
-  (init-beaverchat-gui! webview-launch! capdom)
+  (init-beaverchat-gui! area webview-launch! capdom)
   (kick (audible-beep audible-beep!))
   ;; end of invocation independent initializations
   (log-status "Starting from " dir (object->string (args)))
@@ -468,21 +493,52 @@ NULL;
   ;; end of default style definitions
   ))
 
-(let ()
+(let ((area (make-mdv-rect-interval 0 0 320 480)))
   (define (load-file-with-arguments file args)
     (load file))
+  (define (with-area-parse CMD SIZE parse more)
+    (define (setsize! interval)
+      (set! area interval)
+      (parse `(,CMD . ,more)))
+    (match
+     SIZE
+     ((or "tiny" "320x480") (setsize! (make-mdv-rect-interval 0 0 320 480)))
+     ((or "small" "640x960")  (setsize! (make-mdv-rect-interval 0 0 640 960)))
+     ((or "medium" "640x1200")  (setsize! (make-mdv-rect-interval 0 0 640 1200)))
+     ((or "large" "1920x1200") (setsize! (make-mdv-rect-interval 0 0 1920 1200)))
+     ;; ("ask" (test-guide-size-select-toplevel-payload area more))
+     (otherwise
+      (println port: (current-error-port) "Unhandled size "
+               (system-cmdargv 0) " did not parse: " (object->string otherwise))
+      (exit 23))))
   (define parse
     (match-lambda
-     ((CMD) (calculator chat-dir))
+     ((CMD) (calculator area chat-dir))
      ((CMD (? (lambda (key) (equal? (daemonian-semifork-key) key))) loadkey . more)
       (daemonian-execute-registered-command loadkey more))
+     ((CMD "-size" SIZE . more) (with-area-parse CMD SIZE parse more))
+     ((CMD "-gui" . more)
+      (cond
+       ((null? more)
+        (let* ((options (guide-payload-names))
+               (select
+                (lambda (n x)
+                  (guide-toplevel-payload ((guide-payload-ref (vector-ref options n)) area)))))
+          (guide-toplevel-payload
+           (guide-list-select-payload
+            area (lambda _ options)
+            line-height: 60
+            action: select))))
+       (else
+        (guide-toplevel-payload ((guide-payload-ref (car more)) area))
+        (when (pair? (cdr more)) (parse (cons CMD (cdr more)))))))
      ((CMD "-l" FILE . more)
       (load-file-with-arguments FILE more))
      ((CMD "-version" . more)
       (begin
         (println (system-appversion))
         (exit 0)))
-     ((CMD (? file-exists? FILE) . more) (calculator FILE))
+     ((CMD (? file-exists? FILE) . more) (calculator area FILE))
      ((CMD . more)
       (println port: (current-error-port) "Warning: " CMD " did not parse: " (object->string more))
       (println port: (current-error-port) "Assuming: " (object->string `(,(daemonian-semifork-key) "beaver" ,@more)))
