@@ -56,4 +56,4 @@
 (define-macro (%%macro-guidot-capture-guide-toplevel)
   (let ((before (gensym 'before)))
     `(let ((,before (guide-toplevel-payload)))
-       (lambda _ (guide-toplevel-payload ,before)))))
+       (lambda _ (and ,before (guide-toplevel-payload ,before))))))
