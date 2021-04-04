@@ -70,7 +70,13 @@
      (values
       current-fossil
       (lambda () (cfpn))
-      (lambda () current-fossil-remote-url)))))
+      (case-lambda
+       (() current-fossil-remote-url)
+       ((v)
+        (cond
+         ((or (not v) (equal? v "")) (set! current-fossil-remote-url #f))
+         ((string? v) (set! current-fossil-remote-url v))
+         (else (error "invalid" current-fossil-remote-url v)))))))))
 
 (define (fossil-command
          #!key
@@ -833,16 +839,20 @@
            (cond
             (else (> (string-length str) 1))))))
       (define (mk-go area row col)
+        (define (go?)
+          (and (http-proxy-url)
+               (or (current-fossil-pathname)
+                   (and (eq? (mode) 'clone) (clone-target-pathname)))))
         (guide-button
          name: 'fossil-run
          in: area name: "fossil go"
          label:
          (let ((ok "go") (no "n/a"))
-           (lambda () (if (and (http-proxy-url) (current-fossil-pathname)) ok no)))
+           (lambda () (if (go?) ok no)))
          ;; background-color: background-color color: color
          guide-callback:
          (lambda _
-           (when (and (http-proxy-url) (current-fossil-pathname))
+           (when (go?)
              (guide-critical-add!
               (let ((mode (mode))
                     (remote-url (remote-url))
