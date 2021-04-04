@@ -1009,53 +1009,47 @@
          filter: (lambda (o n) (if (equal? o n) o n))
          name: "wiki page content"))
       (define this
-        (guidot-frame
-         (let ((options '#("get" "preview" "save"))
-               (rows 50))
-           (lambda (area)
-             (let ((edit-control! #f))
-               (guide-textarea-edit
-                in: area
-                menu:
-                (guidot-texteditor-menu
-                 (lambda () edit-control!)
-                 in: area
-                 font: font
-                 action-save-callback: (lambda _ (page-content (edit-control! 'string)))
-                 action-reload-callback:
-                 (lambda _
-                   (%%guide-post-speculative
-                    (begin
-                      (let ((update
-                             (lambda ()
-                               (let ((content (get-wiki-page)))
-                                 (lambda ()
-                                   (page-content content)
-                                   (guide-critical-add!
-                                    (lambda ()
-                                      (edit-control! text: #f)
-                                      (edit-control! insert: content))))))))
-                        (kick! (box update)))
-                      #t)))
-                 action-close-callback:
-                 (lambda _ (dialog-control close: this) #t)
-                 name: "wiki editor menu")
-                keypad: keypad
-                data: page-content
-                horizontal-align: 'left
-                label-properties:
-                `((color: ,(guide-select-color-4))
-                  (horizontal-align: right))
-                ;; is default: on-key: %%guide-textarea-keyfilter
-                rows: rows
-                results:
-                (lambda (payload ctrl)
-                  (set! edit-control! ctrl)
-                  payload)))))
-         in: area
-         border-ratio: 1/8
-         color: color background: background
-         name: "wiki list"))
+        (let ((options '#("get" "preview" "save"))
+              (rows 50)
+              (edit-control! #f))
+          (guide-textarea-edit
+           in: area name: "wiki page edit"
+           menu:
+           (guidot-texteditor-menu
+            (lambda () edit-control!)
+            in: area
+            font: font
+            action-save-callback: (lambda _ (page-content (edit-control! 'string)))
+            action-reload-callback:
+            (lambda _
+              (%%guide-post-speculative
+               (begin
+                 (let ((update
+                        (lambda ()
+                          (let ((content (get-wiki-page)))
+                            (lambda ()
+                              (page-content content)
+                              (guide-critical-add!
+                               (lambda ()
+                                 (edit-control! text: #f)
+                                 (edit-control! insert: content))))))))
+                   (kick! (box update)))
+                 #t)))
+            action-close-callback:
+            (lambda _ (dialog-control close: this) #t)
+            name: "wiki editor menu")
+           keypad: keypad
+           data: page-content
+           horizontal-align: 'left
+           label-properties:
+           `((color: ,(guide-select-color-4))
+             (horizontal-align: right))
+           ;; is default: on-key: %%guide-textarea-keyfilter
+           rows: rows
+           results:
+           (lambda (payload ctrl)
+             (set! edit-control! ctrl)
+             payload))))
       (wire!
        page-content post:
        (lambda ()
