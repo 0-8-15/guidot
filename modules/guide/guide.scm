@@ -1619,17 +1619,19 @@
                         (set! current-pane (+ shift toggle))))
                      ((shift)
                       (cond
-                       ((and (eqv? shift 1) (not sticky))
+                       ((not (or sticky (eqv? shift 0))) ;; (and (eqv? shift 1) (not sticky))
                         (set! sticky #t))
                        (else (set! shift (if (eqv? shift 1) 0 1))))
                       (set! current-pane (+ shift toggle)))
                      ((toggle)
                       (cond
-                       ((and (eqv? toggle 1) (not sticky))
+                       ((not (or sticky (eqv? toggle 0))) ;;(and (eqv? toggle 2) (not sticky))
                         (set! sticky #t))
                        (else (set! toggle (if (eqv? toggle 2) 0 2))))
                       (set! current-pane (+ shift toggle)))
-                     (else (set! current-pane 0))))))
+                     (else
+                      (set! current-pane 0)))
+                   (when (eqv? current-pane 0) (set! sticky #f)))))
            (do ((i 0 (fx+ i 1)))
                ((eqv? i len)
                 (make-guide-payload
