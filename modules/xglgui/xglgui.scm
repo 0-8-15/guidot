@@ -1709,7 +1709,9 @@
          (hightlight-color (guide-select-color-4))
          (name 'guide-textarea-edit))
   (let*
-      ((xsw (mdvector-interval-lower-bound in 0))
+      ((min-rows 3)
+       (kpd-lines 4)
+       (xsw (mdvector-interval-lower-bound in 0))
        (ysw (mdvector-interval-lower-bound in 1))
        (xno (mdvector-interval-upper-bound in 0))
        (yno (mdvector-interval-upper-bound in 1))
@@ -1764,16 +1766,20 @@
                  (fig! color: Yellow)
                  (fig! background:
                        (guide-background
-                         button:
-                         in: (guide-payload-measures menu)))
+                        button:
+                        in: (guide-payload-measures menu)))
                  (fig!)))
               ((2) (figure!))
               (else (label!)))))
          (else #f)))
-       (edit-area-height (* rows line-height))
+       (edit-area-height
+        (max (* min-rows line-height)
+             (min
+              (* rows line-height)
+              (- height title-height (* kpd-lines line-height)))))
        (edit-position
         (let ((yno (ceiling (- yno title-height))))
-          (vector xsw (floor (- yno (* rows line-height))))))
+          (vector xsw (floor (- yno edit-area-height)))))
        (edit-area (make-mdv-rect-interval 0 0 width edit-area-height))
        (lines-control! #f)
        (lines
@@ -1799,8 +1805,7 @@
           view!))
        (kpd (keypad
              ;; FIXME: normalize x/y to be zero based
-             in: (let ((intented (vector-ref edit-position 1))
-                       (kpd-lines 4))
+             in: (let ((intented (vector-ref edit-position 1)))
                    (let ((min-kpd-height (* kpd-lines line-height)))
                      (make-x0y0x1y1-interval/coerce xsw ysw xno (+ ysw (max min-kpd-height intented)))))
              action:
