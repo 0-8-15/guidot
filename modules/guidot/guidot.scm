@@ -8,6 +8,7 @@
          plane ;; GGB (expected to be used as `direction: 'layer`) or control proc
          #!key
          (in (error "required keyword parameter" 'guidot-insert-scheme-interpreter! 'in))
+         (done (%%macro-guidot-capture-guide-toplevel))
          ) ;; end of keyword list -- for diffability on a line itself
   (define (add-at-end! pl #!optional (ref #f))
     (cond
@@ -250,13 +251,20 @@
                 pl)
               name: 'expression-errors))))
     (add-at-end!
-     (make-guide-table
-      (make-mdvector
-       (range '#(2 2))
-       (vector
-        mkchat co
-        #t     ce))
-      in: area name: 'interpreter
-      border-ratio: 1/20))))
+     (guide-table-layout
+      area cols: 2 rows: 2
+      name: 'interpreter
+      border-ratio: 1/20
+      mkchat co
+      #t     ce))
+    (add-at-end!
+     (let ((size 20)
+           (xno (mdvector-interval-upper-bound area 0))
+           (yno (mdvector-interval-upper-bound area 1)))
+       (guide-button
+        name: 'close
+        in: (make-x0y0x1y1-interval/coerce (- xno size) (- yno size) xno yno)
+        label: "x"
+        guide-callback: done)))))
 
 (include "fossil-guidot.scm")
