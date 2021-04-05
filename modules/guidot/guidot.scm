@@ -229,6 +229,7 @@
              (guide-textarea-payload
               in: in
               data: (lambda _ #f)
+              data-char-encoding: #f
               rows: 40
               horizontal-align: 'left
               vertical-align: 'bottom
@@ -240,6 +241,7 @@
              (guide-textarea-payload
               in: in
               data: (lambda _ #f)
+              data-char-encoding: #f
               rows: 40
               horizontal-align: 'left
               vertical-align: 'bottom

@@ -509,7 +509,7 @@
        (lambda (area row col)
          (guide-textarea-payload
           in: area
-          data: (lambda _ #f)
+          data-char-encoding: #f data: (lambda _ #f)
           rows: 120
           font: output-font
           horizontal-align: 'left
@@ -602,7 +602,7 @@
   (define status-items 3)
   (define menu-height (ceiling (* status-items menu-line-height)))
   (define label-width 1/4)
-  (define mode (make-pin 'sync))
+  (define mode (make-pin 'pull))
   (define mode->string symbol->string)
   (define remote-tag
     (cond
@@ -629,6 +629,7 @@
      in: (make-mdv-rect-interval xsw 0 xno (- yno menu-height))
      readonly: #t
      data: (lambda _ #f)
+     data-char-encoding: #f
      rows: 120
      font: output-font
      horizontal-align: 'left
@@ -817,6 +818,7 @@
                              x))
                          validate:
                          (macro-guidot-check-ggb/string-pred validate)
+                         data-char-encoding: #f
                          data: value)))
                     (dialog-control! top: this))))))
              #t))))
@@ -982,6 +984,7 @@
                                          " output:\n" (if (eof-object? str) "none" str))))
                                   (log-error "fossil fail on wiki/list " 1 msg)
                                   msg)))
+                      data-char-encoding: #f
                       results: (lambda (pl ctrl) pl))))
             ((null? options)
              (let ((label "wiki list empty"))
@@ -1040,6 +1043,7 @@
             name: "wiki editor menu")
            keypad: keypad
            data: page-content
+           data-char-encoding: #f
            horizontal-align: 'left
            label-properties:
            `((color: ,(guide-select-color-4))
@@ -1182,6 +1186,7 @@
                                (newline p)
                                (display comment p)
                                (newline p)))))))
+                    data-char-encoding: #f
                     results: (lambda (pl ctrl) pl)))
                   (ggb-insert!
                    buffer
@@ -1405,7 +1410,7 @@
        (lambda (area row col)
          (guide-textarea-payload
           in: area
-          data: (lambda _ #f)
+          data-char-encoding: #f data: (lambda _ #f)
           rows: 120
           font: font
           horizontal-align: 'left
