@@ -37,6 +37,10 @@
 
 ;; (ggb->vector ggb) --> vector -- fresh vector with elements from GGB
 
+;; (u8vector->ggb u8 #!optional (start 0) (end (u8vector-length ggb)) #!key (encoding 'UTF-8))
+
+;; (ggb->u8vector ggb #!optional (start 0) (end (ggb-length ggb)) #!key (encoding 'UTF-8))
+
 ;; (ggb->string ggb [encoding UTF-8]) --> string -- fresh string with elements from GGB
 ;; (fails when buffer contains no strings.)
 
@@ -214,7 +218,7 @@
           (buffer (macro-ggb-buffer ggb)))
       (do ((i 0 (fx+ i 1)) (point point (fx+ point 1)))
           ((eqv? i length) (macro-ggb-point-set! ggb point))
-        (##vector-set! buffer point (vector-ref val i))))))
+        (##vector-set! buffer point (##vector-ref val i))))))
 
 (define (ggb-insert-ggb! dst src #!optional (start 0) (end #f))
   (let* ((src-length (let ((x (ggb-length src)))
@@ -338,6 +342,63 @@
   (let ((result (make-vector (fx- end start))))
     (ggb-for-each ggb (lambda (i v) (vector-set! result i v)) start end)
     result))
+
+(define (u8vector->ggb obj #!optional (start 0) (end (u8vector-length obj)) #!key (encoding 'UTF-8))
+  (let ((result (make-ggb size: (- end start)))
+        (source
+         (cond
+          ((eqv? end (u8vector-length obj)) obj)
+          (else (subu8vector obj start end)))))
+    (call-with-input-u8vector
+     (list init: source char-encoding: encoding)
+     (lambda (port)
+       (do ((c (read-char port) (read-char port)))
+           ((eof-object? c) result)
+         (ggb-insert! result (char->integer c)))))))
+
+(define (ggb->u8vector obj #!optional (start 0) (end (ggb-length ggb)) #!key (encoding 'UTF-8))
+  (unless (ggb? obj) (error "invalid ggb" ggb->u8vector obj))
+  (call-with-output-u8vector
+   `(char-encoding: ,encoding eol-encoding: lf)
+   (lambda (port)
+     (ggb-for-each (lambda (obj) (display (integer->char obj) port)) start end)))
+  #|
+  (unless (or (eq? encoding 'UTF-8) (eq? encoding 'utf-8))
+    (error "only UTF-8 encoding supported" ggb->u8vector encoding))
+  (let* ((len (ggb-length obj))
+         (i -1)
+         (n 0)
+         (result (make-u8vector len)))
+    (define (shift!)
+      (set! i (+ i 1))
+      (when (eqv? i (##u8vector-length result))
+        (let ((replacement (make-string (* 2 (####u8vector-length result)))))
+          (##subu8vector-move! result 0 i replacement 0)
+          (set! result replacement))))
+    (ggb-for-each
+     (lambda (c)
+       (set! n (+ n 1))
+       (cond
+        ((##fx< c 128)
+         (shift!)
+         (##u8vector-set! result i (##integer->char c)))
+        ((##fx< c 2048)
+         (shift!)
+         (##u8vector-set! result i (##integer->char (##fxior (##fxarithmetic-shift-right c 6) 192)))
+         (shift!)
+         (##u8vector-set! result i (##integer->char (##fxior (##fxand c 63) 128))))
+        (else
+         (shift!)
+         (##u8vector-set! result i (##integer->char (##fxior (##fxarithmetic-shift-right c 12) 224)))
+         (shift!)
+         (##u8vector-set! result i (##integer->char (##fxior (##fxand (##fxarithmetic-shift-right c 6) 63) 128)))
+         (shift!)
+         (##u8vector-set! result i (##integer->char (##fxior (##fxand c 63) 128))))))
+     obj)
+    (set! i (+ i 1))
+    (if (< i (##u8vector-length result)) (##subu8vector result 0 i) result))
+|#
+)
 
 (define (ggb->string/encoding-utf8 ggb #!optional (start 0) (end (ggb-length ggb)))
   ;; Beware: UTF8 encoding *within* gambit strings seems questionable.

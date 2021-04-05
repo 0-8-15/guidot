@@ -125,10 +125,18 @@
     (set! i (+ i 1))
     (if (< i (##string-length result)) (substring result 0 i) result)))
 
-(define ggb2d->string ggb2d->string/encoding-utf8)
+(define (ggb2d->string obj #!optional (encoding 'UTF-8))
+  (case encoding
+    ((UTF-8) (ggb2d->string/encoding-utf8 obj))
+    (else
+     (call-with-output-string
+      (lambda (port)
+        (ggb2d-display-value-on-port
+         obj port display: (lambda (v p) (display (integer->char c) p))))))))
 
 (define (ggb2d->u8vector obj #!key (encoding 'UTF-8))
   (unless (ggb2d? obj) (error "invalid ggb2d" ggb2d->u8vector obj))
+  #|
   (unless (or (eq? encoding 'UTF-8) (eq? encoding 'utf-8))
     (error "only UTF-8 encoding supported" ggb2d->u8vector encoding))
   (let* ((len (ggb2d-total-length obj))
@@ -162,7 +170,14 @@
          (##u8vector-set! result i (##integer->char (##fxior (##fxand c 63) 128))))))
      obj)
     (set! i (+ i 1))
-    (if (< i (##u8vector-length result)) (##subu8vector result 0 i) result)))
+    (if (< i (##u8vector-length result)) (##subu8vector result 0 i) result))
+  |#
+  (call-with-output-u8vector
+   `(char-encoding: ,encoding eol-encoding: lf)
+   (lambda (port)
+     (ggb2d-display-value-on-port
+      obj port
+      display: (lambda (v p) (display (integer->char c) p))))))
 
 (define (ggb2d-insert-row! ggb2d #!optional (line (make-ggb)))
   (unless (ggb? line) (error "invalid argument" ggb2d-insert-row! line))
@@ -311,6 +326,17 @@
         (unless (eqv? line initial-line)
           (ggb2d-insert-row! result line))
         (set! line (make-ggb))))))
+
+(define (u8vector->ggb2d obj #!optional (start 0) (end (u8vector-length obj)) #!key (encoding 'UTF-8))
+  (let ((result (make-ggb2d))
+        (source
+         (cond
+          ((eqv? end (u8vector-length obj)) obj)
+          (else (subu8vector obj start end)))))
+    (call-with-input-u8vector
+     (list init: source char-encoding: encoding)
+     (lambda (port) (ggb2d-insert-port! result port)))
+    result))
 
 (define (ggb2d-load-file name #!optional (char-encoding 'UTF-8))
   ;; TBD: try to optimize, loading 40MB takes 30'' wall clock time.
