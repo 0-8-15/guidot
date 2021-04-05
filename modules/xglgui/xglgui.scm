@@ -313,6 +313,7 @@
          (cols #f)
          (wrap #t)
          (data (let ((state #f)) (case-lambda (() state) ((val) (set! state val)))))
+         (data-char-encoding 'UTF-8) ;; only applicable if data is string or u8vector
          (readonly #f)
          (on-key %%guide-textarea-keyfilter);; filter characters to handle
          (color (guide-select-color-2))
@@ -365,11 +366,22 @@
        (value-buffer
         (let ((buffer (make-ggb2d size: rows))
               (source (data)))
-          (when (string? source)
-            (let ((ggb (utf8string->ggb source)))
-              (set! source (make-ggb2d))
-              (ggb2d-insert-row! source ggb)
-              (ggb2d-goto! source position: 'absolute row: 1 col: 0)))
+          (cond
+           ((string? source)
+            (case data-char-encoding
+              ((UTF-8 utf-8)
+               (let ((ggb (utf8string->ggb source)))
+                 (set! source (make-ggb2d))
+                 (ggb2d-insert-row! source ggb)
+                 (ggb2d-goto! source position: 'absolute row: 1 col: 0)) )
+              (else
+               (let ((ggb2d (make-ggb2d)))
+                 (ggb2d-insert-port! ggb2d (open-input-string source))
+                 (set! source ggb2d)
+                 (ggb2d-goto! source position: 'absolute row: 1 col: 0)))))
+           ((u8vector? source)
+            (set! source (u8vector->ggb2d source 0 (u8vector-length source) encoding: data-char-encoding))
+            (ggb2d-goto! source position: 'absolute row: 1 col: 0)))
           (cond
            ((ggb2d? source)
             (cond
@@ -795,7 +807,8 @@
      ;; control procedure
      (lambda (key . more)
        (case key
-         ((string) (ggb2d->string/encoding-utf8 value-buffer))
+         ((string) (ggb2d->string/encoding-utf8 value-buffer)) ;; SHOULD stay UTF-8 encoded
+         ((utf8) (ggb2d->u8vector value-buffer))
          ((text) (ggb2d-copy value-buffer))
          ((text:)
           (check-not-observable-speculative! 'textarea-mutation key more)
@@ -823,7 +836,7 @@
          ((insert:)
           (check-not-observable-speculative! 'textarea-mutation key more)
           (apply
-           (lambda (data #!key (wrap wrap))
+           (lambda (data #!key (wrap wrap) (char-encoding data-char-encoding))
              (define (finalize-insert)
                (when wrap
                  (ggb2d-goto! value-buffer position: 'absolute row: 1 col: 0)
@@ -859,6 +872,11 @@
                ;; maybe better char-by-char?
                (ggb2d-insert-port! value-buffer data)
                (finalize-insert))
+              ((u8vector? data)
+               (call-with-input-u8vector
+                (list init: data char-encoding: char-encoding)
+                (lambda (port) (ggb2d-insert-port! value-buffer port)))
+               (finalize-insert))
               (else #f)))
            more))
          (else (error "invalid command key" 'guide-textarea-payload key)))))))
@@ -871,6 +889,7 @@
          #!key
          (in (current-guide-gui-interval))
          (data (let ((state "n/a")) (case-lambda (() state) ((val) (set! state val)))))
+         (data-char-encoding 'UTF-8) ;; only applicable if data is string or u8vector
          (validate #f)
          (on-key %%guide-textarea-keyfilter);; filter characters to handle
          (size 'medium)
@@ -881,11 +900,21 @@
          (color (guide-select-color-2))
          (hightlight-color (guide-select-color-4))
          (name 'guide-line-input))
-  (define %%value-buffer->string ggb->string/encoding-utf8)
+  (define (%%value-buffer->string ggb #!optional (start 0) (end (ggb-length ggb)))
+    (ggb->string ggb start end encoding: #f))
   (define (input->buffer data)
-    (utf8string->ggb
-     (let ((x (data)))
-       (if (string? x) x (object->string x)))))
+    (let loop ((x (data)))
+      (cond
+       ((string? x)
+        (case data-char-encoding
+          ((UTF-8 utf-8) (utf8string->ggb x))
+          (else
+           (do ((i 0 (+ i 1)) (result (make-ggb size: (##string-length x))))
+               ((eqv? i (##string-length x)) result)
+             (ggb-insert! result (char->integer (string-ref x i)))))))
+       ((u8vector? x)
+        (u8vector->ggb x 0 (u8vector-length x) encoding: data-char-encoding))
+       (else (loop (object->string x))))))
   (let*
       ((xsw (mdvector-interval-lower-bound in 0))
        (ysw (mdvector-interval-lower-bound in 1))
@@ -928,8 +957,8 @@
             (update-value-string!)
             (let* ((total value-buffer-as-string)
                    (before (%%value-buffer->string value-buffer value-display-offset (ggb-point value-buffer)))
-                   (glv-before (MATURITY-1:utf8string->guide-glyphvector before font))
-                   (glv-total (MATURITY-1:utf8string->guide-glyphvector total font))
+                   (glv-before (string->guide-glyphvector before font))
+                   (glv-total (string->guide-glyphvector total font))
                    (width-before (if glv-before (MATURITY+0:guide-glypvector-width glv-before) 0))
                    (width-total (if glv-total (MATURITY+0:guide-glypvector-width glv-total) 0)))
               (cond
@@ -1036,7 +1065,7 @@
               ((press: release:)
                (cond
                 ((eqv? x EVENT_KEYENTER)
-                 (data (%%value-buffer->string value-buffer)) ;; speculative
+                 (data (ggb->string value-buffer 0 (ggb-length value-buffer) encoding: data-char-encoding)) ;; speculative
                  (local-on-key event x y)
                  #t)
                 (else (local-on-key event x y))))
@@ -1504,6 +1533,7 @@
                     ((eqv? key EVENT_KEYENTER) EVENT_KEYENTER)
                     (else (debug 'ignored key) #f)))))))
          (data (let ((state "n/a")) (case-lambda (() state) ((val) (set! state val)))))
+         (data-char-encoding 'UTF-8) ;; only applicable if data is string or u8vector
          (validate #f)
          (size 'small)
          (horizontal-align 'center)
@@ -1572,7 +1602,7 @@
               horizontal-align: horizontal-align vertical-align: vertical-align
               font: font size: size line-height: line-height
               color: color hightlight-color: hightlight-color
-              data: data
+              data: data data-char-encoding: data-char-encoding
               validate: check-valid))
        (refresh-line! (lambda (rect)
                         ;; FIXME: this begs for trouble!
@@ -1691,6 +1721,7 @@
          (keypad guide-keypad/default)
          (on-key %%guide-textarea-keyfilter)
          (data (let ((state "n/a")) (case-lambda (() state) ((val) (set! state val)))))
+         (data-char-encoding 'UTF-8) ;; only applicable if data is string or u8vector
          (results values)
          (rows 3)
          (cols #f)
@@ -1791,7 +1822,7 @@
              horizontal-align: horizontal-align vertical-align: vertical-align
              font: font line-height: line-height
              color: color hightlight-color: hightlight-color
-             data: data
+             data: data data-char-encoding: data-char-encoding
              on-key: on-key)
           (set! lines-control! ctrl)
           pl))
@@ -2265,6 +2296,7 @@
          (timestamp #f)
          (action #f #;(lambda (ctrl) #f))
          (results values)
+         (data-char-encoding 'UTF-8) ;; FIXME: get rid of that
          (name 'chat)
          ) ;; make-chat: end of keyword parameters
   (define (chat-message data timestamp l/r)
@@ -2315,6 +2347,7 @@
                    (when (ggb2d? data)
                      (ggb2d-goto! data 'position: 'absolute row: 1 col: 0))
                    data)
+           data-char-encoding: data-char-encoding
            results: (lambda (pl ctrl)
                       (set! linebroken (ctrl 'text))
                       ;;(ggb2d-goto! linebroken 'position: 'absolute row: 1 col: 0)
@@ -2333,7 +2366,7 @@
              color: color-2 hightlight-color: color-4
              ;; background: %%guide-default-background
              wrap: #f
-             data: (lambda _ linebroken)
+             data: (lambda _ linebroken) data-char-encoding: data-char-encoding
              results: (lambda (pl ctrl) pl)))))
       (let* ((msg-area (guide-payload-measures resized-payload))
              (msg-bg (guide-background 'default in: msg-area))
@@ -2482,7 +2515,7 @@
              in: in
              menu: menu
              keypad: keypad
-             data: msg
+             data: msg data-char-encoding: data-char-encoding
              horizontal-align: 'left
              label-properties:
              `((color: ,(guide-select-color-4))
