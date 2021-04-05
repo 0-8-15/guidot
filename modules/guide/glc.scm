@@ -853,6 +853,16 @@
        font))
     (make-mdvector rng result (%%glyphvector-tag))))
 
+(define (string->guide-glyphvector str font)
+  ;; TBD: avoid all those jumps, allocations and confusion!
+  (let ((len (string-length str)))
+    (and
+     (not (eqv? len 0))
+     (do ((i 0 (##fx+ i 1))
+          (vec (make-vector len)))
+         ((eqv? i len) (MATURITY-1:vector->guide-glyphvector vec font))
+       (vector-set! vec i (char->integer (##string-ref str i)))))))
+
 (define (MATURITY-1:utf8string->guide-glyphvector str font)
   (unless (ln-ttf:font? font) (error "not a font" 'utf8string->glyphvector))
   ;; convert UTF8 to unicode u32vector and glyph

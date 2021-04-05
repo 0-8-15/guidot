@@ -333,7 +333,7 @@
           (set! foreground targets))
         #!void)
        ((or (string? str) (not str))
-        (set! glyphs (and label font (utf8string->guide-glyphvector label font)))
+        (set! glyphs (and label font (string->guide-glyphvector label font)))
         (let ((targets
                (and glyphs
                     (let ((w (if padding (- w (+ (vector-ref padding 1) (vector-ref padding 3))) w))
