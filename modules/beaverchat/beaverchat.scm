@@ -485,6 +485,7 @@
                        (and
                         (< 1000 n #xffff)
                         (port-free? n))))))))
+   data-char-encoding: #f
    data:
    (case-lambda
     (() (input))
@@ -552,6 +553,7 @@
              ((eqv? key EVENT_KEYENTER) EVENT_KEYENTER)
              (else (debug 'ignored key) #f))))))
    validate: (and (procedure? validate) (gui-check-ggb/string-pred validate))
+   data-char-encoding: #f
    data:
    (case-lambda
     (() (input))
@@ -727,6 +729,7 @@
          in: area label: (chat-number->neatstring to)
          keypad: nick-dialog-keypad
          on-key: %%guide-textarea-keyfilter
+         data-char-encoding: #f
          data:
          (case-lambda
           (() (if (chat-partner-known to) (chat-partner->neatstring to) ""))
@@ -807,7 +810,8 @@
       (define (dial-dialog!)
         (dialog-set!
          (guide-value-edit-dialog
-          in: area label: "dial" data: chat-address/conversion
+          in: area label: "dial"
+          data-char-encoding: #f data: chat-address/conversion
           font: fnt line-height: line-height-selectable
           validate: (gui-check-ggb/string-pred string-chat-address->unit-id))))
       (define (redraw!)
