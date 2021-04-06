@@ -398,15 +398,17 @@
          (e (table-ref chat-partners ref #f))
          (new (list reference from msg kind)))
     (unless (and e (member new (cadr e)))
-      (when (equal? ref from) ((audible-beep)))
       (table-set!
        chat-partners ref
        (if e
            (let ((name (car e))
                  (msgs (cadr e)))
-             `(,name ,(cons new (take msgs (chat-messages-limit))) . ,(cddr e)))
+             `(,name ,(sort!
+                       (lambda (a b) (> (car a) (car b)))
+                       (cons new (take msgs (chat-messages-limit)))) . ,(cddr e)))
            (list #f (list new)))))
     (kick
+     (when (equal? ref from) (guide-critical-add! (audible-beep) async: #t))
      (unless (or (equal? from (chat-own-address))
                  (equal? from (chat-address)))
        (let ((seen (chat-inbox-senders)))
