@@ -272,7 +272,8 @@ EOF
                    (m2 (and m (uri-parse (rxm-ref m 2))))
                    (id (and m2 ((%%fossils%at-phone-decoder) m2))))
               (cond
-               ((or (not id) (equal? id unit-id))
+               ((or (not id) (equal? id unit-id)
+                    (file-exists? (fossils-project-filename (fossils-fallback-name id))))
                 (let ((conn (fossils-http-serve #t (fossils-directory) line)))
                   (when (port? conn)
                     (ports-connect! conn conn (current-input-port) (current-output-port)))))
