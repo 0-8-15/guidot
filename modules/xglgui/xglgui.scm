@@ -34,14 +34,6 @@
           (set! below (min (fx- goy (ttf:glyph-height override)) below)))))
     (+ above below)))
 
-(define (guide-font-height font)
-  (let ((override (MATURITY+1:ln-ttf:font-ref font (char->integer #\|))))
-    (cond
-     (override (+ 2 (ttf:glyph-height override))) ;; +2 is garbage
-     (else
-      (MATURITY -2 "failed to find font heigt" loc: guide-font-height)
-      40))))
-
 (define (MATURITY+0:glC:draw-text-left x y w h label fnt color) ;; -> #!void
   (MATURITY -2 "WASTEFUL, working, looks correct; mimics behavior" loc: 'glC:draw-text-left)
   (let* ((font (find-font fnt))
@@ -2149,62 +2141,6 @@
        #f)
      post: (lambda () (when (receiver) (receiver #f)) #f))
     receiver))
-
-(define guide-critical-add! ;; FIXME
-  (let ()
-    (define critical-calls
-      ;; Guide *Global* Critical Section (GGCS)
-      ;;
-      ;; suspended computation (currently thunk or promise)
-      (let ((receiver
-             (make-pin
-              initial: '()
-              name: "GGCS (critical sections): a list of suspended computations")))
-        (wire!
-         receiver
-         extern: receiver
-         critical:
-         (lambda (new)
-           (cond-expand
-            (debug
-             (check-not-observable-speculative! %%guide-critical-call)
-             (check-observable-sequential! %%guide-critical-call))
-            (else))
-           (for-each
-            (lambda (new)
-              (cond
-               ((procedure? new) (new))
-               (else (force new))))
-            ;; This is better moved into `likely` - we MUST clear the
-            ;; list within the critical section.
-            (let* ((tbd (reverse new)))
-              (set-cdr! new '())
-              (set-car! new #f)
-              tbd))
-           #f))
-        receiver))
-    (lambda (obj #!key (async #f) (once #f))
-      (assume (or (procedure? obj) (promise? obj))
-              "invalid" guide-critical-add! obj)
-      (cond
-       (async
-        (when once (error "invalid async and once are exclusive"
-                          guide-critical-add! async once))
-        (let ((wrapped
-               (lambda ()
-                 (thread-start!
-                  (make-thread
-                   (cond
-                    ((procedure? obj) obj)
-                    (else (lambda () (force obj))))
-                   obj)))))
-          (critical-calls (cons wrapped (critical-calls)))))
-       (else
-        (cond
-         (once (let ((registered (critical-calls)))
-                 (unless (memq obj registered)
-                   (critical-calls (cons obj (critical-calls))))))
-         (else (critical-calls (cons obj (critical-calls))))))))))
 
 (define (guide-path-select
          #!key
