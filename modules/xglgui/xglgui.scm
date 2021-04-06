@@ -309,7 +309,7 @@
          (readonly #f)
          (on-key %%guide-textarea-keyfilter);; filter characters to handle
          (color (guide-select-color-2))
-         (hightlight-color (guide-select-color-4))
+         (highlight-color (guide-select-color-4))
          (results values)
          (name 'guide-textarea-payload))
   (define (ggb-delete-word! ggb dir)
@@ -502,7 +502,7 @@
           (label! horizontal-align: horizontal-align)
           (label! vertical-align: vertical-align)
           (label! font: font)
-          (label! color: hightlight-color)
+          (label! color: highlight-color)
           (label! size: text-width line-height)
           (label! text: '#(124)) ;; "|"
           label!))
@@ -890,7 +890,7 @@
          (vertical-align 'center)
          (line-height 20)
          (color (guide-select-color-2))
-         (hightlight-color (guide-select-color-4))
+         (highlight-color (guide-select-color-4))
          (name 'guide-line-input))
   (define (%%value-buffer->string ggb #!optional (start 0) (end (ggb-length ggb)))
     (ggb->string ggb start end encoding: #f))
@@ -968,7 +968,7 @@
                   (label! horizontal-align: horizontal-align)
                   (label! vertical-align: vertical-align)
                   (label! font: font)
-                  (label! color: hightlight-color)
+                  (label! color: highlight-color)
                   (label! size: w line-height)
                   (label!
                    position:
@@ -1539,7 +1539,7 @@
                  (a 210))
             (color-rgba r g b a)))
          (color (guide-select-color-2))
-         (hightlight-color (guide-select-color-4))
+         (highlight-color (guide-select-color-4))
          (name 'guide-value-edit-dialog))
   (let*
       ((xsw (mdvector-interval-lower-bound in 0))
@@ -1584,7 +1584,7 @@
              (lambda (ggb)
                (let ((valid (validate ggb)))
                  (when title
-                   (title! color: (if valid hightlight-color color))
+                   (title! color: (if valid highlight-color color))
                    (set! title (title!)))))))
        (line (guide-line-input
               in: (let ((ysw-line (max 0 (- yno-inner title-height line-height))))
@@ -1593,7 +1593,7 @@
                      xno-inner (- yno-inner title-height)))
               horizontal-align: horizontal-align vertical-align: vertical-align
               font: font size: size line-height: line-height
-              color: color hightlight-color: hightlight-color
+              color: color highlight-color: highlight-color
               data: data data-char-encoding: data-char-encoding
               validate: check-valid))
        (refresh-line! (lambda (rect)
@@ -1729,7 +1729,7 @@
                  (a 210))
             (color-rgba r g b a)))
          (color (guide-select-color-2))
-         (hightlight-color (guide-select-color-4))
+         (highlight-color (guide-select-color-4))
          (name 'guide-textarea-edit))
   (let*
       ((min-rows 3)
@@ -1813,7 +1813,7 @@
              rows: rows cols: cols
              horizontal-align: horizontal-align vertical-align: vertical-align
              font: font line-height: line-height
-             color: color hightlight-color: hightlight-color
+             color: color highlight-color: highlight-color
              data: data data-char-encoding: data-char-encoding
              on-key: on-key)
           (set! lines-control! ctrl)
@@ -2167,7 +2167,7 @@
                  (a 210))
             (color-rgba r g b a)))
          (color (guide-select-color-2))
-         (hightlight-color (guide-select-color-4))
+         (highlight-color (guide-select-color-4))
          (name 'guide-path-select))
   (define-values (xsw xno ysw yno) (guide-boundingbox->quadrupel in))
   (define line-height (guide-font-height font))
@@ -2277,7 +2277,7 @@
            vertical-align: 'bottom
            font: font
            line-height: line-height
-           color: color-2 hightlight-color: color-4
+           color: color-2 highlight-color: color-4
            ;; background: #f
            data: (lambda _
                    (when (ggb2d? data)
@@ -2299,7 +2299,7 @@
              vertical-align: 'bottom
              font: font
              line-height: line-height
-             color: color-2 hightlight-color: color-4
+             color: color-2 highlight-color: color-4
              ;; background: %%guide-default-background
              wrap: #f
              data: (lambda _ linebroken) data-char-encoding: data-char-encoding
