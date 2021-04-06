@@ -401,7 +401,7 @@ NULL;
   (let ((area
          (receive (xsw xno ysw yno)
              ;; FIXME inconsistent argument/result ordering!
-             (guide-boundingbox->quadrupel area) (make-mdv-rect-interval 0 0 320 (floor (- yno 16)))))
+             (guide-boundingbox->quadrupel area) (make-mdv-rect-interval 0 0 xno (floor (- yno 16)))))
         (conversion beaverchat-payload-sel)
         (options visible-tl-options)
         (selection PIN:toplevel-selection))
