@@ -18,14 +18,14 @@
 ;; (debug-trace-request-forwarding (lambda (label . more) (debug label more)))
 
 (cond-expand
- (debug
-  (define-macro (debug-handle-exceptions exn handler expr . body)
-    `(begin ,expr ,@body)))
+ ((or gambit debug) ;; TBD: exclusive in 'debug'
+  (define-macro (socks-macro-debug-handle-exceptions location-name expr . body)
+    `(with-debug-exception-catcher
+      (lambda () ,expr ,@body)
+      ,location-name)))
  (else
-  (define-macro (debug-handle-exceptions exn handler expr . body)
-    `(with-exception-catcher
-      (lambda (,exn) ,handler)
-      (lambda () ,expr ,@body)))))
+  (define-macro (socks-macro-debug-handle-exceptions location-name exn . body)
+    `(begin ,expr ,@body))))
 
 (define-macro (debug-trace-request label . more)
   (let ((handler (gensym)))
@@ -361,8 +361,8 @@
            (socks4a-server/req+in+out name req in out)))))))
 
 (define (socks-server #!optional (name 'host))
-  (debug-handle-exceptions
-   exn (handle-debug-exception exn 'socks-server)
+  (socks-macro-debug-handle-exceptions
+   name
    (socks-server/in+out name (current-input-port) (current-output-port))))
 
 #|
