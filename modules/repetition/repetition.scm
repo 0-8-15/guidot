@@ -9,6 +9,7 @@
 (include "0100-repetition.scm")
 (include "0110-ggb.scm")
 (include "0120-ggb2d.scm")
+(include "0130-encoded.scm")
 ;; sorting does NOT belong here - just I don't want another modules
 ;; right now.
 (include "0300-sort.scm")
