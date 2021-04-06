@@ -108,7 +108,7 @@
 (guide-style-declare background: default: #f pred: #f doc: "Background {image, payload, procedure}")
 (guide-style-declare background-color: default: #f pred: #f doc: "Color for background")
 (guide-style-declare color: default: #f pred: #f doc: "Color")
-(guide-style-declare font: default: guide-select-font pred: ln-ttf:font? doc: "Font")
+(guide-style-declare font: default: #f pred: ln-ttf:font? doc: "Font")
 (guide-style-declare hightlight-color: default: #f pred: #f doc: "Color for highlights")
 (guide-style-declare
  horizontal-align: default: 'center doc: "Alingment Horizontal"

@@ -567,7 +567,68 @@
          (set! gui-after hidden))
        (make-guide-payload name in widget on-redraw on-any-event gui-before gui-after))))))
 
-(define guide-open-rectangle
+(define guide-critical-add!
+  ;; During speculative execution phase: register operation to be
+  ;; executed in critical phase (with STM lock held).  Optionally
+  ;; starting a thread for it when the async: option is specified as
+  ;; #t.
+  (let ()
+    (define critical-calls
+      ;; Guide *Global* Critical Section (GGCS)
+      ;;
+      ;; suspended computation (currently thunk or promise)
+      (let ((receiver
+             (make-pin
+              initial: '()
+              name: "GGCS (critical sections): a list of suspended computations")))
+        (wire!
+         receiver
+         extern: receiver
+         critical:
+         (lambda (new)
+           (cond-expand
+            (debug
+             (check-not-observable-speculative! %%guide-critical-call)
+             (check-observable-sequential! %%guide-critical-call))
+            (else))
+           (for-each
+            (lambda (new)
+              (cond
+               ((procedure? new) (new))
+               (else (force new))))
+            ;; This is better moved into `likely` - we MUST clear the
+            ;; list within the critical section.
+            (let* ((tbd (reverse new)))
+              (set-cdr! new '())
+              (set-car! new #f)
+              tbd))
+           #f))
+        receiver))
+    (lambda (obj #!key (async #f) (once #f))
+      (assume (or (procedure? obj) (promise? obj))
+              "invalid" guide-critical-add! obj)
+      (cond
+       (async
+        (when once (error "invalid async and once are exclusive"
+                          guide-critical-add! async once))
+        (let ((wrapped
+               (lambda ()
+                 (thread-start!
+                  (make-thread
+                   (cond
+                    ((procedure? obj) obj)
+                    (else (lambda () (force obj))))
+                   obj)))))
+          (critical-calls (cons wrapped (critical-calls)))))
+       (else
+        (cond
+         (once (let ((registered (critical-calls)))
+                 (unless (memq obj registered)
+                   (critical-calls (cons obj (critical-calls))))))
+         (else (critical-calls (cons obj (critical-calls))))))))))
+
+(define guide-open-rectangle ;; onsolete?
+  ;;
   ;; A procedure of zero or one argument.  Without returns the current
   ;; payload, if given and a valid payload switch over calling
   ;; before/after thunks.
@@ -800,6 +861,14 @@
          (else small.fnt))))
     select-font))
 
+(define (guide-font-height font)
+  (let ((override (MATURITY+1:ln-ttf:font-ref font (char->integer #\|))))
+    (cond
+     (override (+ 2 (ttf:glyph-height override))) ;; TBD: +2 is garbage
+     (else
+      (MATURITY -2 "failed to find font height" loc: guide-font-height)
+      40))))
+
 ;;** Style
 
 (include "guide-style.scm")
@@ -869,11 +938,11 @@
   ;; gamit?
   ;;
   ;; does not block, returns asap.
-  `(%%guide-post-speculative
-    (begin
-      (thread-start! (make-thread (lambda () (macro-guide-execute-payload-result ,expr))))
-      ;; (kick! (box (lambda () (macro-guide-execute-payload-result ,expr))))
-      #t)))
+  `(begin
+     (guide-critical-add!
+      (lambda () (macro-guide-execute-payload-result ,expr))
+      async: #t)
+     #t))
 
 ;;*** Widget Composition
 
@@ -1329,6 +1398,8 @@
 (define (guide-button
          #!key
          (in (current-guide-gui-interval))
+         (done #f)
+         (style ($current-guide-style))
          (font #f)
          (accesskey #f)
          (label "exit")
@@ -1339,16 +1410,17 @@
              ((or (string? value) (glC:image? label) (vector? label))
               value)
              (else (object->string value)))))
-         (color (guide-select-color-2))
+         (color (or (guide-style-ref style color:) (guide-select-color-2)))
          (padding '#(1 1 1 1))
          (background (guide-background button: in: in))
-         (background-color (guide-select-color-3))
+         (background-color (or (guide-style-ref style background-color:) (guide-select-color-3)))
          (position #f)
-         (horizontal-align 'center)
-         (vertical-align 'center)
+         (horizontal-align (guide-style-ref style horizontal-align:))
+         (vertical-align (guide-style-ref style vertical-align:))
          (location guide-button)
          ;; TBD: better interface&name
-         (guide-callback (lambda (rect payload event x y) (terminate)))
+         (guide-callback
+          (lambda (rect payload event x y) (if (procedure? done) (done) (terminate))))
          (name 'button))
   ;; I. find additional default values
   (unless font
@@ -1423,7 +1495,7 @@
        in: in name: name widget: #f
        on-redraw: (view!) on-any-event: events lifespan: 'ephemeral))))
 
-;;*** Labled Value Payload
+;;*** Labeled Value Payload
 
 (define (guide-valuelabel
          #!key
@@ -1439,7 +1511,8 @@
              (else (object->string value)))))
          (input #f)
          (size 'small)
-         (font (guide-select-font size: size))
+         (style ($current-guide-style))
+         (font (or (guide-style-ref style font:) (guide-select-font size: size)))
          (color #f)
          (label-color #f)
          (value-color #f)
@@ -1451,8 +1524,8 @@
   (cond
    ((and color (not label-color) (set! label-color color)))
    ((and color (not value-color) (set! value-color color))))
-  (unless label-color (set! label-color (guide-select-color-2)))
-  (unless value-color (set! value-color (guide-select-color-4)))
+  (unless label-color (set! label-color (or (guide-style-ref style color:) (guide-select-color-2))))
+  (unless value-color (set! value-color (or (guide-style-ref style hightlight-color:) (guide-select-color-4))))
   ;; derived
   (let* ((x (mdvector-interval-lower-bound in 0))
          (y (mdvector-interval-lower-bound in 1))
@@ -1524,9 +1597,10 @@
 (define (guide-make-keypad
          area spec
          #!key
-         (font (guide-select-font size: 'medium))
-         (color (guide-select-color-2))
-         (background-color (guide-select-color-1))
+         (style ($current-guide-style))
+         (font (or (guide-style-ref style font:) (guide-select-font size: 'medium)))
+         (color (or (guide-style-ref style color:) (guide-select-color-2)))
+         (background-color (or (guide-style-ref style background-color:) (guide-select-color-1)))
          (background #f)
          (key-background #!void) ;; FIXME: macro-absent ... ??
          (on-key #f)
