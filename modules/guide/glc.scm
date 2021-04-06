@@ -5,48 +5,6 @@
  (else ;; interactive load
   (define-macro (MATURITY l m . a) `(maturity-note ,l ,m ,@a))))
 
-(define (utf8string->ggb str #!optional (encoding-error #f))
-  (define (on-encoding-error i)
-    (cond
-     ((not encoding-error) #xfffd) ;; deliver replacement charater
-     ((procedure? encoding-error) (encoding-error str i)) ;; delegate to caller
-     (else (error "UTF8 encoding error" str i))))
-  (let* ((len (string-length str))
-         (result (make-ggb size: len)))
-    (do ((i 0 (fx+ i 1)))
-        ((eqv? i len) result)
-      (let* ((c (string-ref str i))
-             (ci (char->integer c)))
-        (cond
-         ((fx< ci #x80) (ggb-insert! result ci))
-         (else
-          (receive (size m1)
-            (cond
-             ((fx< ci #x80) (values 1 #x7f))
-             ((fx< ci #xe0) (values 2 #x0f))
-             ((fx< ci #xf0) (values 3 #x0f))
-             ((fx< ci #xf8) (values 4 #x07))
-             ((fx< ci #xfc) (values 5 #x03))
-             (else (values 6 #x01)))
-            (let ((limit (fx+ i size)))
-              (let subc ((j (fx+ i 1)) (ci (##bitwise-and ci m1)))
-                (cond
-                 ((eqv? j limit) (ggb-insert! result ci) (set! i (##fx- j 1)))
-                 ((eqv? j len)
-                  (ggb-insert! result (on-encoding-error j))
-                  (set! i (##fx- j 1)))
-                 (else
-                  (let ((cc (##char->integer (##string-ref str j))))
-                    (if (or (##fx< cc #x80) (##fx>= cc #xc0))
-                        (let ((ci (on-encoding-error j)))
-                          (ggb-insert! result ci)
-                          (set! i (##fx- j 1)))
-                        (subc
-                         (##fx+ j 1)
-                         (##bitwise-ior
-                          (##arithmetic-shift ci 6)
-                          (##bitwise-and cc #x3F))))))))))))))))
-
 ;;;** srfi-179 compat
 
 (define mdvector-interval?)
