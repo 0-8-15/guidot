@@ -51,7 +51,7 @@
            new))
        more)))))
 
-(define (guide-style-extent envt kw val . more)
+(define (guide-style-extend envt kw val . more)
   (let* ((kwtable (guide-style-environment-by-keyword envt))
          (vec (vector-copy (guide-style-environment-vector envt)))
          (result (make-guide-style-environment kwtable vec)))
@@ -63,7 +63,8 @@
                ((not pred) (guide-style-keyword-definition-index definition))
                ((pred value) (guide-style-keyword-definition-index definition))
                (else (error "invalid value" guide-style-extent name value)))))
-        (vector-set! vec index val)))
+        (vector-set! vec index value)))
+    (unless (keyword? kw) (error "invalid style keyword" more))
     (bind! kw val)
     (let loop ((more more))
       (cond
@@ -108,8 +109,11 @@
 (guide-style-declare background: default: #f pred: #f doc: "Background {image, payload, procedure}")
 (guide-style-declare background-color: default: #f pred: #f doc: "Color for background")
 (guide-style-declare color: default: #f pred: #f doc: "Color")
-(guide-style-declare font: default: #f pred: ln-ttf:font? doc: "Font")
 (guide-style-declare hightlight-color: default: #f pred: #f doc: "Color for highlights")
+(guide-style-declare background-hightlight-color: default: #f pred: #f doc: "Color for highlighted background")
+;;
+(guide-style-declare font: default: #f pred: ln-ttf:font? doc: "Font")
+;;
 (guide-style-declare
  horizontal-align: default: 'center doc: "Alingment Horizontal"
  pred: (lambda (x) (case x ((left center right) #t) (else #f))))
@@ -119,9 +123,11 @@
 (guide-style-declare
  padding: default: '#(1 1 1 1) doc: "Padding"
  pred: #f)
+;;
 (guide-style-declare locale: default: 'en pred: #f doc: "ISO locale symbol")
+;;
 (guide-style-declare
- done: default: NYI doc: "GUI Continuation"
+ done: default: (lambda () NYI) doc: "GUI Continuation"
  pred: procedure?)
 
 (define $current-guide-style (make-parameter #f))

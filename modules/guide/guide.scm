@@ -1399,7 +1399,7 @@
          #!key
          (in (current-guide-gui-interval))
          (done #f)
-         (style ($current-guide-style))
+         (style (guide-current-style))
          (font #f)
          (accesskey #f)
          (label "exit")
@@ -1511,7 +1511,7 @@
              (else (object->string value)))))
          (input #f)
          (size 'small)
-         (style ($current-guide-style))
+         (style (guide-current-style))
          (font (or (guide-style-ref style font:) (guide-select-font size: size)))
          (color #f)
          (label-color #f)
@@ -1597,7 +1597,7 @@
 (define (guide-make-keypad
          area spec
          #!key
-         (style ($current-guide-style))
+         (style (guide-current-style))
          (font (or (guide-style-ref style font:) (guide-select-font size: 'medium)))
          (color (or (guide-style-ref style color:) (guide-select-color-2)))
          (background-color (or (guide-style-ref style background-color:) (guide-select-color-1)))
