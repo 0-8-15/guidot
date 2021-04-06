@@ -1525,7 +1525,7 @@
    ((and color (not label-color) (set! label-color color)))
    ((and color (not value-color) (set! value-color color))))
   (unless label-color (set! label-color (or (guide-style-ref style color:) (guide-select-color-2))))
-  (unless value-color (set! value-color (or (guide-style-ref style hightlight-color:) (guide-select-color-4))))
+  (unless value-color (set! value-color (or (guide-style-ref style highlight-color:) (guide-select-color-4))))
   ;; derived
   (let* ((x (mdvector-interval-lower-bound in 0))
          (y (mdvector-interval-lower-bound in 1))
