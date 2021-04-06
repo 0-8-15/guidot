@@ -107,7 +107,7 @@
         (unit-id-string->unit-id (substring str 1 e))
         (unit-id-string->unit-id (if (fx= e (string-length str)) str (substring str 0 e))))))
 (httpproxy-atphone-set! at-phone-decoder)
-(capture-domain! "beaver.dam" handler: fossils-directory-handler)
+(kick! (lambda () (capture-domain! "beaver.dam" handler: fossils-directory-handler)))
 ;;
 
 (cond
