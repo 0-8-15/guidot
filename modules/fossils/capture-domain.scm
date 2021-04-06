@@ -26,7 +26,7 @@ EOF
      (display domain)
      (display #<<EOF
 </a> .</p>
-  <p>Note that his link will <strong>NOT</strong> work if your browser does not use the proxy.</p>
+  <p>Note that this link will <strong>NOT</strong> work if your browser does not use the proxy.</p>
  </body>
 </html>
 
