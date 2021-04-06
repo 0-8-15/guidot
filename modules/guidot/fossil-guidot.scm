@@ -55,18 +55,22 @@
      (wire!
       cfpn post:
       (lambda ()
-        (let ((stored (read-line (fossil-command "remote-url"))))
-          (set! current-fossil-remote-url
-                (cond
-                 ((rx~
-                   (rx '(submatch
-                         (seq "http://"
-                              (or domain ip-address)
-                              (? ":" (+ numeric)) ;; port
-                              (? "/" (* (or url-char "/"))))))
-                   stored) =>
-                   (lambda (matched) (rxm-ref matched 1)))
-                 (else stored))))))
+        (cond
+         ((cfpn)
+          (let ((stored (read-line (fossil-command "remote-url"))))
+            (set! current-fossil-remote-url
+                  (cond
+                   ((eof-object? stored) #f)
+                   ((rx~
+                     (rx '(submatch
+                           (seq "http://"
+                                (or domain ip-address)
+                                (? ":" (+ numeric)) ;; port
+                                (? "/" (* (or url-char "/"))))))
+                     stored) =>
+                     (lambda (matched) (rxm-ref matched 1)))
+                   (else stored)))))
+         (else (set! current-fossil-remote-url #f)))))
      (values
       current-fossil
       (lambda () (cfpn))
@@ -116,11 +120,12 @@
          #!key
          (log (lambda (args) (debug 'fossil-command/json args)))
          (directory (fossils-directory))
-         (repository #t))
+         (repository #t)
+         (user (getenv "USER" "u")))
   (let ((working-directory (or directory (current-directory)))
         (stderr-redirection #f)
         (arguments
-         (let ((args '("json" "-json-input" "-")))
+         (let ((args `("json" "-json-input" "-" "-user" ,user)))
            (cond
             ((not repository) args)
             ((eq? repository #t)
@@ -144,11 +149,12 @@
          #!key
          (log (lambda (args) (debug 'fossil-command/json args)))
          (directory (fossils-directory))
-         (repository #t))
+         (repository #t)
+         (user (getenv "USER" "u")))
   (let ((working-directory (or directory (current-directory)))
         (stderr-redirection #t)
         (arguments
-         (let ((args '("json" "-json-input" "-")))
+         (let ((args `("json" "-json-input" "-" "-user" ,user)))
            (cond
             ((not repository) args)
             ((eq? repository #t)
@@ -250,7 +256,7 @@
                           "~1.fossil"))))))
                  `(,cmd-str ,@admin ,@auth ,@proxy ,@once-only ,url ,new-repository)))
               (else
-               (let ((repository `("-R" ,(path-normalize (fossils-project-filename (current-fossil))))))
+               (let ((repository `("-R" ,(current-fossil-pathname))))
                  `(,cmd-str ,url "-v" ,@user ,@auth ,@proxy ,@once-only ,@repository)))))
            (port
             (semi-fork "fossil" arguments stderr-redirection #|directory: working-directory|#)))
@@ -944,6 +950,39 @@
   ;; (options '#("create" "diff" "get" "list" "preview" "save" "timeline"))
   (lambda (#!key (in (NYIE)) (command (NYIE)) (dismiss (NYIE)))
     (define wiki-selected selected)
+    (define interactive (%%guidot-interactive dialog-control insert: top:))
+    (define (fossil-failure-message area title port)
+      (interactive
+       (lambda (area done)
+         (guide-button
+          name: "fossil failed" in: area guide-callback: done
+          label:
+          (guide-textarea-payload
+           readonly: #t wrap: #t
+           in: (make-mdv-rect-interval 0 0 (mdv-rect-interval-width area) (mdv-rect-interval-height area))
+           rows: 50
+           horizontal-align: 'left
+           vertical-align: 'bottom
+           font: (guide-select-font size: 'small)
+           ;; color: color-2 hightlight-color: color-4
+           ;; background: #f
+           data: (lambda _
+                   (close-output-port port)
+                   (let* ((str (read-line port #f))
+                          (status (process-status port))
+                          (msg
+                           (string-append
+                            "Failure in " title "\n"
+                            "Fossil return code "
+                            (cond
+                             ((>= status 0) (number->string (/ status 256)))
+                             (else (number->string status)))
+                            " output:\n" (if (eof-object? str) "none" str))))
+                     (log-error "fossil failed on " 1 title " "  msg)
+                     msg))
+           data-char-encoding: #f
+           results: (lambda (pl ctrl) pl))))
+       in: area))
     (define (wiki-list off)
       (guidot-frame
        (let ((options
@@ -958,34 +997,10 @@
          (lambda (area)
            (cond
             ((eof-object? options)
-             (guide-button
-              name: "fossil failed" in: area guide-callback: off
-              label: (guide-textarea-payload
-                      readonly: #t wrap: #t
-                      in: (make-mdv-rect-interval 0 0 (mdv-rect-interval-width area) (mdv-rect-interval-height area))
-                      rows: 3
-                      horizontal-align: 'left
-                      vertical-align: 'bottom
-                      font: (guide-select-font size: 'small)
-                      ;; color: color-2 hightlight-color: color-4
-                      ;; background: #f
-                      data: (lambda _
-                              (let ((port (fossil-command/json+failed)))
-                                (json-write '((command . "wiki/list")) port)
-                                (close-output-port port)
-                                (let* ((str (read-line port #f))
-                                       (status (process-status port))
-                                       (msg
-                                        (string-append
-                                         "Fossil return code "
-                                         (cond
-                                          ((>= status 0) (number->string (/ status 256)))
-                                          (else (number->string status)))
-                                         " output:\n" (if (eof-object? str) "none" str))))
-                                  (log-error "fossil fail on wiki/list " 1 msg)
-                                  msg)))
-                      data-char-encoding: #f
-                      results: (lambda (pl ctrl) pl))))
+             (off)
+             (let ((port (fossil-command/json+failed)))
+               (json-write '((command . "wiki/list")) port)
+               (fossil-failure-message area "wiki/list" port)))
             ((null? options)
              (let ((label "wiki list empty"))
                (guide-button name: label in: area label: label guide-callback: off)))
@@ -1061,16 +1076,29 @@
                (name (wiki-selected)))
            (when (and name content)
              (let ((port (fossil-command/json)))
-               (json-write
-                `((command . "wiki/save")
-                  (payload
-                   (name . ,name)
-                   (content . ,content)
-                   (contentFormat . "raw")))
-                port)
-               (close-output-port port)
-               ;; ignoring the response here
-               (json-read port))))))
+               (when (port? port)
+                 (with-exception-catcher
+                  (lambda (exn)
+                    (let ((port (fossil-command/json+failed)))
+                      (json-write
+                       `((command . "wiki/save")
+                         (payload
+                          (name . ,name)
+                          (content . ,content)
+                          (contentFormat . "raw")))
+                       port)
+                      (fossil-failure-message area "wiki/save" port)))
+                  (lambda ()
+                    (json-write
+                     `((command . "wiki/save")
+                       (payload
+                        (name . ,name)
+                        (content . ,content)
+                        (contentFormat . "raw")))
+                     port)
+                    (close-output-port port)
+                    ;; ignoring the response upon success
+                    (json-read port)))))))))
       this)
     (let ((tl-options '#("create" "list" "timeline"#; "close")))
       (define (no-fossil-selected area done)
