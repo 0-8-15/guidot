@@ -856,9 +856,13 @@
                           (display-exception-in-context exn cont port)
                           (display-continuation-backtrace cont port))))))
                    (lambda ()
-                     (call-with-input-string
-                      data
-                      (lambda (port) (ggb2d-insert-port! value-buffer port)))
+                     (case char-encoding
+                       ((UTF-8)
+                        (ggb-insert-sequence! current-line (ggb->vector (utf8string->ggb data))))
+                       (else
+                        (call-with-input-string
+                         data
+                         (lambda (port) (ggb2d-insert-port! value-buffer port)))))
                      (finalize-insert))))))
               ((input-port? data)
                ;; maybe better char-by-char?
@@ -2427,7 +2431,7 @@
                    (let ((action
                           (lambda _
                             (%%guide-post-speculative;/async
-                             (edit-control! insert: (clipboard-paste))))))
+                             (edit-control! insert: (clipboard-paste) char-encoding: 'UTF-8)))))
                      (lambda (in row col)
                        (guide-button
                         in: in
