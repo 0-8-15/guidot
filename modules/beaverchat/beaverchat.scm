@@ -1088,6 +1088,8 @@
                (android #t)
                (else (guide-event-dispatch-to-payload rect b2 event x y))))
              (else (otherwise interval x y))))
+           ((or (eqv? press: event) (eqv? release: event))
+            #t)
            (else (otherwise interval x y))))))
     (make-guide-payload
      name: 'beaverchat-about
