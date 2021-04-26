@@ -263,10 +263,10 @@
 (guide-define-payload "Beaver Chat About" 'ephemeral beaverchat-about-payload)
 
 ($current-guide-style
- (guide-style-extent
+ (guide-style-extend
   (guide-style-default)
   locale: 'de
-  hightlight-color: Green))
+  highlight-color: Green))
 
 (let ((area (make-mdv-rect-interval 0 0 320 480))
       (verbose #f))

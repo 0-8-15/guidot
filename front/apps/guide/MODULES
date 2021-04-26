@@ -1,7 +1,7 @@
 config eventloop ln_core ln_glcore
 likely misc-conventions akwmatch unsocket
 daemonian lwip socks beaver httpproxy
-json-srfi-180
+json
 guide
 ospath
 webview
