@@ -1,3 +1,5 @@
+(json-set-options! keys: #t)
+
 (include "guidot-macros.scm")
 
 (include "guidot-utils.scm")
