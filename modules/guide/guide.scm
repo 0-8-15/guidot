@@ -257,6 +257,10 @@
     (if (procedure? overlay) (overlay))))
 
 (define guide-wakeup!)
+(define %%guide-wait-mutex
+  (let ((mux (make-mutex 'guide-wait-mutex)))
+    (mutex-specific-set! mux (make-condition-variable 'guide-wakeup))
+    mux))
 (define %%guide-timings-set!) ;; deprecated
 
 (define guide-default-event-dispatch/toplevel
@@ -265,8 +269,8 @@
         (consecutive-redraw-count 1)
         (customized-moment #f) ;; may be a procedure returning the wait time/moment
         (wakeup-seen #f)
-        (wait-mutex (make-mutex 'glgui-event))
-        (wait-cv (make-condition-variable 'glgui-event)))
+        (wait-mutex %%guide-wait-mutex)
+        (wait-cv (mutex-specific %%guide-wait-mutex)))
     (define (timings-set! #!key (frame-period-max #f) (frame-period-min #f) (frame-period-custom #f))
       (define (legal? x) (and (number? x) (positive? x)))
       (if (legal? frame-period-max) (set! frame-period-max-value frame-period-max))
@@ -307,17 +311,18 @@
     (define (redraw! rect payload event x y)
       (glCoreInit)
       (guide-event-dispatch-to-payload rect payload event x y)
-      (guide-meta-menu-draw!))
+      (guide-meta-menu-draw!)
+      (microgl-swapbuffers))
     (define (activate! rect payload event x y)
       (cond-expand
        (debug
         (check-not-observable-speculative! guide-default-event-dispatch/toplevel 'activate!))
        (else))
       (redraw-required?)
-      (with-exception-catcher ;; debugging
-       (lambda (exn) (raise (debug 'FAIL-SO-BADLY exn)))
+      (with-debug-exception-catcher ;; debugging
+       ;; (lambda (exn) (raise (debug 'FAIL-SO-BADLY exn)))
        (lambda ()
-        (let loop
+      (let loop
           ((finally
             (kick! (lambda () (guide-event-dispatch-to-payload rect payload event x y)))))
         (cond
@@ -330,6 +335,7 @@
           (cond
            ((boolean? finally)) ;; OK, expected
            (else (debug 'ignored-payload-result (list finally payload)))))))))
+      (guide-wakeup!)
       ;; not sure what needs to be returned, we are done handling results
       #t)
     (define (guide-default-event-dispatch/toplevel rect payload event x y)
@@ -359,7 +365,7 @@
               (redraw! rect payload EVENT_REDRAW 0 0)
               (set! wakeup-seen #f))
             (cond-expand
-             ((or linux win32)
+             ((or win32)
               (leisure-time-maybe-questionable?))
              (else (thread-yield!))))
         #t)
@@ -1795,8 +1801,20 @@
                        ;;
                        ;; (thread-sleep! 0.2)
                        (log-status "resumed")))
-             (terminate (lambda () #t)))
+             (terminate (lambda () #t))
+             (wait-mutex %%guide-wait-mutex)
+             (wait-cv (mutex-specific %%guide-wait-mutex)))
+      (define (draw-once)
+        (when (and (not app:suspended) glgui:active app:width app:height) ;; ???
+          (let ((cpl (if (procedure? payload) (payload) payload)))
+            (guide-default-event-dispatch/toplevel gui cpl EVENT_REDRAW 0 0))))
+      (define (draw-loop) ;; TBD: add optional "no draw required"
+        (draw-once)
+        (mutex-lock! wait-mutex 0)
+        (mutex-unlock! wait-mutex wait-cv ($guide-frame-period))
+        (draw-loop))
       (let ((gui #f)
+            (draw-thread #f)
             (todo once))
         (set! once (lambda _ (exit 23)))
         (todo
@@ -1813,19 +1831,27 @@
                                  (and (procedure? b) (guide-payload? (b)))))
                   (error "initialization must return a rectangle and a payload or payload accessor" a b))
                 (set! gui a)
-                (set! payload b)))))
+                (set! payload b)
+                (cond-expand
+                 ((or android)
+                  (set! draw-thread (thread-start! (make-thread draw-loop 'draw-thread))))
+                 (else #!void))))))
          ;; events
          (lambda (event x y)
            (cond-expand
             (linux (force i3hook))
-            (android
+            #;(android ;; no longer useful when run in own thread
              (##thread-heartbeat!)
              (thread-sleep! 0.01))
             (else))
-           (let ((cpl (if (procedure? payload) (payload) payload)))
-             (guide-default-event-dispatch/toplevel gui cpl event x y))
-           (thread-sleep! 0.01) ;; give other threads a chance
-           #t)
+           (cond
+            ((eqv? event EVENT_REDRAW)
+             (guide-wakeup!)
+             (unless draw-thread (draw-once)))
+            (else
+             (let ((cpl (if (procedure? payload) (payload) payload)))
+               (guide-default-event-dispatch/toplevel gui cpl event x y))
+             #t)))
          ;; termination
          terminate
          ;; suspend
