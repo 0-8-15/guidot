@@ -817,12 +817,14 @@
                       (ggb2d-goto! buffer position: 'absolute row: 1 col: 0)
                       buffer)
                     value))
-               (update-cursor!))
+               (update-cursor!)
+               (guide-wakeup!))
               ((not value)
                (let ((buffer (make-ggb2d)))
                  (ggb2d-insert-row! buffer)
                  (set! value-buffer buffer))
-               (update-cursor!))
+               (update-cursor!)
+               (guide-wakeup!))
               (else (error "unhandled text representation" 'textarea-payload text: value))))
            more))
          ((insert:)
@@ -833,7 +835,8 @@
                (when wrap
                  (ggb2d-goto! value-buffer position: 'absolute row: 1 col: 0)
                  (linebreak-again!)
-                 (update-cursor!)))
+                 (update-cursor!)
+                 (guide-wakeup!)))
              (cond
               ((char? data)
                (guide-focus this-payload)
@@ -1172,9 +1175,11 @@
     (unless font (set! font (guide-select-font height: selh)))
     (do ((i 0 (fx+ i 1)))
         ((eqv? i len)
-         (make-guide-payload
-          in: in on-redraw: redraw on-any-event: events
-          name: name lifespan: 'ephemeral widget: #f))
+         (receive (xsw xno ysw yno) (guide-boundingbox->quadrupel in)
+           (make-guide-payload
+            in: (make-x0y0x1y1-interval/coerce xsw (- ysw (* len selh)) xno yno)
+            on-redraw: redraw on-any-event: events
+            name: name lifespan: 'ephemeral widget: #f)))
       (let* ((label (vector-ref content i))
              (payload
               (guide-button
@@ -1317,7 +1322,7 @@
                       (d1 rect payload event x y)
                       (let ((content (if (procedure? content) (content) content)))
                         (cond
-                         ((and (eqv? event EVENT_MOTION) (in-pl? content x y))
+                         ((and (eqv? event EVENT_MOTION) (not (in-pl? active x y)))
                           (set! active #f)
                           (guide-event-dispatch-to-payload rect content event x y))
                          (else #t)))))))
