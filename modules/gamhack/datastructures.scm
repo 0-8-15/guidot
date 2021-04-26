@@ -22,3 +22,22 @@
 (define (u8vector/32-set! vec n v)
   (gamhack-vector-range-assert u8vector/32-set! vec n 32)
   (%u8vector/32-set! vec n v))
+
+(define bitwise-reverse
+  (c-lambda (unsigned-int) unsigned-int "
+   unsigned int n = ___arg1;
+#if (___INT_WIDTH == 32)
+   n = ((n & 0xAAAAAAAA) >>  1) | ((n & 0x55555555) << 1);
+   n = ((n & 0xCCCCCCCC) >>  2) | ((n & 0x33333333) << 2);
+   n = ((n & 0xF0F0F0F0) >>  4) | ((n & 0x0F0F0F0F) << 4);
+   n = ((n & 0xFF00FF00) >>  8) | ((n & 0x00FF00FF) << 8);
+   ___return( (n >> 16) | (n << 16));
+#else
+   n = ((n & 0xAAAAAAAAAAAAAAAA) >>  1)  | ((n & 0x55555555055555555) << 1);
+   n = ((n & 0xCCCCCCCCCCCCCCCC) >>  2)  | ((n & 0x33333333033333333) << 2);
+   n = ((n & 0xF0F0F0F0F0F0F0F0) >>  4)  | ((n & 0x0F0F0F0F00F0F0F0F) << 4);
+   n = ((n & 0xFF00FF00FF00FF00) >>  8)  | ((n & 0x00FF00FF000FF00FF) << 8);
+   n = ((n & 0xFFFF0000FFFF0000) >>  16) | ((n & 0x0000FFFF0000FFFF0) << 16);
+   ___return( (n >> 32) | (n << 32));
+#endif
+"))
