@@ -53,7 +53,8 @@
     ((c-lambda () scheme-object "___setup_heartbeat_interrupt_handling"))
     (##set-heartbeat-interval! (exact->inexact 1/100)))
   (setup-heartbeat!)
-  ($kick-style 'sync) (kick/sync! (lambda () (kick-style 'sync)))
+  (when #f
+    (begin ($kick-style 'sync) (kick/sync! (lambda () (kick-style 'sync)))))
   ;; BEWARE, experimental
   (kick! (lambda () (fossils-enable-http-hijacking #t)))
   )
@@ -182,7 +183,8 @@ NULL;
   (define (Xconditional-redraw) #f)
   ))
 
-(%%guide-timings-set! frame-period-min: 1/30 frame-period-max: 1/4)
+;;(%%guide-timings-set! frame-period-min: 1/30 frame-period-max: 1/4)
+($guide-frame-period 0.5)
 
 (define (handle-replloop-exception e)
   (let ((port (current-error-port)))
@@ -484,14 +486,21 @@ NULL;
   (thread-start! (make-thread replloop)))
  (else))
 
-;; command line
+;; style
 
 ($current-guide-style
- (guide-style-extent
+ (guide-style-extend
   (guide-style-default)
   locale: 'de
+  ;; font ...
+  background-color: (guide-select-color-1)
+  color: (guide-select-color-2)
+  background-highlight-color: (guide-select-color-3)
+  highlight-color: (guide-select-color-4)
   ;; end of default style definitions
   ))
+
+;; command line
 
 (let ((area (make-mdv-rect-interval 0 0 320 480)))
   (define (load-file-with-arguments file args)
