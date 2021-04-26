@@ -213,24 +213,24 @@
                   (loop buffer 0 0 mtu corout)))
               (error "lost on output connection" out))))))))
 
-(define (close-input-port/no-exception port)
+(define (close-input-port/no-exception port #!optional location)
   (with-exception-catcher
    (lambda (exn)
      (cond-expand
       (debug
        (debug 'closing-input port)
-       (handle-debug-exception exn 'close-input-port/no-exception))
+       (handle-debug-exception exn location))
       (else))
      #f)
    (lambda () (close-input-port port))))
 
-(define (close-output-port/no-exception port)
+(define (close-output-port/no-exception port #!optional location)
   (with-exception-catcher
    (lambda (exn)
      (cond-expand
       (debug
        (debug 'closing-output port)
-       (handle-debug-exception exn 'close-output-port/no-exception))
+       (handle-debug-exception exn location))
       (else))
      #f)
    (lambda () (close-output-port port))))
@@ -238,11 +238,8 @@
 (define (port-pipe+close! in out #!optional (MTU 3000))
   (with-exception-catcher
    (lambda (exn)
-     (cond-expand
-      (debug (handle-debug-exception exn))
-      (else))
-     (close-input-port/no-exception in)
-     (close-output-port/no-exception out)
+     (close-input-port/no-exception in 'port-pipe+close!close-input-port/no-exception)
+     (close-output-port/no-exception out 'port-pipe+close!close-output-port/no-exception)
      exn)
    (lambda () (port-copy-through in out MTU))))
 
