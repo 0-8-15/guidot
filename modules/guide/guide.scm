@@ -256,119 +256,51 @@
     ;; For monitoring, e.g. during debug.  Do NOT make this active!
     (if (procedure? overlay) (overlay))))
 
-(define guide-wakeup!)
 (define %%guide-wait-mutex
   (let ((mux (make-mutex 'guide-wait-mutex)))
     (mutex-specific-set! mux (make-condition-variable 'guide-wakeup))
     mux))
-(define %%guide-timings-set!) ;; deprecated
+(define (guide-wakeup!)
+  (condition-variable-signal! (mutex-specific %%guide-wait-mutex)))
 
 (define guide-default-event-dispatch/toplevel
-  (let ((frame-period-max-value 0.2) ;; How long to sleep at most in redraw.
-        (step 0.05) ;; delay increase
-        (consecutive-redraw-count 1)
-        (customized-moment #f) ;; may be a procedure returning the wait time/moment
-        (wakeup-seen #f)
-        (wait-mutex %%guide-wait-mutex)
-        (wait-cv (mutex-specific %%guide-wait-mutex)))
-    (define (timings-set! #!key (frame-period-max #f) (frame-period-min #f) (frame-period-custom #f))
-      (define (legal? x) (and (number? x) (positive? x)))
-      (if (legal? frame-period-max) (set! frame-period-max-value frame-period-max))
-      (if (legal? frame-period-min) (set! step frame-period-min))
-      (if (or (not frame-period-custom) (procedure? frame-period-custom))
-          (set! customized-moment frame-period-custom)))
-    (define (wakeup!)
-      (set! wakeup-seen #t)
-      (condition-variable-signal! wait-cv))
-    (define (redraw-required?)
-      (and
-       wakeup-seen
-       (begin
-         (set! wakeup-seen #f)
-         (set! consecutive-redraw-count 1)
-         #t)))
-    (define (leisure-time-maybe-questionable?)
-      ;; wait for delay time or signal from another thread
-      ;;
-      ;; return: #t -> easy going; #f -> wokeness
-      (if (or wakeup-seen
-              (let ((moment (if customized-moment
-                                (customized-moment consecutive-redraw-count)
-                                (min frame-period-max-value (* consecutive-redraw-count step)))))
-                (if (or (time? moment) (and (number? moment) (> moment 0)))
-                    (begin
-                      (mutex-lock! wait-mutex 0)
-                      (cond-expand
-                       (win32
-                        ;; Work around bug in gambit
-                        (begin (mutex-unlock! wait-mutex wait-cv moment) wakeup-seen))
-                       (else (mutex-unlock! wait-mutex wait-cv moment))))
-                    (begin (mutex-unlock! wait-mutex) #t))))
-          (redraw-required?)
-          (begin
-            (set! consecutive-redraw-count (fx+ consecutive-redraw-count 1))
-            #f)))
+  (let ()
     (define (redraw! rect payload event x y)
       (glCoreInit)
       (guide-event-dispatch-to-payload rect payload event x y)
       (guide-meta-menu-draw!)
       (microgl-swapbuffers))
     (define (activate! rect payload event x y)
+      (define (activate! rect payload event x y)
+        (let loop
+            ((finally
+              (kick! (lambda () (guide-event-dispatch-to-payload rect payload event x y)))))
+          (cond
+           ((##promise? finally) (loop (force finally)))
+           ((procedure? finally) (loop (finally)))
+           ((box? finally)
+            (MATURITY -1 "TBD: avoid boxed returns" loc: guide-default-event-dispatch/toplevel:activate!)
+            (loop (unbox (debug 'finally finally))))
+           (else ;; debugging
+            (cond
+             ((boolean? finally)) ;; OK, expected
+             (else (debug 'ignored-payload-result (list finally payload)))))))
+        (guide-wakeup!)
+        ;; not sure what needs to be returned, we are done handling results
+        #t)
       (cond-expand
        (debug
-        (check-not-observable-speculative! guide-default-event-dispatch/toplevel 'activate!))
-       (else))
-      (redraw-required?)
-      (with-debug-exception-catcher ;; debugging
-       ;; (lambda (exn) (raise (debug 'FAIL-SO-BADLY exn)))
-       (lambda ()
-      (let loop
-          ((finally
-            (kick! (lambda () (guide-event-dispatch-to-payload rect payload event x y)))))
-        (cond
-         ((##promise? finally) (loop (force finally)))
-         ((procedure? finally) (loop (finally)))
-         ((box? finally)
-          (MATURITY -1 "TBD: avoid boxed returns" loc: guide-default-event-dispatch/toplevel:activate!)
-          (loop (unbox (debug 'finally finally))))
-         (else ;; debugging
-          (cond
-           ((boolean? finally)) ;; OK, expected
-           (else (debug 'ignored-payload-result (list finally payload)))))))))
-      (guide-wakeup!)
-      ;; not sure what needs to be returned, we are done handling results
-      #t)
+        (check-not-observable-speculative! guide-default-event-dispatch/toplevel 'activate!)
+        (with-debug-exception-catcher ;; debugging
+         ;; (lambda (exn) (raise (debug 'FAIL-SO-BADLY exn)))
+         (lambda () (activate! rect payload event x y))))
+       (else (activate! rect payload event x y))))
     (define (guide-default-event-dispatch/toplevel rect payload event x y)
       (cond
-       ((not (and glgui:active app:width app:height))
-        (debug 'glgui:active glgui:active)
-        (if (eqv? t EVENT_REDRAW)
-            (leisure-time-maybe-questionable?)
-            (if customized-moment
-                (let ((moment (customized-moment 1)))
-                  (when (or (time? moment) (and (number? moment) (> moment 0)))
-                    (thread-sleep! moment)))
-                (begin
-                  (thread-sleep! step)
-                  (redraw-required?)))))
+       ((not (and glgui:active app:width app:height)))
        ((eq? event EVENT_REDRAW)
-        ;; (log-status "REDRAW")
-        (cond-expand
-         (win32 (leisure-time-maybe-questionable?)) ;; TBD: fix that too.
-         (else #!void))
         (redraw! rect payload event x y))
-       ((eq? event EVENT_IDLE)
-        (if wakeup-seen
-            (begin
-              #;(MATURITY +2 "check compatibility with win32 - drawing only upon WM_PAINT"
-                        loc: 'guide-default-event-dispatch/toplevel:EVENT_IDLE)
-              (redraw! rect payload EVENT_REDRAW 0 0)
-              (set! wakeup-seen #f))
-            (cond-expand
-             ((or win32)
-              (leisure-time-maybe-questionable?))
-             (else (thread-yield!))))
-        #t)
+       ((eq? event EVENT_IDLE))
        ((or (eq? event EVENT_KEYPRESS) (eq? event EVENT_KEYRELEASE))
         (set! x (%%guide:legacy-keycode->guide-keycode x))
         (unless (keyword? event)
@@ -383,30 +315,7 @@
             (activate! rect payload event x y)))
          (else (activate! rect payload event x y))))
        (else (activate! rect payload event x y))))
-    (set! guide-wakeup! wakeup!)
-    (set! %%guide-timings-set! timings-set!)
-    (set! glgui-wakeup! wakeup!)
-    (glgui-timings-set! frame-period-custom: (lambda (x) #f))
     guide-default-event-dispatch/toplevel))
-
-(define $guide-frame-period)
-(define %%guide-use-frame-period!
-  (let ((last-frame-sec (time->seconds (current-time)))
-        (frame-period 0.1))
-    (define (wait x) ;; ignoring `x`
-      (let ((next (+ last-frame-sec frame-period)))
-        (set! last-frame-sec next)
-        (seconds->time next)))
-    (set!
-     $guide-frame-period
-     (case-lambda
-      (() frame-period)
-      ((x)
-       (unless (and (number? x) (not (negative? x)))
-         (error "invalid argument" 'guide-frame-period x))
-       (set! frame-period x))))
-    (lambda ()
-      (%%guide-timings-set! frame-period-custom: wait))))
 
 ;;;** Payload (De)Construction
 
@@ -1764,6 +1673,11 @@
 (set! make-window (lambda args (error "guide: NO LONGER SUPPORTED: make-window" args)))
 ;;|# end deprecated dependency `make-window`
 
+(define $guide-frame-period
+  (case-lambda
+   (() (/ (microgl-redraw-period) 1000000))
+   ((x) (microgl-redraw-period (inexact->exact (* x 1000000))))))
+
 (define-values
     (guide-toplevel-payload guide-main guide-exit)
   (let ((once main) ;; lambdanative `main` called at most once
@@ -1804,8 +1718,10 @@
              (terminate (lambda () #t))
              (wait-mutex %%guide-wait-mutex)
              (wait-cv (mutex-specific %%guide-wait-mutex)))
+      (define suspend-state app:suspended)
       (define (draw-once)
         (when (and (not app:suspended) glgui:active app:width app:height) ;; ???
+          (set! ##now (current-time-seconds))
           (let ((cpl (if (procedure? payload) (payload) payload)))
             (guide-default-event-dispatch/toplevel gui cpl EVENT_REDRAW 0 0))))
       (define (draw-loop) ;; TBD: add optional "no draw required"
@@ -1840,9 +1756,6 @@
          (lambda (event x y)
            (cond-expand
             (linux (force i3hook))
-            #;(android ;; no longer useful when run in own thread
-             (##thread-heartbeat!)
-             (thread-sleep! 0.01))
             (else))
            (cond
             ((eqv? event EVENT_REDRAW)

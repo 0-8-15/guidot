@@ -52,7 +52,7 @@
   (define (setup-heartbeat!)
     ((c-lambda () scheme-object "___setup_heartbeat_interrupt_handling"))
     (##set-heartbeat-interval! (exact->inexact 1/100)))
-  (setup-heartbeat!)
+  ;; (setup-heartbeat!)
   (when #f
     (begin ($kick-style 'sync) (kick/sync! (lambda () (kick-style 'sync)))))
   ;; BEWARE, experimental
@@ -149,42 +149,10 @@ NULL;
   (glgui-wakeup!)
   #f)
 
-(cond-expand
- (android
-  (define-macro (please-do-me-the-favor-and-make-progress! n)
-    `(begin
-       (##thread-heartbeat!)
-       (thread-sleep! 0.01)))
-  (define-macro (DENIED:please-do-me-the-favor-and-make-progress! n)
-    (if (= n 0)
-        `(begin
-           (##thread-heartbeat!)
-           (thread-sleep! 0.01))
-        `(do ((i 0 (fx+ i 1)))
-             ((fx= i ,n) (thread-sleep! ,(* n 0.01)))
-           (##thread-heartbeat!)
-           (thread-yield!))))
-  (define %%Xredraw #f)
-  (define (Xtrigger-redraw!)
-    (guide-wakeup!)
-    (set! %%Xredraw #t))
-  (define (Xconditional-redraw)
-    (if %%Xredraw
-        (begin
-          (set! %%Xredraw #f)
-          #;(glgui-suspend)
-          (set! glCore:needsinit #t)
-          #t)
-        #f))
-  )
- (else
-  (define-macro (please-do-me-the-favor-and-make-progress! n) '#!void)
-  (define Xtrigger-redraw! guide-wakeup!)
-  (define (Xconditional-redraw) #f)
-  ))
-
-;;(%%guide-timings-set! frame-period-min: 1/30 frame-period-max: 1/4)
-($guide-frame-period 0.5)
+($guide-frame-period
+ (cond-expand
+  (android 0.25)
+  (else 0.5)))
 
 (define (handle-replloop-exception e)
   (let ((port (current-error-port)))
