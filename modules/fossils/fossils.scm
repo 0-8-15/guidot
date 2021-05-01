@@ -1,5 +1,12 @@
 (define %%fossils%at-phone-decoder (make-parameter (lambda (x) #f)))
 
+(cond-expand
+ (debug
+  (define-macro (assume obj msg . more)
+    `(if ,obj ,obj (apply error ,msg ,more))))
+ (else
+  (define-macro (assume obj msg . more) obj)))
+
 (include "capture-domain.scm")
 
 (register-command!
@@ -22,6 +29,168 @@
          (ports-connect! conn conn (current-input-port) (current-output-port))
        (exit (/ (process-status conn) 256)))))))
 
+(define (fossil-command
+         #!key
+         (log (and #f (lambda (args) (debug 'fossil-command args))))
+         (directory (fossils-directory))
+         (input #f)
+         (repository #t)
+         #!rest args)
+  (let ((working-directory (or directory (current-directory)))
+        (stderr-redirection #f)
+        (arguments
+         (cond
+          ((not repository) args)
+          ((eq? repository #t)
+           (let ((fn (current-fossil-pathname)))
+             (cond
+              (fn (append args (list "-R" fn)))
+              (else args))))
+          ((string? repository) ;; TBD: file,exists,etc...
+           (append args (list "-R" repository)))
+          (else args))))
+    (assume
+     (begin
+       (when (procedure? log)
+         (log `(cwd: ,working-directory arguments: . ,arguments)))
+       #t)
+     "unreachable")
+    (let ((port (semi-fork "fossil" arguments stderr-redirection #|directory: directory|#)))
+      (cond
+       ((not input) (close-output-port port))
+       ((string? input)
+        (display input port)
+        (close-output-port port)))
+      port)))
+
+(define (fossil-command-port/json
+         #!key
+         (log (and #f (lambda (args) (debug 'fossil-command/json args))))
+         (directory #f)
+         (repository #t)
+         (user (getenv "USER" "u")))
+  (let ((working-directory (or directory (current-directory)))
+        (stderr-redirection #f)
+        (arguments
+         (let ((args `("json" "-json-input" "-" "-user" ,user)))
+           (cond
+            ((not repository) args)
+            ((eq? repository #t)
+             (let ((fn (current-fossil-pathname)))
+               (cond
+                (fn (append args (list "-R" fn)))
+                (else args))))
+            ((string? repository) ;; TBD: file,exists,etc...
+             (append args (list "-R" repository)))
+            (else args)))))
+    (assume
+     (begin
+       (when (procedure? log)
+         (log `(cwd: ,working-directory arguments: . ,arguments)))
+       #t)
+     "unreachable")
+    (semi-fork "fossil" arguments stderr-redirection #|directory: working-directory|#)))
+
+(define (fossil-command/json
+         json-sexpr
+         #!key
+         (log (and #f (lambda (args) (debug 'fossil-command/json args))))
+         (directory (fossils-directory))
+         (repository #t)
+         (user (getenv "USER" "u")))
+  (let ((port (fossil-command-port/json repository: repository)))
+    (json-write json-sexpr port)
+    (close-output-port port)
+    (let ((json (json-read port)))
+      (cond
+       ((eof-object? json) json)
+       (else
+        (let ((pl (assq 'payload json)))
+          (cond
+           (pl (cdr pl))
+           (else
+            (let ((msg (assq 'resultText json)))
+              (cond
+               ((pair? msg) (error (cdr msg)))
+               (else (error "fossil-command/json" json))))))))))))
+
+(define (fossil-project-title repository)
+  (let ((json (fossil-command/json
+               `((command . "config/get/project"))
+               repository: repository)))
+    (cond
+     ((eof-object? json) #f)
+     (else (cdr (assq 'project-name json))))))
+
+(define (fossil-command/sql
+         sql-string
+         #!key
+         (log (and #f (lambda (args) (debug 'fossil-command/json args))))
+         (directory (fossils-directory))
+         (repository #f)
+         (user (getenv "USER" "u")))
+  (let ((port 
+         (let ((working-directory (or directory (current-directory)))
+               (stderr-redirection #f)
+               (arguments
+                (let ((args `("sql" "-user" ,user)))
+                  (cond
+                   ((not repository) args)
+                   ((string? repository) ;; TBD: file,exists,etc...
+                    (append args (list "-R" repository)))
+                   (else args)))))
+           #;(assume
+            (begin
+              (when (procedure? log)
+                (log `(cwd: ,working-directory arguments: . ,arguments)))
+              #t)
+            "unreachable")
+           (semi-fork "fossil" arguments stderr-redirection #|directory: working-directory|#))))
+    (display sql-string port)
+    (close-output-port port)
+    port))
+
+(define (sql-quote str)
+  (define (string-index s char/char-set/pred i)
+    (let loop ((i i))
+      (and (< i (string-length s))
+           (if (eqv? (string-ref s i) char/char-set/pred)
+               i
+               (loop (+ i 1))))))
+  (if (string-index str #\' 0)
+      (let loop ((off 0) (res '()))
+        (let ((s (string-index str #\' off)))
+          (if s
+              (let ((e (string-index str #\' (+ s 1))))
+                (loop (or e (string-length str))
+                      `(,(case (string-ref str s)
+                                   ((#\\) "\\\\")
+                                   ((#\') "''")
+                                   ;; ((#\")   "\\"" )
+                                   ((#\x0) "\\0" )
+                                   (else (error "internal error sql-quote broken")))
+                                ,(substring str off s)
+                                . ,res)))
+              (apply
+               string-append
+               (reverse!      ; res is a fresh list
+                (cons (substring str off (string-length str))
+                      res))))))
+      str))
+
+(define (fossil-project-title-set! repository title)
+  (let ((port
+         (fossil-command/sql
+          (string-append
+           "update repository.config set value='"
+           (sql-quote title)
+           "' where name='project-name'")
+          repository: repository)))
+    (close-port port)
+    (eqv? (process-status port) 0)))
+
+;;** fossils directory and service
+
 (define (fossils-fallback-name unit-id)
   (beaver-unit-id->string unit-id "-"))
 
@@ -32,8 +201,8 @@
    (lambda (v)
      (or (not v)
          (and (string? v)
-              (file-exists? v)
-              (eq? (file-type v) 'directory))))
+              (or (not (file-exists? v))
+                  (eq? (file-type v) 'directory)))))
 ;;   filter: (lambda (old new) (if old old new)) ;; once only
    name: "projects directory"))
 
@@ -70,6 +239,7 @@
          (let ((template (make-pathname (system-directory) "templates/template" "fossil")))
            (log-status "cloning default fossil" (object->string (list run/boolean "fossil" "clone" template fallback "--once" "-A" fallback-name)))
            (unless (run-logging/boolean "fossil" "clone" template fallback "--once" "-A" fallback-name)
+             (fossil-project-title-set! fallback fallback-name)
              (log-error "fossil is: " (run->string "fossil" "version"))
              (log-error "Again: " (run->error-string "fossil" "clone" template fallback "--once" "-A" fallback-name)))))))))
 

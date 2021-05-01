@@ -82,43 +82,9 @@
          ((string? v) (set! current-fossil-remote-url v))
          (else (error "invalid" current-fossil-remote-url v)))))))))
 
-(define (fossil-command
+(define (guidot-fossil-command/json
          #!key
-         (log (lambda (args) (debug 'fossil-command args)))
-         (directory (fossils-directory))
-         (input #f)
-         (repository #t)
-         #!rest args)
-  (let ((working-directory (or directory (current-directory)))
-        (stderr-redirection #f)
-        (arguments
-         (cond
-          ((not repository) args)
-          ((eq? repository #t)
-           (let ((fn (current-fossil-pathname)))
-             (cond
-              (fn (append args (list "-R" fn)))
-              (else args))))
-          ((string? repository) ;; TBD: file,exists,etc...
-           (append args (list "-R" repository)))
-          (else args))))
-    (assume
-     (begin
-       (when (procedure? log)
-         (log `(cwd: ,working-directory arguments: . ,arguments)))
-       #t)
-     "unreachable")
-    (let ((port (semi-fork "fossil" arguments stderr-redirection #|directory: directory|#)))
-      (cond
-       ((not input) (close-output-port port))
-       ((string? input)
-        (display input port)
-        (close-output-port port)))
-      port)))
-
-(define (fossil-command/json
-         #!key
-         (log (lambda (args) (debug 'fossil-command/json args)))
+         (log (lambda (args) (debug 'guidot-fossil-command/json args)))
          (directory (fossils-directory))
          (repository #t)
          (user (getenv "USER" "u")))
@@ -144,10 +110,10 @@
      "unreachable")
     (semi-fork "fossil" arguments stderr-redirection #|directory: working-directory|#)))
 
-(define (fossil-command/json+failed
+(define (guidot-fossil-command/json+failed
          ;; to be used when failed to figure out the errors
          #!key
-         (log (lambda (args) (debug 'fossil-command/json args)))
+         (log (lambda (args) (debug 'guidot-fossil-command/json args)))
          (directory (fossils-directory))
          (repository #t)
          (user (getenv "USER" "u")))
@@ -193,7 +159,7 @@
 (define (fossil-timeline
          #!key
          (type 'event))
-  (let ((port (fossil-command/json))
+  (let ((port (guidot-fossil-command/json))
         (cmd (fossil-object-type->string type)))
     (json-write
      `((command . ,(string-append "timeline/" cmd)))
@@ -987,7 +953,7 @@
       (guidot-frame
        (let ((options
               (let ((json
-                     (let ((port (fossil-command/json)))
+                     (let ((port (guidot-fossil-command/json)))
                        (json-write '((command . "wiki/list")) port)
                        (close-output-port port)
                        (json-read port))))
@@ -998,7 +964,7 @@
            (cond
             ((eof-object? options)
              (off)
-             (let ((port (fossil-command/json+failed)))
+             (let ((port (guidot-fossil-command/json+failed)))
                (json-write '((command . "wiki/list")) port)
                (fossil-failure-message area "wiki/list" port)))
             ((null? options)
@@ -1075,11 +1041,11 @@
          (let ((content (page-content))
                (name (wiki-selected)))
            (when (and name content)
-             (let ((port (fossil-command/json)))
+             (let ((port (guidot-fossil-command/json)))
                (when (port? port)
                  (with-exception-catcher
                   (lambda (exn)
-                    (let ((port (fossil-command/json+failed)))
+                    (let ((port (guidot-fossil-command/json+failed)))
                       (json-write
                        `((command . "wiki/save")
                          (payload
@@ -1154,7 +1120,7 @@
                       (else
                        (guide-critical-add!
                         (lambda ()
-                          (let ((port (fossil-command/json)))
+                          (let ((port (guidot-fossil-command/json)))
                             (json-write
                              `((command . "wiki/create")
                                (payload
@@ -1173,7 +1139,7 @@
               (lambda ()
                 (dismiss)
                 (let* ((result #;(json-read (fossil-command "json" command ssc))
-                        (let ((port (fossil-command/json)))
+                        (let ((port (guidot-fossil-command/json)))
                           (json-write `((command . ,(string-append command "/" ssc))) port)
                           (close-output-port port)
                           (json-read port)))
