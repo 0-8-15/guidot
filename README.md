@@ -1,6 +1,6 @@
 # Guidot
 
-Yet another opininated Scheme dialect.
+Yet another opinionated Scheme dialect.
 
 ---
 Still here too:
