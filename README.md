@@ -1,9 +1,6 @@
-# Beaver
+# Guidot
 
-An IPv6 layer for Remote Inter Process Communication.
-
-Transport layer is intented to be replaceable, currently onetierzero
-only.
+Yet another opininated Scheme dialect.
 
 ---
 Still here too:
