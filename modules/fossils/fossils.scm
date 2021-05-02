@@ -9,25 +9,35 @@
 
 (include "capture-domain.scm")
 
-(register-command!
- "fossil"
- (lambda (args)
-   #|
-   (exit
-    (debug 'fossil-exit (process-status
+(cond-expand
+ ((or android fossil-not-embedded)
+  (register-command!
+   "fossil"
+   (lambda (args)
+     #|
+     (exit
+     (debug 'fossil-exit (process-status
      (open-process
-      `(path: "fossil" arguments: ,args
-              stdin-redirection: #f stdout-redirection: #f show-console: #f)))))
-   |#
-   (let ((conn (open-process
-                `(path: "fossil" arguments: ,args
-                        stdin-redirection: #t stdout-redirection: #t show-console: #f))))
-     (when (port? conn)
-       (parameterize
-           ((port-copy-initial-timeout 2)
-            (port-copy-data-timeout 1))
-         (ports-connect! conn conn (current-input-port) (current-output-port))
-       (exit (/ (process-status conn) 256)))))))
+     `(path: "fossil" arguments: ,args
+     stdin-redirection: #f stdout-redirection: #f show-console: #f)))))
+     |#
+     (let ((conn (open-process
+                  `(path: "fossil" arguments: ,args
+                          stdin-redirection: #t stdout-redirection: #t show-console: #f))))
+       (when (port? conn)
+         (parameterize
+             ((port-copy-initial-timeout 2)
+              (port-copy-data-timeout 1))
+           (ports-connect! conn conn (current-input-port) (current-output-port))
+           (exit (/ (process-status conn) 256))))))))
+ (else
+  (include "../gamhack/gambit-embedded-chararray.scm")
+  (c-declare "extern int fossil_main(int argc, char **argv);")
+  (register-command!
+   "fossil"
+   (lambda (args)
+     (let ((n (length args)))
+       ((c-lambda (int char**) int "fossil_main") n args))))))
 
 (define (fossil-command
          #!key
