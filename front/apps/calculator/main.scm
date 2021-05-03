@@ -399,13 +399,31 @@ NULL;
 (guide-define-payload "Fossil Transfer" 'ephemeral guidot-fossil-transfer-dialog)
 
 (cond-expand
- ((or linux debug)
+ ((or linux win32 debug)
   (guide-define-payload
    "debugger" 'once
-   (lambda (area)
-     (receive (result dialog-control!) (guidot-layers area name: "Scheme Interpreter")
-       (guidot-insert-scheme-interpreter! dialog-control! in: area)
-       result))))
+   ;; enforcing Scheme (the default values) here:
+   (let ((read-all read-all)
+         (eval eval))
+     (lambda (area)
+       (receive (result dialog-control!) (guidot-layers area name: "Scheme Interpreter")
+         (guidot-insert-scheme-interpreter!
+          dialog-control! in: area
+          ;; pass enforced default values to configure the interpreter
+          read-all: read-all eval: eval)
+         result))))
+  (let ((name "Fossil SQL (experimental)"))
+    (guide-define-payload
+     name 'once
+     (let ((read-all (lambda (port) (list (read-line port #f))))
+           (eval (lambda (expr . _) (read-line (fossil-command/sql expr) #f))))
+       (lambda (area)
+         (receive (result dialog-control!) (guidot-layers area name: name)
+           (guidot-insert-scheme-interpreter!
+            dialog-control! in: area
+            ;; configure the interpreter
+            read-all: read-all eval: eval)
+           result))))))
  (else))
 
 ;; Calculator
