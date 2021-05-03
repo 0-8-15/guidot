@@ -11,6 +11,8 @@
          #!key
          (in (error "required keyword parameter" 'guidot-insert-scheme-interpreter! 'in))
          (done (%%macro-guidot-capture-guide-toplevel))
+         (eval eval)
+         (read-all read-all)
          ) ;; end of keyword list -- for diffability on a line itself
   (define (add-at-end! pl #!optional (ref #f))
     (cond
