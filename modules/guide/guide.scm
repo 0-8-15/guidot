@@ -2,6 +2,13 @@
 
 (include "../../front/apps/guide/DejaVuSans-14,24,32.scm")
 
+(cond-expand
+ (debug
+  (define-macro (assume obj msg . more)
+    `(if ,obj ,obj (apply error ,msg ,more))))
+ (else
+  (define-macro (assume obj msg . more) obj)))
+
 ;;;** X11
 
 (cond-expand

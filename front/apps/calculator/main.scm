@@ -50,9 +50,17 @@
 (cond-expand
  (android
   (define (setup-heartbeat!)
-    ((c-lambda () scheme-object "___setup_heartbeat_interrupt_handling"))
+    ;; History: lambdanative used to disable Scheme involutary thread
+    ;; switches to mitigate failing of the use case Gambit does not
+    ;; support: calling Gambit Scheme, back to C and from C to Scheme
+    ;; again, then switch Scheme continuation.
+    ;;
+    ;; The line below switched back to involuntary thread switches
+    ;; during development of the fix.  Retained for documentation.
+    ;;
+    ;; ((c-lambda () scheme-object "___setup_heartbeat_interrupt_handling"))
     (##set-heartbeat-interval! (exact->inexact 1/100)))
-  ;; (setup-heartbeat!)
+  (setup-heartbeat!)
   (when #f
     (begin ($kick-style 'sync) (kick/sync! (lambda () (kick-style 'sync)))))
   ;; BEWARE, experimental

@@ -1,5 +1,12 @@
 (include "../misc-conventions/observable-syntax.sch")
 
+(cond-expand
+ (debug
+  (define-macro (assume obj msg . more)
+    `(if ,obj ,obj (apply error ,msg ,more))))
+ (else
+  (define-macro (assume obj msg . more) obj)))
+
 ;; FIXME: These should not be here!
 
 (define-macro (%%guide-post-speculative expr)
