@@ -36,7 +36,8 @@
   (register-command!
    "fossil"
    (lambda (args)
-     (let ((n (length args)))
+     (let* ((args (cons "-s fossil" args))
+            (n (length args)))
        ((c-lambda (int char**) int "fossil_main") n args))))))
 
 (define (fossil-command
@@ -324,12 +325,7 @@
   (let ((brk (delay (rx "^([^ ]+) (?:/([^/]+))([^ ]+) (HTTP/[0-9]\\.[0-9])\r?$")))
         (max-line-length 1024))
     (define (fossil args)
-      (cond-expand
-       (linux
-        (open-process
-           `(path: "fossil" arguments: ,args
-                   stdin-redirection: #t stdout-redirection: #t show-console: #f)))
-       (else (semi-fork "fossil" args))))
+      (semi-fork "fossil" args #t))
     (define (producer->pipe producer)
       (receive (servant client) (open-u8vector-pipe)
         (parameterize ((current-output-port servant))
