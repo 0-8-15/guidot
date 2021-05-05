@@ -1,5 +1,8 @@
 ;; Almost literally stolen from gambit manual.  Functions made static.
 
+;; FIXME: check ___SCMOBJ_to_NONNULLSTRINGLIST that might do the same
+;; trick better.
+
 (c-declare #<<c-declare-end
 
 #include <stdlib.h>
