@@ -150,10 +150,10 @@
                    ((string? repository) ;; TBD: file,exists,etc...
                     (append args (list "-R" repository)))
                    (else args)))))
-           #;(assume
+           (assume
             (begin
               (when (procedure? log)
-                (log `(cwd: ,working-directory arguments: . ,arguments)))
+                (log `(cwd: ,working-directory arguments: ,@arguments)))
               #t)
             "unreachable")
            (semi-fork "fossil" arguments stderr-redirection #|directory: working-directory|#))))
