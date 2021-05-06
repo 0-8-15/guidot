@@ -46,7 +46,7 @@ case $SYS_PLATFORM in
         sed -i  '/defined(BROKEN_MINGW_CMDLINE)/s/$/ || 1\
 #elif 1\
 /' src/main.c
-        make -f win/Makefile.mingw PREFIX=${win_cross} OBJDIR=bld bld/main.o
+        package_make bld/main.o
         assertfile bld/main.o
         $SYS_AR crs $SYS_PREFIX/lib/libfossil.a bld/*.o
     ;;
