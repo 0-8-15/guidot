@@ -13,6 +13,7 @@
          (done (%%macro-guidot-capture-guide-toplevel))
          (eval eval)
          (read-all read-all)
+         (backtrace-on-exception #t)
          ) ;; end of keyword list -- for diffability on a line itself
   (define (add-at-end! pl #!optional (ref #f))
     (cond
@@ -90,8 +91,11 @@
                                               (current-output-port output-port))
                                  (with-exception-catcher
                                   (lambda (exn)
-                                    (display-exception-in-context exn cont error-port)
-                                    (display-continuation-backtrace cont error-port #t #t 10 10 0)
+                                    (cond
+                                     (backtrace-on-exception
+                                      (display-exception-in-context exn cont error-port)
+                                      (display-continuation-backtrace cont error-port #t #t 10 10 0))
+                                     (else (display-exception exn error-port)))
                                     #f)
                                   (lambda ()
                                     (for-each
@@ -120,25 +124,35 @@
                       (close-output-port error-port)
                       (when success
                         (input-control! text: #f)
-                        (let ((output (output-control! 'string))
-                              (results-port (open-output-string)))
-                          (display "results: " results-port)
-                          (for-each (lambda (r) (pretty-print r results-port)) vals)
-                          (chat-control! sent: input)
+                        (chat-control! sent: input)
+                        (let ((output (output-control! 'string)))
                           ;; final newline is implicit in GUI and visually disturbing
-                          (chat-control!
-                           msg:
-                           (cond
-                            ((string-empty? output)
+                          (cond
+                           ((and (string-empty? output) (null? vals)))
+                           ((or (null? vals) (and (null? (cdr vals)) (eq? (car vals) #!void)))
+                            (chat-control!
+                             msg:
                              (let ((output (get-output-string results-port)))
-                               (substring output 0 (- (string-length output) 1))))
-                            (else
-                             (string-append
-                              output
-                              (if (eqv? (string-ref output (- (string-length output) 1)) #\newline)
-                                  "" "\n")
-                              (let ((output (get-output-string results-port)))
-                                (substring output 0 (- (string-length output) 1)))))))))))))))
+                               (if (eqv? (string-ref output (- (string-length output) 1)) #\newline)
+                                   (substring output 0 (- (string-length output) 1))
+                                   output))))
+                           (else
+                            (let ((results-port (open-output-string)))
+                              (display "results: " results-port)
+                              (for-each (lambda (r) (pretty-print r results-port)) vals)
+                              (chat-control!
+                               msg:
+                               (cond
+                                ((string-empty? output)
+                                 (let ((output (get-output-string results-port)))
+                                   (substring output 0 (- (string-length output) 1))))
+                                (else
+                                 (string-append
+                                  output
+                                  (if (eqv? (string-ref output (- (string-length output) 1)) #\newline)
+                                      "" "\n")
+                                  (let ((output (get-output-string results-port)))
+                                    (substring output 0 (- (string-length output) 1))))))))))))))))))
             (close-output-port error-port)
             (close-output-port output-port)
             #t)))
