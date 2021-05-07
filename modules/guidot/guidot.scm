@@ -128,14 +128,13 @@
                         (let ((output (output-control! 'string)))
                           ;; final newline is implicit in GUI and visually disturbing
                           (cond
-                           ((and (string-empty? output) (null? vals)))
+                           ((and ... warum ist der wech? (string-empty? output) (null? vals)))
                            ((or (null? vals) (and (null? (cdr vals)) (eq? (car vals) #!void)))
                             (chat-control!
                              msg:
-                             (let ((output (get-output-string results-port)))
-                               (if (eqv? (string-ref output (- (string-length output) 1)) #\newline)
-                                   (substring output 0 (- (string-length output) 1))
-                                   output))))
+                             (if (eqv? (string-ref output (- (string-length output) 1)) #\newline)
+                                 (substring output 0 (- (string-length output) 1))
+                                 output)))
                            (else
                             (let ((results-port (open-output-string)))
                               (display "results: " results-port)
