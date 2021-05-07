@@ -124,6 +124,28 @@ NULL;
 #endif
 ")))
 
+(register-command!
+ "daemonian-captured-run"
+ (lambda (args)
+   (let ((conn (open-process
+                `(path: ,(system-cmdargv 0) arguments: (,(daemonian-semifork-key) . ,(cdr args))
+                        stdin-redirection: #f stdout-redirection: #f
+                        stderr-redirection: #t show-console: #f))))
+     (cond
+      ((port? conn)
+       (let* ((error-output (read-line conn #f))
+              (rc (process-status conn)))
+         ;; TBD: how to pass `error-output`?
+         (cond
+          ((and (eqv? rc 0) (eof-object? error-output))
+           (exit 0))
+          (else
+           (display error-output (current-output-port))
+           (close-output-port (current-output-port))
+           (display error-output (current-error-port))
+           (exit (if (eqv? rc 0) 1 (/ (process-status conn) 256)))))))
+      (else (exit 1))))))
+
 (cond-expand
  (android
   (define daemonian-directory-files (delay (android-directory-files)))
@@ -148,7 +170,7 @@ NULL;
   )
  (else))
 
-(define (semi-fork cmd args #!optional (stderr #f) #!key (directory #f))
+(define (semi-fork cmd args #!optional (stderr #f) #!key (directory #f) (char-encoding 'UTF-8))
   ;; (debug 'semi-fork `(,cmd . ,args))
   (log-debug "semi-fork " 1 cmd " on " args)
   (cond-expand
@@ -196,14 +218,15 @@ NULL;
                  (log-debug
                   "semi-fork " 1
                   `(path: ,exe arguments: ,args environment: ,envt directory: ,directory
-                          stdout-redirection: #t stdin-redirection: #t stderr-redirection: ,stderr)))
+                          stdout-redirection: #t stdin-redirection: #t stderr-redirection: ,(and stderr #t))))
                 (else))
                (open-process
                 `(path: ,exe arguments: ,args
                         environment: ,envt
                         directory: ,directory
+                        char-encoding: ,char-encoding
                         stdout-redirection: #t stdin-redirection: #t
-                        stderr-redirection: ,stderr)))))
+                        stderr-redirection: ,(and stderr #t))))))
            ((cached-executable cmd) => (lambda (cached) (loop cached envt)))
            (else
             (log-error "executable: " exe " exists: " exists? " executable: " executable?)
@@ -237,14 +260,23 @@ NULL;
                   (begin
                     (log-error "FAILED to extract cmd " cmd " from archive " p)
                     #f)))))))))
-   (linux
-    (open-process
-     `(path: ,(system-cmdargv 0) arguments: (,(daemonian-semifork-key) ,cmd . ,args)
-             directory: ,directory stdout-redirection: #t stdin-redirection: #t stderr-redirection: ,stderr)))
    (else
-    (with-exception-catcher
-     (lambda (exn) (log-debug "open-process failed " 1 (debug 'fail (exception-->printable exn))) #f)
-     (lambda () (open-process `(path: #;"/proc/self/exe" ,(system-cmdargv 0) arguments: (,(daemonian-semifork-key) ,cmd . ,args) directory: ,directory stdout-redirection: #t stdin-redirection: #t stderr-redirection: ,stderr show-console: #f)))))))
+    (let ((arguments `(,(daemonian-semifork-key) ,cmd . ,args)))
+      (case stderr
+        ((raise)
+         (open-process
+          `(path: ,(system-cmdargv 0) arguments: (,(daemonian-semifork-key) "daemonian-captured-run" ,@arguments)
+                  directory: ,directory
+                  char-encoding: ,char-encoding
+                  stdout-redirection: #t stdin-redirection: #t
+                  stderr-redirection: ,(and stderr #t) show-console: #f)))
+        (else
+         (open-process
+          `(path: ,(system-cmdargv 0) arguments: ,arguments
+                  directory: ,directory
+                  char-encoding: ,char-encoding
+                  stdout-redirection: #t stdin-redirection: #t
+                  stderr-redirection: ,(and stderr #t) show-console: #f))))))))
 
 (define (semi-run cmd args)
   (let ((port (semi-fork cmd args)))
