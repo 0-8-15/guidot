@@ -82,63 +82,6 @@
          ((string? v) (set! current-fossil-remote-url v))
          (else (error "invalid" current-fossil-remote-url v)))))))))
 
-(define (guidot-fossil-command/json
-         #!key
-         (log (lambda (args) (debug 'guidot-fossil-command/json args)))
-         (directory (fossils-directory))
-         (repository #t)
-         (user (getenv "USER" "u")))
-  (let ((working-directory (or directory (current-directory)))
-        (stderr-redirection #f)
-        (arguments
-         (let ((args `("json" "-json-input" "-" "-user" ,user)))
-           (cond
-            ((not repository) args)
-            ((eq? repository #t)
-             (let ((fn (current-fossil-pathname)))
-               (cond
-                (fn (append args (list "-R" fn)))
-                (else args))))
-            ((string? repository) ;; TBD: file,exists,etc...
-             (append args (list "-R" repository)))
-            (else args)))))
-    (assume
-     (begin
-       (when (procedure? log)
-         (log `(cwd: ,working-directory arguments: ,@arguments)))
-       #t)
-     "unreachable")
-    (semi-fork "fossil" arguments stderr-redirection #|directory: working-directory|#)))
-
-(define (guidot-fossil-command/json+failed
-         ;; to be used when failed to figure out the errors
-         #!key
-         (log (lambda (args) (debug 'guidot-fossil-command/json args)))
-         (directory (fossils-directory))
-         (repository #t)
-         (user (getenv "USER" "u")))
-  (let ((working-directory (or directory (current-directory)))
-        (stderr-redirection #t)
-        (arguments
-         (let ((args `("json" "-json-input" "-" "-user" ,user)))
-           (cond
-            ((not repository) args)
-            ((eq? repository #t)
-             (let ((fn (current-fossil-pathname)))
-               (cond
-                (fn (append args (list "-R" fn)))
-                (else args))))
-            ((string? repository) ;; TBD: file,exists,etc...
-             (append args (list "-R" repository)))
-            (else args)))))
-    (assume
-     (begin
-       (when (procedure? log)
-         (log `(ERRORcheck cwd: ,working-directory arguments: . ,arguments)))
-       #t)
-     "unreachable")
-    (semi-fork "fossil" arguments stderr-redirection #|directory: working-directory|#)))
-
 (define-values
     (fossil-object-type? fossil-object-type->string)
   (values
@@ -159,13 +102,7 @@
 (define (fossil-timeline
          #!key
          (type 'event))
-  (let ((port (guidot-fossil-command/json))
-        (cmd (fossil-object-type->string type)))
-    (json-write
-     `((command . ,(string-append "timeline/" cmd)))
-     port)
-    (close-output-port port)
-    (json-read port)))
+  (fossil-command/json `((command . ,(string-append "timeline/" (fossil-object-type->string type))))))
 
 (define (%%fossil-cmd
          cmd url//proto #!key
@@ -238,10 +175,9 @@
 
 ;;*** Internal Utilities
 (define (fossil-help-basic-parse-output-to-commands port)
-  ;; crude, stupid, simple, just get it done
-  (define line1 (read-line port)) ;; Usage...
-  (when (eof-object? (read-line port)) ;; Common commands.....
-    (error "failed" line1))
+  (do ((i 0 (+ i 1))) ;; skip 1st 3 lines
+      ((eqv? i 3))
+    (read-line port))
   (sort!
    string<?
    (let loop ((lines
@@ -916,6 +852,7 @@
   ;; (options '#("create" "diff" "get" "list" "preview" "save" "timeline"))
   (lambda (#!key (in (NYIE)) (command (NYIE)) (dismiss (NYIE)))
     (define wiki-selected selected)
+    (define use-notes (make-pin #f))
     (define interactive (%%guidot-interactive dialog-control insert: top:))
     (define (fossil-failure-message area title port)
       (interactive
@@ -952,21 +889,13 @@
     (define (wiki-list off)
       (guidot-frame
        (let ((options
-              (let ((json
-                     (let ((port (guidot-fossil-command/json)))
-                       (json-write '((command . "wiki/list")) port)
-                       (close-output-port port)
-                       (json-read port))))
-                (cond
-                 ((eof-object? json) json)
-                 (else (cdr (assq 'payload json)))))))
+              (cond
+               ((use-notes) (list->vector (read-all (fossil-command "wiki" "list" "-t") read-line)))
+               (else (fossil-command/json '((command . "wiki/list")))))))
          (lambda (area)
            (cond
             ((eof-object? options)
-             (off)
-             (let ((port (guidot-fossil-command/json+failed)))
-               (json-write '((command . "wiki/list")) port)
-               (fossil-failure-message area "wiki/list" port)))
+             (off))
             ((null? options)
              (let ((label "wiki list empty"))
                (guide-button name: label in: area label: label guide-callback: off)))
@@ -983,9 +912,11 @@
        color: color background: background
        name: "wiki list"))
     (define (get-wiki-page)
-      (let* ((json (json-read (fossil-command "json" command "get" (wiki-selected))))
-             (json-pl (cdr (assq 'payload json))))
-        (cdr (assq 'content json-pl))))
+      (read-line
+       (cond
+        ((use-notes) (fossil-command "wiki" "export" "-t" (wiki-selected) "-"))
+        (else (fossil-command "wiki" "export" (wiki-selected) "-")))
+       #f))
     (define (with-page)
       (define page-content
         (make-pin
@@ -1041,30 +972,17 @@
          (let ((content (page-content))
                (name (wiki-selected)))
            (when (and name content)
-             (let ((port (guidot-fossil-command/json)))
-               (when (port? port)
-                 (with-exception-catcher
-                  (lambda (exn)
-                    (let ((port (guidot-fossil-command/json+failed)))
-                      (json-write
-                       `((command . "wiki/save")
-                         (payload
-                          (name . ,name)
-                          (content . ,content)
-                          (contentFormat . "raw")))
-                       port)
-                      (fossil-failure-message area "wiki/save" port)))
-                  (lambda ()
-                    (json-write
-                     `((command . "wiki/save")
-                       (payload
-                        (name . ,name)
-                        (content . ,content)
-                        (contentFormat . "raw")))
-                     port)
-                    (close-output-port port)
-                    ;; ignoring the response upon success
-                    (json-read port)))))))))
+             (cond
+              ((use-notes)
+               (fossil-command input: (page-content) "wiki" "commit" "-t" (wiki-selected) "-"))
+              (else
+               ;; ignoring the response upon success
+               (fossil-command/json
+                `((command . "wiki/save")
+                  (payload
+                   (name . ,name)
+                   (content . ,content)
+                   (contentFormat . "raw"))))))))))
       this)
     (let ((tl-options '#("create" "list" "timeline"#; "close")))
       (define (no-fossil-selected area done)
@@ -1073,9 +991,24 @@
          in: area
          label: "No Fossil selected"
          guide-callback: done))
+      (define (subtype-ctrl area)
+        (guide-valuelabel
+         in: area font: font label: "subtype"
+         label-width: 1/2
+         value: use-notes
+         value-display: (lambda (x) (if x "notes" "pages"))
+         input:
+         (lambda (rect payload event xsw ysw)
+           (cond
+            ((eqv? event EVENT_BUTTON1UP)
+             (use-notes (not (use-notes)))))
+           #t)))
       (guide-list-select-payload
        (receive (xsw xno ysw yno) (guide-boundingbox->quadrupel area)
-         (make-mdv-rect-interval xsw ysw xno (- yno 60)))
+         (define lh (guide-font-height font))
+         ;; TBD: clean up, manipulation of layout from strange place
+         (dialog-control top: (subtype-ctrl (make-mdv-rect-interval xsw (- yno 60 lh) xno (- yno 60))))
+         (make-mdv-rect-interval xsw ysw xno (- yno 60 lh)))
        (lambda () tl-options)
        action:
        (lambda (n x)
@@ -1120,17 +1053,17 @@
                       (else
                        (guide-critical-add!
                         (lambda ()
-                          (let ((port (guidot-fossil-command/json)))
-                            (json-write
-                             `((command . "wiki/create")
-                               (payload
-                                (name . ,val)
-                                (content . "")
-                                (contentFormat . "raw")))
-                             port)
-                            (close-output-port port)
+                          (cond
+                           ((use-notes) (fossil-command "wiki" "create" "-t" val "-"))
+                           (else
                             ;; ignoring the response here
-                            (debug 'create-wiki-response (json-read port))))
+                            (debug 'create-wiki-response
+                                   (fossil-command/json
+                                    `((command . "wiki/create")
+                                      (payload
+                                       (name . ,val)
+                                       (content . "")
+                                       (contentFormat . "raw"))))))))
                         async: #t)))))))
                 notify: selfie))
              #t)
@@ -1138,11 +1071,7 @@
              (guide-critical-add!
               (lambda ()
                 (dismiss)
-                (let* ((result #;(json-read (fossil-command "json" command ssc))
-                        (let ((port (guidot-fossil-command/json)))
-                          (json-write `((command . ,(string-append command "/" ssc))) port)
-                          (close-output-port port)
-                          (json-read port)))
+                (let* ((result (fossil-command/json '((command . "wiki/timeline"))))
                        (rows 50)
                        (buffer (make-ggb size: 2))
                        (all (box #f)))
@@ -1165,7 +1094,7 @@
                          (let* ((results
                                  (cond
                                   ((eof-object? result) '#())
-                                  (else (cdr (assq 'timeline (cdr (assq 'payload result)))))))
+                                  (else (cdr (assq 'timeline result)))))
                                 (limit (vector-length results)))
                            (do ((i 0 (+ i 1)))
                                ((eqv? i limit)
