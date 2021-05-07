@@ -142,7 +142,7 @@
          (user (getenv "USER" "u")))
   (let ((port 
          (let ((working-directory (or directory (current-directory)))
-               (stderr-redirection #f)
+               (stderr-redirection 'raise)
                (arguments
                 (let ((args `("sql" "-user" ,user)))
                   (cond
