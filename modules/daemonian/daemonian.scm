@@ -140,7 +140,8 @@ NULL;
           ((and (eqv? rc 0) (eof-object? error-output))
            (exit 0))
           (else
-           (display error-output (current-output-port))
+           (when (string? error-output)
+             (display error-output (current-output-port)))
            (close-output-port (current-output-port))
            (display error-output (current-error-port))
            (exit (if (eqv? rc 0) 1 (/ (process-status conn) 256)))))))
@@ -359,7 +360,9 @@ NULL;
                ((cdr e) (if (fixnum? args) (system-command-line* args) args))
                (exit 0)))
             (exit 42))
-	  (exit 1)))))
+	  (begin
+            (println port: (current-error-port) "Command not found: " cmd)
+            (exit 1))))))
 ;;;
 
 (cond-expand
