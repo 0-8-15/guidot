@@ -1,3 +1,53 @@
+;;** Last chance to register commands
+
+(cond-expand ;; shell
+ ((or linux win32)
+  (let* ((name "Shell")
+         (interpreter
+          (cond-expand
+           (win32 "cmd")
+           (else "bash"))))
+    (register-command!
+     name
+     (lambda (args)
+       (let ((conn (open-process
+                    `(path: ,interpreter arguments: ,args
+                            stdin-redirection: #t stdout-redirection: #t show-console: #f))))
+         (when (port? conn)
+           (parameterize
+               ((port-copy-initial-timeout 2)
+                (port-copy-data-timeout 1))
+             (ports-connect! conn conn (current-input-port) (current-output-port))
+             (exit (/ (process-status conn) 256)))))))
+    (guide-define-payload
+     name 'once
+     (let ((read-all (lambda (port) (list (read-line port #f))))
+           (eval (lambda (expr . _)
+                   (let* ((arguments '())
+                          (port (semi-fork name arguments 'raise #|directory: directory|#))
+                          (output
+                           (begin
+                             (display expr port)
+                             (close-output-port port)
+                             (read-line port #f))))
+                     (case (process-status port)
+                       ((0)
+                        (when (string? output) (display output))
+                        (close-output-port (current-output-port)))
+                       (else
+                        (when (string? output) (display output (current-error-port)))
+                        (error (string-append "exit: " (number->string (/ (process-status port) 256))))))))))
+       (lambda (area)
+         (receive (result dialog-control!) (guidot-layers area name: name)
+           (guidot-insert-scheme-interpreter!
+            dialog-control! in: area
+            ;; configure the interpreter
+            read-all: read-all eval: eval
+            backtrace-on-exception: #f)
+           result))))))
+ (else))
+
+;;** Early on: execute registered commands
 (match
  (command-line)
  ((CMD (? (lambda (key) (equal? (daemonian-semifork-key) key))) loadkey . more)
@@ -159,8 +209,8 @@ NULL;
 
 ($guide-frame-period
  (cond-expand
-  (android 0.25)
-  (else 0.5)))
+  (android 0.2)
+  (else 0.2)))
 
 (define (handle-replloop-exception e)
   (let ((port (current-error-port)))
@@ -420,7 +470,7 @@ NULL;
                    (let* ((port (fossil-command/sql expr))
                           (output (read-line port #f)))
                      (case (process-status port)
-                       ((0) (display output))
+                       ((0) (display output) (close-output-port (current-output-port)))
                        (else (error output)))))))
        (lambda (area)
          (receive (result dialog-control!) (guidot-layers area name: name)
