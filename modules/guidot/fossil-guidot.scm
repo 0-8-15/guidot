@@ -1041,7 +1041,10 @@
              (let ((selfie (box #f)))
                (dialog-control
                 top:
-                (let ((label "New Wiki Page"))
+                (let ((label
+                       (cond
+                        ((use-notes) "New Note")
+                        (else "New Wiki Page"))))
                   (guide-value-edit-dialog
                    name: label
                    in: area
