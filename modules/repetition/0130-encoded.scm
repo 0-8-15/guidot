@@ -72,7 +72,6 @@
   ;; Beware: UTF8 encoding *within* gambit strings seems questionable.
   (let* ((len (ggb-length ggb))
          (i -1)
-         (n 0)
          (result (make-string len)))
     (define (shift!)
       (set! i (+ i 1))
@@ -82,8 +81,7 @@
           (set! result replacement))))
     (ggb-for-each
      ggb
-     (lambda (i c)
-       (set! n (+ n 1))
+     (lambda (ignored c)
        (cond
         ((##fx< c 128)
          (shift!)
@@ -201,7 +199,7 @@
      (call-with-output-string
       (lambda (port)
         (ggb2d-display-value-on-port
-         obj port display: (lambda (v p) (display (integer->char c) p))))))))
+         obj port display: (lambda (c p) (display (integer->char c) p))))))))
 
 (define (ggb2d->u8vector obj #!key (encoding 'UTF-8))
   (unless (ggb2d? obj) (error "invalid ggb2d" ggb2d->u8vector obj))
