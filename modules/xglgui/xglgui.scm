@@ -2231,6 +2231,92 @@
      background: background background-color: background-color
      fixed: #t)))
 
+;;** GUIDOT
+
+;;*** Text Edit Menu
+
+(define (guidot-texteditor-menu
+         edit-control
+         #!key
+         (in (current-guide-gui-interval))
+         (font (guide-select-font size: 'medium))
+         (color (guide-select-color-4))
+         (background-color (guide-select-color-3))
+         (border-ratio 1/10)
+         (action-save-label "S")
+         (action-save-callback NYI)
+         (action-reload-label "R")
+         (action-reload-callback NYI)
+         (action-close-label "X")
+         (action-close-callback NYI)
+         (action-label-copy "M")
+         (action-paste-label "MR")
+         (name "text editor menu"))
+  (let* ((w (mdv-rect-interval-width in))
+         (area (make-mdv-rect-interval 0 0 w (round (* 8/5 (guide-font-height font))))))
+    (make-guide-table
+     (make-mdvector
+      (range '#(5 1))
+      (vector
+       ;; copy
+       (lambda (in row col)
+         (guide-button
+          in: in
+          label: action-label-copy
+          font: font
+          color: color
+          background-color: background-color
+          guide-callback:
+          (lambda _
+            (%%guide-post-speculative;/async
+             (begin
+               (clipboard-copy ((edit-control) 'string))
+               #t)))))
+       ;; paste
+       (let ((action
+              (lambda _
+                (%%guide-post-speculative;/async
+                 ((edit-control) insert: (clipboard-paste))))))
+         (lambda (in row col)
+           (guide-button
+            in: in
+            label: action-paste-label
+            font: font
+            color: color
+            background-color: background-color
+            guide-callback: action)))
+       (lambda (in row col)
+         (guide-button
+          in: in
+          label: action-save-label
+          font: font
+          color: color
+          background-color: background-color
+          guide-callback: action-save-callback))
+       ;; reload
+       (lambda (in row col)
+         (guide-button
+          in: in
+          label: action-reload-label
+          font: font
+          color: color
+          background-color: background-color
+          guide-callback: action-reload-callback))
+       ;; close
+       (lambda (in row col)
+         (guide-button
+          in: in
+          label: action-close-label
+          font: font
+          color: color
+          background-color: background-color
+          guide-callback: action-close-callback))))
+     in: area
+     name: name
+     border-ratio: border-ratio)))
+
+;;** Chat
+
 (define (make-chat
          #!key
          (in (current-guide-gui-interval))
