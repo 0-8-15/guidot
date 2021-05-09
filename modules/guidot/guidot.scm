@@ -128,7 +128,6 @@
                         (let ((output (output-control! 'string)))
                           ;; final newline is implicit in GUI and visually disturbing
                           (cond
-                           ((and ... warum ist der wech? (string-empty? output) (null? vals)))
                            ((or (null? vals) (and (null? (cdr vals)) (eq? (car vals) #!void)))
                             (chat-control!
                              msg:
