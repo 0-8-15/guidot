@@ -799,7 +799,7 @@
      ;; control procedure
      (lambda (key . more)
        (case key
-         ((string) (ggb2d->string/encoding-utf8 value-buffer)) ;; SHOULD stay UTF-8 encoded
+         ((string) (ggb2d->string value-buffer data-char-encoding)) ;; SHOULD stay UTF-8 encoded
          ((utf8) (ggb2d->u8vector value-buffer))
          ((text) (ggb2d-copy value-buffer))
          ((text:)
