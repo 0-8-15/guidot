@@ -974,7 +974,19 @@
            (when (and name content)
              (cond
               ((use-notes)
-               (fossil-command input: (page-content) "wiki" "commit" "-t" (wiki-selected) "-"))
+               (let ((comment
+                      ;; (call-with-input-string content read-line)
+                      (let ((ggb (make-ggb size: 30)))
+                        (call-with-input-string
+                         content
+                         (lambda (port)
+                           (let loop ((c (read-char port)))
+                             (cond
+                              ((eof-object? c))
+                              ((eqv? c #\newline))
+                              (else (ggb-insert! ggb c) (loop (read-char port)))))))
+                        (ggb->string/encoding-utf8 ggb))))
+                 (fossil-command input: content "wiki" "commit" comment "-" "-t" name "-M" "text/x-markdown")))
               (else
                ;; ignoring the response upon success
                (fossil-command/json
@@ -1054,7 +1066,8 @@
                        (guide-critical-add!
                         (lambda ()
                           (cond
-                           ((use-notes) (fossil-command "wiki" "create" "-t" val "-"))
+                           ((use-notes)
+                            (fossil-command "wiki" "create" val "-t" "now"))
                            (else
                             ;; ignoring the response here
                             (debug 'create-wiki-response
