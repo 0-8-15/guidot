@@ -467,15 +467,23 @@ NULL;
      name 'once
      (let ((read-all (lambda (port) (list (read-line port #f))))
            (eval (lambda (expr . _)
-                   (let* ((port (fossil-command/sql expr))
+                   (let* ((port (fossil-command/sql expr repository: (current-fossil-pathname)))
                           (output (read-line port #f)))
                      (case (process-status port)
-                       ((0) (display output) (close-output-port (current-output-port)))
+                       ((0)
+                        (when (string? output) (display output))
+                        (close-output-port (current-output-port)))
                        (else (error output)))))))
        (lambda (area)
+         (define-values (xsw xno ysw yno) (guide-boundingbox->quadrupel area))
+         (define menu-height 60)
          (receive (result dialog-control!) (guidot-layers area name: name)
+           (let ((interactive (%%guidot-interactive/kw dialog-control! insert: top:))
+                 (area (make-mdv-rect-interval xsw (- yno menu-height) xno yno)))
+             (dialog-control! top: (guidot-fossil-menu area interactive: interactive)))
            (guidot-insert-scheme-interpreter!
-            dialog-control! in: area
+            dialog-control!
+            in: (make-mdv-rect-interval xsw ysw xno (- yno menu-height))
             ;; configure the interpreter
             read-all: read-all eval: eval
             backtrace-on-exception: #f)
