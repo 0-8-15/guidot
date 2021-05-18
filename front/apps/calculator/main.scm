@@ -284,6 +284,11 @@ NULL;
   pred: (lambda (x) (or (not x) (string? x)))
   name: "fossil used to look up to find source code")
 
+(define (xload fn)
+  (cond
+   ((source-fossil) (read-and-evaluate (fossil-command repository: (source-fossil) "cat" fn)))
+   (else (load fn))))
+
 (define (debug-adhoc-network-port) 3333)
 
 (define (debug-adhoc-network-id)
@@ -620,11 +625,7 @@ NULL;
       (parse `(,CMD ,then ,@more)))
      ((CMD "-in") (error "usage -in FOSSIL ..."))
      ((CMD "-load" FN . more)
-      (begin
-        (cond
-         ((source-fossil) (read-and-evaluate (fossil-command repository: (source-fossil) "cat" FN)))
-         (else (load FN)))
-        (parse (cons CMD more))))
+      (begin (xload FN) (parse (cons CMD more))))
      ((CMD "-load") (error "usage -load FN ..."))
      ((CMD "-start" FN . more)
       (cond
