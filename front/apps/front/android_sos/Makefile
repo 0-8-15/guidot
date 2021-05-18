@@ -9,8 +9,10 @@ GSC_SYSPREFIX ?= $(SYS_PREFIX)
 GSC ?= $(SYS_GSC)
 
 SYS_PATH ?= $(SYS_PREFIX)/lib/
+SYS_PATH1 = $(shell echo $(SYS_PATH) | cut -f1 -d:)
 SYS_PATH2 = $(shell echo $(SYS_PATH) | cut -f2 -d:)
 SYS_MOD_PATH ?= $(SYS_PATH2)/modules
+SYS_MOD_PATH1 ?= $(SYS_PATH1)/modules
 
 all: ot0	# Main target
 
@@ -21,7 +23,8 @@ SOCKS_FILE =  $(shell echo $(SYS_MOD_PATH)/socks/socks.scm |cksum|cut -f 1 -d " 
 UNSOCKET_FILE =  $(shell echo $(SYS_MOD_PATH)/unsocket/unsocket.scm |cksum|cut -f 1 -d " ")
 HTTPPROXY_FILE =  $(shell echo $(SYS_MOD_PATH)/httpproxy/httpproxy.scm |cksum|cut -f 1 -d " ")
 DAEMONIAN_FILE =  $(shell echo $(SYS_MOD_PATH)/daemonian/daemonian.scm |cksum|cut -f 1 -d " ")
-IRREGEX_FILE =  $(shell echo $(SYS_MOD_PATH)/irregex2/irregex2.scm |cksum|cut -f 1 -d " ")
+# IRREGEX_FILE =  $(shell echo $(SYS_MOD_PATH)/irregex2/irregex2.scm |cksum|cut -f 1 -d " ")
+IRREGEX_FILE =  $(shell echo $(SYS_MOD_PATH1)/irregex/irregex.scm |cksum|cut -f 1 -d " ")
 
 BEAVER_FILE =  $(shell echo $(SYS_MOD_PATH)/beaver/beaver.scm |cksum|cut -f 1 -d " ")
 
