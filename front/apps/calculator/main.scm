@@ -203,10 +203,6 @@ NULL;
 
 ;; GUI helpers
 
-(define (update-pages!)
-  (glgui-wakeup!)
-  #f)
-
 ($guide-frame-period
  (cond-expand
   (android 0.2)
@@ -282,6 +278,11 @@ NULL;
 
 (kick (fossils-directory (fossils-directory-location "fossils")))
 (log-status "chat-dir")
+
+(define-pin source-fossil
+  initial: #f
+  pred: (lambda (x) (or (not x) (string? x)))
+  name: "fossil used to look up to find source code")
 
 (define (debug-adhoc-network-port) 3333)
 
@@ -563,6 +564,20 @@ NULL;
 (let ((area (make-mdv-rect-interval 0 0 320 480)))
   (define (load-file-with-arguments file args)
     (load file))
+  (define (read-and-evaluate port)
+    (let loop ((result #!void) (expr (read port)))
+      (cond
+       ((eof-object? expr) result)
+       (else (loop (eval expr) (read port))))))
+  (define (load-into-toplevel area port)
+    (let ((generator (read-and-evaluate port)))
+      (cond
+       ((procedure? generator)
+        (let ((pl (generator area)))
+          (cond
+           ((guide-payload? pl) (guide-toplevel-payload pl))
+           (else (guide-toplevel-payload (guide-button in: area label: "Generator did not produce a payload"))))))
+       (else (guide-toplevel-payload (guide-button in: area label: "Not a procedure"))))))
   (define (with-area-parse CMD SIZE parse more)
     (define (setsize! interval)
       (set! area interval)
@@ -599,8 +614,26 @@ NULL;
        (else
         (guide-toplevel-payload ((guide-payload-ref (car more)) area))
         (when (pair? (cdr more)) (parse (cons CMD (cdr more)))))))
+     ((CMD "-in" FOSSIL then . more) ;; TBD: more: options like version
+      (unless (file-exists? FOSSIL) (error "file not found" FOSSIL))
+      (kick (source-fossil FOSSIL))
+      (parse `(,CMD ,then ,@more)))
+     ((CMD "-in") (error "usage -in FOSSIL ..."))
+     ((CMD "-load" FN . more)
+      (begin
+        (cond
+         ((source-fossil) (read-and-evaluate (fossil-command repository: (source-fossil) "cat" FN)))
+         (else (load FN)))
+        (parse (cons CMD more))))
+     ((CMD "-load") (error "usage -load FN ..."))
+     ((CMD "-start" FN . more)
+      (cond
+       ((source-fossil) (load-into-toplevel area (fossil-command repository: (source-fossil) "cat" FN)))
+       (else (call-with-input-file FN (lambda (port) (load-into-toplevel area port))))))
+     ((CMD "-start") (error "usage: -start file OR -start path fossil"))
      ((CMD "-l" FILE . more)
-      (load-file-with-arguments FILE more))
+      (load FILE)
+      (when (pair? (cdr more)) (parse (cons CMD more))))
      ((CMD "-version" . more)
       (begin
         (println (system-appversion))
