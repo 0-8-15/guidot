@@ -547,7 +547,9 @@
          (once (let ((registered (critical-calls)))
                  (unless (memq obj registered)
                    (critical-calls (cons obj (critical-calls))))))
-         (else (critical-calls (cons obj (critical-calls))))))))))
+         (else (critical-calls (cons obj (critical-calls)))))))
+      ;; for call site convinience, return #t, not unspecified #!void
+      #t)))
 
 (define guide-open-rectangle ;; onsolete?
   ;;
