@@ -2276,7 +2276,7 @@
        (let ((action
               (lambda _
                 (%%guide-post-speculative;/async
-                 ((edit-control) insert: (clipboard-paste))))))
+                 ((edit-control) insert: (clipboard-paste) char-encoding: 'UTF-8)))))
          (lambda (in row col)
            (guide-button
             in: in
@@ -2501,48 +2501,35 @@
           (lambda (in col row)
             (define edit-control!)
             (define (send! . _)
-              (cond
-               ((procedure? action)
-                (macro-guide-sanitize-payload-result (action edit-control!)))
-               (else
-                (ggb-goto! messages 0)
-                (let ((msg (edit-control! 'text)))
-                  (ggb-insert! messages (chat-message msg timestamp mode)))
-                (edit-control! text: #f))))
+              (guide-critical-add!
+               (lambda ()
+                 (cond
+                  ((procedure? action)
+                   (action edit-control!))
+                  (else
+                   (ggb-goto! messages 0)
+                   (let ((msg (edit-control! 'text)))
+                     (ggb-insert! messages (chat-message msg timestamp mode)))
+                   (edit-control! text: #f))) )
+               async: #t))
             (define menu
-              (let* ((w (mdv-rect-interval-width in))
-                     (font (guide-select-font size: 'medium))
-                     (area (make-mdv-rect-interval 0 0 w (round (* 8/5 (guide-font-height font)))))
-                     (color (guide-select-color-4))
-                     (background-color (guide-select-color-3)))
-                (make-guide-table
-                 (make-mdvector
-                  (range '#(2 1))
-                  (vector
-                   ;; paste
-                   (let ((action
-                          (lambda _
-                            (%%guide-post-speculative;/async
-                             (edit-control! insert: (clipboard-paste) char-encoding: 'UTF-8)))))
-                     (lambda (in row col)
-                       (guide-button
-                        in: in
-                        label: "paste"
-                        font: font
-                        color: color
-                        background-color: background-color
-                        guide-callback: action)))
-                   (lambda (in row col)
-                     (guide-button
-                      in: in
-                      label: "send!"
-                      font: font
-                      color: color
-                      background-color: background-color
-                      guide-callback: (lambda _ send!)))))
-                 in: area
-                 name: name
-                 border-ratio: 1/10)))
+              (let ((font (guide-select-font size: 'medium))
+                    (w (mdv-rect-interval-width in)))
+                (guidot-texteditor-menu
+                 (lambda _ edit-control!)
+                 name: (cons name "menu")
+                 in: (make-mdv-rect-interval 0 0 w (round (* 8/5 (guide-font-height font))))
+                 font: font
+                 color: (guide-select-color-4)
+                 background-color: (guide-select-color-3)
+                 action-save-label: "Send!"
+                 action-save-callback: send!
+                 action-reload-label: "n/a"
+                 action-reload-callback: NYI
+                 action-close-label: "n/a"
+                 action-close-callback: NYI
+                 action-label-copy: "M"
+                 action-paste-label: "MR")))
             (guide-textarea-edit
              in: in
              menu: menu
