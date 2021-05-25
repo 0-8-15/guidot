@@ -160,8 +160,7 @@
             ;; (ctrl text: #f)
             (cond
              ((string-empty? input) #t)
-             (else
-              (%%guide-post-speculative/async (eval-and-dispatch ctrl input)))))))
+             (else (eval-and-dispatch ctrl input))))))
        (mkchat
         (lambda (area row col)
           (let* ((font (guide-select-font size: 'small))
