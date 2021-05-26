@@ -350,7 +350,8 @@ c-declare-end
  result->bufsize=0;
  ___return(result);
 "))
-(define sqlite3_close (c-lambda (sqlite3_db*) int "
+
+(define sqlite3-close (c-lambda (sqlite3_db*) int "
    sqlite3_db* p=___arg1;
    if(p->cnx) {
      sqlite3_close_v2(p->cnx);
@@ -363,11 +364,12 @@ c-declare-end
    }
 "))
 
-(define sqlite3-prepare1
-  (c-lambda
-   (sqlite3_db* UTF-8-string size_t size_t) sqlite3_stmt*
-   ;; db sql-string offset length
-   "
+(define (sqlite3-prepare db sql)
+  (define return
+    (c-lambda
+     (sqlite3_db* UTF-8-string size_t size_t) sqlite3_stmt*
+     ;; db sql-string offset length
+     "
  sqlite3_db* db=___arg1;
  sqlite3_stmt *stmt;
  int rc = sqlite3_prepare_v2(db->cnx, ___arg2+___arg3, ___arg4, &stmt, NULL);
@@ -377,12 +379,13 @@ c-declare-end
  }
  ___return(stmt);
 "))
+  (return db sql 0 (string-length sql)))
 
 (define sqlite3-error-message
   (c-lambda (sqlite3_db*) UTF-8-string "___return((const char*)(___arg1 ? sqlite3_errmsg(___arg1->cnx) : \"connection lost\"));"))
 
 (define-macro (abort-sqlite3-error loc code db stmt . more)
-  `(error (and ,db (sqlite3-error-message ,db)) ,code ,db ,stmt ,more))
+  `('abort-sqlite3-error (and ,db (sqlite3-error-message ,db)) ,code ,db ,stmt ,@more))
 
 (define sqlite3-column-count (c-lambda (sqlite3_stmt*) int "sqlite3_column_count"))
 
@@ -502,7 +505,7 @@ c-declare-end
 (define (sqlite3-statement-reset! db stmt args)
   (let ((rc ((c-lambda (sqlite3_stmt*) int "sqlite3_reset") stmt)))
     (if (eqv? rc SQLITE_OK) #t
-	(abort-sqlite3-error 'sqlite3:reset! rc db stmt args))))
+	(raise (abort-sqlite3-error 'sqlite3:reset! rc db stmt args)))))
 
 (define (sqlite3-exec/prepared db stmt args)
   (if (sqlite3-debug-statements)
@@ -537,3 +540,12 @@ c-declare-end
       ;; value for (pair? args) we would loose badly…
       (if (pair? args) (sqlite3-statement-reset! db stmt args))
       r0)))
+
+(define (sqlite3-exec db stmt . args)
+  (cond
+   ((string? stmt)
+    (let ((prepared (sqlite3-prepare db stmt)))
+      (cond
+       ((not prepared) (raise (abort-sqlite3-error sqlite3-exec #f db stmt)))
+       (else (sqlite3-exec/prepared db prepared args)))))
+   (else (sqlite3-exec/prepared db stmt args))))
