@@ -1,0 +1,539 @@
+;; -*- Scheme -*-
+;; SQLite FFI
+;;
+;; (C) 2021 JFW; License: BSD
+
+#;(declare
+  (block)
+  (not safe)
+  ;; end of declarations
+  )
+
+(define sqlite3-debug-statements (make-parameter #f))
+
+(c-declare #<<c-declare-end
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include <sqlite3.h>
+#include <assert.h>
+
+#define U8_DATA(obj) ___CAST(___U8*, ___BODY_AS (obj, ___tSUBTYPED))
+#define U8_LEN(obj) ___HD_BYTES(___HEADER (obj))
+
+#if 1
+
+#define L_malloc(x) malloc(x)
+#define L_free(x) free(x)
+
+#else
+
+int n_malloc = 0;
+
+static void * L_malloc(size_t n)
+{
+ n_malloc++;
+ fprintf(stderr, "malloced %d\n", n_malloc);
+ return malloc(n);
+}
+
+static void L_free(void *x)
+{
+ n_malloc--;
+ free(x);
+}
+
+#endif
+
+static int rs_sqlite3_auth_unrestricted(void* userdata, int opcode,
+				 const char* arg1, const char* arg2,
+				 const char* dbname, const char* trigger)
+{
+  return SQLITE_OK;
+}
+
+static void sqlite3_set_authorizer_unrestricted(sqlite3 *cnx)
+{
+ sqlite3_set_authorizer(cnx, rs_sqlite3_auth_unrestricted, NULL);
+}
+
+/* ** AUTHORIZATION HANDLING ** */
+
+static int rs_sqlite3_auth_restricted(void* userdata, int opcode,
+			       const char* arg1, const char* arg2,
+			       const char* dbname, const char* trigger)
+{
+  switch(opcode) {
+  case SQLITE_CREATE_INDEX:	/* Index Name      Table Name      */
+  case SQLITE_REINDEX:
+  case SQLITE_CREATE_TABLE:	/* Table Name      NULL            */
+  case SQLITE_CREATE_VTABLE:    /* Table Name      Module Name     */
+  case SQLITE_ALTER_TABLE:      /* Database Name   Table Name      */
+  case SQLITE_CREATE_TEMP_INDEX: /* Index Name      Table Name     */
+  case SQLITE_CREATE_TEMP_TABLE: /* Table Name      NULL           */
+  case SQLITE_CREATE_TEMP_TRIGGER: /* Trigger Name    Table Name   */
+  case SQLITE_CREATE_TEMP_VIEW:	/* View Name       NULL            */
+  case SQLITE_CREATE_TRIGGER:	/* Trigger Name    Table Name      */
+  case SQLITE_CREATE_VIEW:	/* View Name       NULL            */
+  case SQLITE_DELETE:		/* Table Name      NULL            */
+  case SQLITE_DROP_INDEX:	/* Index Name      Table Name      */
+  case SQLITE_DROP_TABLE:	/* Table Name      NULL            */
+  case SQLITE_DROP_VTABLE:      /* Table Name      Module Name     */
+  case SQLITE_DROP_TEMP_INDEX:	/* Index Name      Table Name      */
+  case SQLITE_DROP_TEMP_TABLE:	/* Table Name      NULL            */
+  case SQLITE_DROP_TEMP_TRIGGER: /* Trigger Name    Table Name     */
+  case SQLITE_DROP_TEMP_VIEW:   /* View Name       NULL            */
+  case SQLITE_DROP_TRIGGER:	/* Trigger Name    Table Name      */
+  case SQLITE_DROP_VIEW:	/* View Name       NULL            */
+  case SQLITE_INSERT:		/* Table Name      NULL            */
+  case SQLITE_PRAGMA:		/* Pragma Name     1st arg or NULL */
+  case SQLITE_READ:		/* Table Name      Column Name     */
+  case SQLITE_SELECT:		/* NULL            NULL            */
+#if SQLITE_VERSION_NUMBER > 3003007
+  case SQLITE_FUNCTION:		/* Function Name   NULL            */
+#endif
+  case SQLITE_TRANSACTION:	/* NULL            NULL            */
+  case SQLITE_UPDATE:		/* Table Name      Column Name     */
+  case SQLITE_ANALYZE:          /* Table Name      NULL            */
+  case SQLITE_RECURSIVE:        /* NULL      NULL                  */
+    return SQLITE_OK;
+  case SQLITE_ATTACH:		/* Filename        NULL            */
+  case SQLITE_DETACH:		/* Database Name   NULL            */
+  default:
+fprintf(stderr, "auth_restricted deny %d\n", opcode);
+    return SQLITE_DENY;
+  }
+}
+
+/* KLUDGE: FIXME: we need to know what temp tables are, not code them hard */
+
+static int is_temporary_table(void *userdata, const char *table)
+{
+ if (strcmp(table, "sqlite_temp_master") == 0) return 1;
+ if (strcmp(table, "current_message") == 0) return 1;
+ return 0;
+}
+
+static int rs_sqlite3_auth_restricted_ro(void* userdata, int opcode,
+			          const char* arg1, const char* arg2,
+				  const char* dbname, const char* trigger)
+{
+  switch(opcode) {
+  case SQLITE_CREATE_INDEX:	/* Index Name      Table Name      */
+  case SQLITE_CREATE_TABLE:	/* Table Name      NULL            */
+  case SQLITE_ALTER_TABLE:      /* Database Name   Table Name      */
+    return SQLITE_DENY;
+  case SQLITE_CREATE_TEMP_INDEX: /* Index Name      Table Name     */
+  case SQLITE_CREATE_TEMP_TABLE: /* Table Name      NULL           */
+  case SQLITE_CREATE_TEMP_TRIGGER: /* Trigger Name    Table Name   */
+  case SQLITE_CREATE_TEMP_VIEW:	/* View Name       NULL            */
+    return SQLITE_OK;
+  case SQLITE_CREATE_TRIGGER:	/* Trigger Name    Table Name      */
+  case SQLITE_CREATE_VIEW:	/* View Name       NULL            */
+  case SQLITE_DELETE:		/* Table Name      NULL            */
+  case SQLITE_DROP_INDEX:	/* Index Name      Table Name      */
+  case SQLITE_DROP_TABLE:	/* Table Name      NULL            */
+    return SQLITE_DENY;
+  case SQLITE_DROP_TEMP_INDEX:	/* Index Name      Table Name      */
+  case SQLITE_DROP_TEMP_TABLE:	/* Table Name      NULL            */
+  case SQLITE_DROP_TEMP_TRIGGER: /* Trigger Name    Table Name     */
+  case SQLITE_DROP_TEMP_VIEW:   /* View Name       NULL            */
+    return SQLITE_OK;
+  case SQLITE_DROP_TRIGGER:	/* Trigger Name    Table Name      */
+  case SQLITE_DROP_VIEW:	/* View Name       NULL            */
+    return SQLITE_DENY;
+  case SQLITE_INSERT:		/* Table Name      NULL            */
+    if (is_temporary_table(userdata,arg1))
+    return SQLITE_OK;
+    return SQLITE_DENY;
+  case SQLITE_PRAGMA:		/* Pragma Name     1st arg or NULL */
+    return SQLITE_DENY;
+  case SQLITE_READ:		/* Table Name      Column Name     */
+  case SQLITE_SELECT:		/* NULL            NULL            */
+#if SQLITE_VERSION_NUMBER > 3003007
+  case SQLITE_FUNCTION:		/* Function Name   NULL            */
+#endif
+  case SQLITE_RECURSIVE:        /* NULL      NULL                  */
+    return SQLITE_OK;
+  case SQLITE_TRANSACTION:	/* NULL            NULL            */
+    return SQLITE_DENY;
+  case SQLITE_UPDATE:		/* Table Name      Column Name     */
+
+  /* FIXME: this is somehow needed to select from fts tables. */
+#if 0
+    if (is_temporary_table(userdata,arg1))
+    return SQLITE_OK;
+    return SQLITE_DENY;
+#else
+    return SQLITE_OK;
+#endif
+
+  case SQLITE_ATTACH:		/* Filename        NULL            */
+  case SQLITE_DETACH:		/* Database Name   NULL            */
+  default:
+    return SQLITE_DENY;
+  }
+}
+
+static int sq_sqlite3_create_functions(sqlite3 *conn)
+{
+/*
+  return sqlite3_create_function(conn, "concat", -1, SQLITE_UTF8 | SQLITE_DETERMINISTIC,
+				 NULL, sqlite3_concat, NULL, NULL);
+| */
+}
+
+static void sqlite3_set_authorizer_restricted_ro(sqlite3 *cnx)
+{
+ sqlite3_set_authorizer(cnx, rs_sqlite3_auth_restricted_ro, NULL);
+}
+
+static void sqlite3_set_authorizer_restricted(sqlite3 *cnx)
+{
+ sqlite3_set_authorizer(cnx, rs_sqlite3_auth_restricted, NULL);
+}
+
+/* setup function table */
+
+static void sqlite3_setup_full(sqlite3 *cnx)
+{
+  sq_sqlite3_create_functions(cnx);
+}
+
+static void sqlite3_setup_restricted(sqlite3 *cnx)
+{
+  sqlite3_set_authorizer(cnx, rs_sqlite3_auth_restricted, NULL);
+  sq_sqlite3_create_functions(cnx);
+}
+
+static void sqlite3_setup_restricted_ro(sqlite3 *cnx)
+{
+  sqlite3_set_authorizer(cnx, rs_sqlite3_auth_restricted_ro, NULL);
+  sq_sqlite3_create_functions(cnx);
+}
+
+static void (*setup_table[4])(sqlite3 *) = {
+  NULL,
+  sqlite3_setup_full,
+  sqlite3_setup_restricted,
+  sqlite3_setup_restricted_ro
+};
+
+static void sqlite3_setup(sqlite3 *cnx, int i)
+{
+  void (*f)(sqlite3 *);
+  assert(i<4);
+  f=setup_table[i];
+  if(f) (*f)(cnx);
+}
+
+/**** ommiting pthread stuff here for the time being ****/
+
+typedef struct sqlite3_db {
+  sqlite3 *cnx;
+  size_t bufsize;
+  void *buf;
+} sqlite3_db;
+
+static ___SCMOBJ gambit_free_sqlite_db (void *ptr)
+{
+ sqlite3_db* p=ptr;
+ if(p!=NULL) {
+   if(p->cnx) {
+     sqlite3_close_v2(p->cnx);
+     p->cnx=NULL;
+   }
+   if(p->buf) {
+     free(p->buf);
+     p->buf=NULL;
+     p->bufsize=0;
+   }
+   free(p);
+ }
+ return ___FIX(___NO_ERR);
+}
+
+
+typedef struct prepare_args {
+  sqlite3_stmt *stmt;
+  int tail;
+  sqlite3 *db;
+  int sql_len;
+  int offset;
+  char sql[1];
+} sqlite_prepare_args;
+
+static ___SCMOBJ gambit_free_prepare_args (void *ptr)
+{
+ sqlite_prepare_args* p=ptr;
+ if(p!=NULL) {
+   free(p);
+ }
+ return ___FIX(___NO_ERR);
+}
+
+static ___SCMOBJ gambit_free_pointer (void *ptr)
+{
+ free(ptr);
+ return ___FIX(___NO_ERR);
+}
+
+c-declare-end
+)
+
+(c-initialize #<<c-declare-end
+if(sqlite3_initialize() != SQLITE_OK) {
+  fprintf (stderr, "Warning: error initializing sqlite3 library\n");
+}
+
+c-declare-end
+)
+
+(define-macro (define-c-lambda id args ret ccode)
+  `(define ,id (c-lambda ,args ,ret ,ccode)))
+
+(define-macro (define-const symbol)
+  `(define ,symbol
+     ((c-lambda () int ,(string-append "___return (" (symbol->string symbol) ");")))))
+
+(define-const SQLITE_OPEN_READONLY)
+(define-const SQLITE_OPEN_READWRITE)
+(define-const SQLITE_OPEN_CREATE)
+(define-const SQLITE_OPEN_URI)
+(define-const SQLITE_OPEN_MEMORY)
+(define-const SQLITE_OPEN_NOMUTEX)
+(define-const SQLITE_OPEN_FULLMUTEX)
+(define-const SQLITE_OPEN_SHAREDCACHE)
+(define-const SQLITE_OPEN_PRIVATECACHE)
+
+(define-const SQLITE_OK)
+(define-const SQLITE_ROW)
+(define-const SQLITE_DONE)
+
+(define-const SQLITE_INTEGER)
+(define-const SQLITE_FLOAT)
+(define-const SQLITE_BLOB)
+(define-const SQLITE_NULL)
+(define-const SQLITE_TEXT)
+
+(c-declare #<<c-declare-end
+static int ffi_sqlite3_prepare (sqlite_prepare_args*, sqlite3* db, const char *sql);
+static int ffi_sqlite3_bind_blob (sqlite3_stmt* stmt, int col, ___SCMOBJ data);
+static int ffi_sqlite3_bind_text (sqlite3_stmt* stmt, int col, const char *str);
+static void ffi_sqlite3_column_blob (sqlite3_stmt* stmt, int col, ___SCMOBJ bytes);
+static ___SCMOBJ gambit_free_pointer (void *ptr);
+c-declare-end
+)
+
+(c-define-type sqlite3 "sqlite3")
+(c-define-type sqlite3* (pointer sqlite3 (sqlite3*)))
+(c-define-type sqlite3_stmt "sqlite3_stmt")
+(c-define-type sqlite3_stmt* (pointer sqlite3_stmt (sqlite3_stmt*)))
+(c-define-type sqlite3_db "sqlite3_db")
+(c-define-type sqlite3_db* (pointer sqlite3_db (sqlite3_db*) "gambit_free_sqlite_db"))
+(c-define-type sqlite_prepare_args "sqlite_prepare_args")
+(c-define-type sqlite_prepare_args* (pointer sqlite_prepare_args (sqlite_prepare_args*) "gambit_free_prepare_args"))
+
+(define sqlite3_errstr (c-lambda (int) UTF-8-string "___return ((char*)sqlite3_errstr (___arg1));"))
+
+(define sqlite3-open (c-lambda (char-string int) sqlite3_db* "
+ sqlite3* db;
+ sqlite3_db* result;
+ int rc = sqlite3_open_v2(___arg1, &db, ___arg2, NULL);
+ if(rc != SQLITE_OK) {
+  sqlite3_close_v2(db);
+  ___return(NULL);
+ }
+ result=L_malloc(sizeof(sqlite3_db));
+ result->cnx=db;
+ result->buf=NULL;
+ result->bufsize=0;
+ ___return(result);
+"))
+(define sqlite3_close (c-lambda (sqlite3_db*) int "
+   sqlite3_db* p=___arg1;
+   if(p->cnx) {
+     sqlite3_close_v2(p->cnx);
+     p->cnx=NULL;
+   }
+   if(p->buf) {
+     free(p->buf);
+     p->buf=NULL;
+     p->bufsize=0;
+   }
+"))
+
+(define sqlite3-prepare1
+  (c-lambda
+   (sqlite3_db* UTF-8-string size_t size_t) sqlite3_stmt*
+   ;; db sql-string offset length
+   "
+ sqlite3_db* db=___arg1;
+ sqlite3_stmt *stmt;
+ int rc = sqlite3_prepare_v2(db->cnx, ___arg2+___arg3, ___arg4, &stmt, NULL);
+ if(rc!=SQLITE_OK) {
+   sqlite3_finalize(stmt);
+   ___return(NULL);
+ }
+ ___return(stmt);
+"))
+
+(define sqlite3-error-message
+  (c-lambda (sqlite3_db*) UTF-8-string "___return((const char*)(___arg1 ? sqlite3_errmsg(___arg1->cnx) : \"connection lost\"));"))
+
+(define-macro (abort-sqlite3-error loc code db stmt . more)
+  `(error (and ,db (sqlite3-error-message ,db)) ,code ,db ,stmt ,more))
+
+(define sqlite3-column-count (c-lambda (sqlite3_stmt*) int "sqlite3_column_count"))
+
+(define sqlite3-column-name (c-lambda (sqlite3_stmt* int) UTF-8-string "sqlite3_column_name"))
+
+(define sqlite3-column-type (c-lambda (sqlite3_stmt* int) int "sqlite3_column_type"))
+
+
+#| TBD ISSUE: documented in sqlite.org not found fossil
+(define sqlite3_column_decltype (c-lambda (sqlite3_stmt* int) UTF-8-string "sqlite3_column_decltype"))
+;;|#
+
+(define sql-null?)
+(define sql-null
+  (let ((sql-null '(NULL)))
+    (set! sql-null? (lambda (x) (eq? x sql-null)))
+    (lambda () sql-null)))
+
+(define (sqlite3-bind-index! db stmt i v)
+  (cond
+   ((u8vector? v)
+    (let ((rc ((c-lambda
+                (sqlite3_stmt* int scheme-object) int
+                "___return(sqlite3_bind_blob(___arg1, ___arg2,
+                           U8_DATA(___arg3), U8_LEN(___arg3),
+                           /*SQLITE_STATIC*/ SQLITE_TRANSIENT));")
+               stmt (fx+ i 1) v)))
+      (if (eqv? rc SQLITE_OK) #f (abort-sqlite3-error 'bind! rc db stmt i v))))
+   ((or (and (fixnum? v) v) (and (boolean? v) (if v 1 0)))
+    => (lambda (v)
+	 (let ((rc ((c-lambda (sqlite3_stmt* int int) int "sqlite3_bind_int")
+		    stmt (fx+ i 1) v)))
+	   (if (eqv? rc SQLITE_OK) #f (abort-sqlite3-error 'bind! rc db stmt i v)))))
+   ((real? v)
+    (let ((rc ((c-lambda (sqlite3_stmt* int double) int "sqlite3_bind_double")
+	       stmt (fx+ i 1) v)))
+      (if (eqv? rc SQLITE_OK) #f (abort-sqlite3-error 'bind! rc db stmt i v))))
+   ((string? v)
+    (let ((rc ((c-lambda (sqlite3_stmt* int UTF-8-string size_t) int
+			 "___return(sqlite3_bind_text(___arg1, ___arg2, ___arg3, ___arg4, /*SQLITE_STATIC*/ SQLITE_TRANSIENT));")
+	       stmt (fx+ i 1) v (string-length v))))
+      (if (eqv? rc SQLITE_OK) #f (abort-sqlite3-error 'bind! rc db stmt i v))))
+   ((sql-null? v)
+    (let ((rc ((c-lambda (sqlite3_stmt* int) int "sqlite3_bind_null")
+	       stmt (fx+ i 1))))
+      (if (eqv? rc SQLITE_OK) #f (abort-sqlite3-error 'bind! rc db stmt i v))))
+   (else
+    (abort-sqlite3-error "bind! blob, number, boolean, string or sql-null" #f db stmt i v))))
+
+(define sqlite3_bind_int64 (c-lambda (sqlite3_stmt* int int64) int "sqlite3_bind_int64"))
+(define sqlite3_bind_zeroblob (c-lambda (sqlite3_stmt* int int) int "sqlite3_bind_zeroblob"))
+(define sqlite3_bind_parameter_count (c-lambda (sqlite3_stmt*) int "sqlite3_bind_parameter_count"))
+(define sqlite3_clear_bindings (c-lambda (sqlite3_stmt*) int "sqlite3_clear_bindings"))
+
+(define (sqlite3-bind! db stmt args)
+  (let loop ((i 0) (args args))
+    (if (null? args) #f
+	(let ((rc (sqlite3-bind-index! db stmt i (car args))))
+	  (if rc rc (loop (add1 i) (cdr args)))))))
+
+(define sqlite3-column-type (c-lambda (sqlite3_stmt* int) int "sqlite3_column_type"))
+
+(define sqlite3-column-int64 (c-lambda (sqlite3_stmt* int) int64 "sqlite3_column_int64"))
+
+(define sqlite3-column-float (c-lambda (sqlite3_stmt* int) double "sqlite3_column_double"))
+
+(define sqlite3-column-text (c-lambda (sqlite3_stmt* int) UTF-8-string "sqlite3_column_text"))
+
+(define (sqlite3-column-blob stmt i)
+  (let* ((n ((c-lambda (sqlite3_stmt* int) int "sqlite3_column_bytes") stmt i))
+         (result (make-u8vector n)))
+    (when (> n 0)
+      ((c-lambda
+        (sqlite3_stmt* int scheme-object size_t) void
+        "memcpy(U8_DATA(___arg3), sqlite3_column_blob(___arg1, ___arg2), ___arg4);")
+       stmt i result n))
+    result))
+
+(define sqlite3_data_count (c-lambda (sqlite3_stmt*) int "sqlite3_data_count"))
+
+(define-macro (sqlite3-run-fn root param fn cont)
+  ;; source code compatibility no-op with Askemos code
+  `(,cont (,fn ,param) ,param))
+
+(define (sqlite3-values->vector st)
+  (let* ((n (sqlite3-column-count st))
+	 (result (make-vector n)))
+    (do ((i 0 (add1 i)))
+	((eqv? i n) result)
+	(vector-set
+	 result i
+	 (let ((type (sqlite3-column-type st i)))
+	   (cond
+	    ((eq? type SQLITE_INTEGER) (sqlite3-column-int64 st i))
+	    ((eq? type SQLITE_FLOAT) (sqlite3-column-float st i))
+	    ((eq? type SQLITE_NULL) (sql-null))
+	    ((eq? type SQLITE_TEXT) (sqlite3-column-string st i))
+	    ((eq? type SQLITE_BLOB) (sqlite3-column-blob st i))
+	    (else (error "Wrong sqlite3 column type"))))))))
+
+(define #;-inline (sqlite3-for-each db stmt fn)
+  (do ((exit #f))
+      (exit #t)
+    (sqlite3-run-fn
+     (sqlite3-database-callback db) stmt (c-lambda (sqlite3_stmt*) int "sqlite3_step")
+     (lambda (rc s)
+       (cond
+	((eqv? rc SQLITE_ROW) (fn s))
+	((eqv? rc SQLITE_DONE) (set! exit #t) #f)
+	(else (abort-sqlite3-error sqlite3-for-each rc db s '())))))))
+
+(define (sqlite3-finalize db stmt)
+  (let ((v ((c-lambda (sqlite3_stmt*) int "sqlite3_finalize") stmt)))
+    (or (eqv? v SQLITE_OK)
+	(error (sqlite3-error-message db)))))
+
+(define (sqlite3-statement-reset! db stmt args)
+  (let ((rc ((c-lambda (sqlite3_stmt*) int "sqlite3_reset") stmt)))
+    (if (eqv? rc SQLITE_OK) #t
+	(raise (abort-sqlite3-error 'sqlite3:reset! rc db stmt args)))))
+
+(define (sqlite3-exec/prepared db stmt args)
+  (if (sqlite3-debug-statements)
+      (log-status (sqlite3-database-name db) ": \"" (sqlite3-statement-name stmt) "\" (prepared) on \n"  (object->string args)))
+  (if (pair? args)
+      (let ((exn (begin
+		   (sqlite3-statement-reset! db stmt args)
+		   (sqlite3-bind! db stmt args))))
+	(if exn (begin (sqlite3-statement-reset! stmt args) (raise exn)))))
+  (let ((r '())
+	(tm0 #f) (tm1 #f))
+    #; (if (sqlite3-debug-statements) (set! tm0 (current-milliseconds)))
+    (sqlite3-for-each
+     db p
+     (lambda (row)
+       (set! r (cons row r))))
+    (if tm0 (set! tm1 (current-milliseconds)))
+    (let ((r0 (list->vector
+	       (cons
+		(sqlite3-columns p)
+		(reverse! r)))))
+      (if (and tm0 tm1)
+	  (let ((d (fp- tm1 tm0))
+		(n (sub1 (vector-length r0))))
+	    (logerr "~a: ~a results in ~a ms (~a)\n"
+		    (sqlite3-database-name db) n d
+		    (and (> n 0) (fp/ d (exact->inexact n))))))
+      ;; See also "bind!": It is IMPORTANT that we keep a reference
+      ;; to the args list here.
+      ;;
+      ;; BEWARE: if the compiler was to only preserve the boolean
+      ;; value for (pair? args) we would loose badly…
+      (if (pair? args) (sqlite3-statement-reset! db stmt args))
+      r0)))
