@@ -502,7 +502,7 @@ c-declare-end
 (define (sqlite3-statement-reset! db stmt args)
   (let ((rc ((c-lambda (sqlite3_stmt*) int "sqlite3_reset") stmt)))
     (if (eqv? rc SQLITE_OK) #t
-	(raise (abort-sqlite3-error 'sqlite3:reset! rc db stmt args)))))
+	(abort-sqlite3-error 'sqlite3:reset! rc db stmt args))))
 
 (define (sqlite3-exec/prepared db stmt args)
   (if (sqlite3-debug-statements)
