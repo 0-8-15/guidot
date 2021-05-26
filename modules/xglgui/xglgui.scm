@@ -1642,12 +1642,12 @@
                      label: "R" background-color: background-color color: color
                      guide-callback:
                      (lambda (rect payload event x y)
-                       ;; clipboard-paste may block, run async
+                       ;; clipboard-paste can not be run asynchroneous under X11
                        (guide-critical-add!
-                        (lambda () ;; FIXME: how comes this closes the dialog?
+                        (lambda ()
                           (let ((value (clipboard-paste)))
-                            (kick! (lambda () (data value) (refresh-line! rect)))))
-                        async: #t)
+                            (thread-start! (make-thread (lambda () (kick! (lambda () (data value) (refresh-line! rect))))))))
+                        async: #f)
                        #t)))
                   (lambda (area row col)
                     (guide-button
