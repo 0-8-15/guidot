@@ -164,7 +164,7 @@
            (port
             (semi-fork "fossil" arguments stderr-redirection #|directory: working-directory|#)))
       (assume (begin (when (procedure? log)
-                       (log `(cwd: ,(path-normalize working-directory) arguments: . ,arguments))) #t)
+                       (log `(cwd: ,(path-normalize working-directory) arguments: ,@arguments))) #t)
               "unreachable")
       (cond
        ((not input) (close-output-port port))
