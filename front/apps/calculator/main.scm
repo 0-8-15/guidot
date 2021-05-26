@@ -567,8 +567,6 @@ NULL;
 ;; command line
 
 (let ((area (make-mdv-rect-interval 0 0 320 480)))
-  (define (load-file-with-arguments file args)
-    (load file))
   (define (read-and-evaluate port)
     (let loop ((result #!void) (expr (read port)))
       (cond
@@ -624,8 +622,7 @@ NULL;
       (kick (source-fossil FOSSIL))
       (parse `(,CMD ,then ,@more)))
      ((CMD "-in") (error "usage -in FOSSIL ..."))
-     ((CMD "-load" FN . more)
-      (begin (xload FN) (parse (cons CMD more))))
+     ((CMD "-load" FN . more) (begin (xload FN) (parse (cons CMD more))))
      ((CMD "-load") (error "usage -load FN ..."))
      ((CMD "-start" FN . more)
       (cond
