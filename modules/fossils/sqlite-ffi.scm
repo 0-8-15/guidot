@@ -344,7 +344,7 @@ c-declare-end
 
 (define (sqlite3-open
          dbn #!optional
-         (flags (bitwise-ior SQLITE_OPEN_READWRITE SQLITE_OPEN_CREATE SQLITE_OPEN_URI)))
+         (flags (bitwise-ior SQLITE_OPEN_READONLY SQLITE_OPEN_URI)))
   (define return (c-lambda (char-string int) sqlite3_db* "
  sqlite3* db;
  sqlite3_db* result;
@@ -360,6 +360,11 @@ c-declare-end
  ___return(result);
 "))
   (return dbn flags))
+
+(define (sqlite3-open/ro
+         dbn #!optional
+         (flags SQLITE_OPEN_URI))
+  (sqlite3-open dbn (bitwise-ior SQLITE_OPEN_READONLY flags)))
 
 (define (sqlite3-close db)
   (define sqlite3-close (c-lambda (sqlite3_db*) int "
@@ -574,7 +579,7 @@ c-declare-end
       (if (pair? args) (sqlite3-statement-reset! db stmt args))
       r0)))
 
-(define (sqlite3-exec->vectors db stmt . args)
+(define (sqlite3-exec->vectors db stmt . args) ;; deprecated
   (define include-header
     (cond
      ((eq? db header:)

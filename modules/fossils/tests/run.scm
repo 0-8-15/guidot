@@ -118,3 +118,22 @@
           (sqlite3-close db))))
  ;;
  )
+
+(test-assert
+ "table stores applicable procedure (complex example)"
+ (let ((proc (lambda (x) (cons 'done x)))
+       (db (sqlite3-open "file:test.db?mode=memory")))
+   (and (sqlite3-db? db)
+        (let ((result (sqlite3-exec db "create table p(x integer)"))
+              (stmt (sqlite3-prepare db "insert into p values(?1)"))
+              (data (object->u8vector proc)))
+          (sqlite3-exec db stmt data)
+          (assume (sqlite3-statement-finalize db stmt) "finalization failed")
+          (set! result (sqlite3-exec db "select * from p"))
+          ;; (debug 'LEN  (u8vector-length data)) ;; -- many KByte
+          (assume
+           (equal? ((u8vector->object (mdvector-ref result 0 0)) 99) '(done 99))
+           "unexpected result table")
+          (sqlite3-close db))))
+ ;;
+ )
