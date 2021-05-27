@@ -508,6 +508,23 @@ c-declare-end
 	  ((eq? type SQLITE_BLOB) (sqlite3-column-blob st i))
 	  (else (error "Wrong sqlite3 column type"))))))))
 
+(define (call-with-sqlite3-values statement proc)
+  (let* ((n (sqlite3-column-count statement)))
+    (do ((i n (- i 1))
+         (result
+          '()
+          (cons
+           (let ((type (sqlite3-column-type statement i)))
+	     (cond
+	      ((eq? type SQLITE_INTEGER) (sqlite3-column-int64 statement i))
+	      ((eq? type SQLITE_FLOAT) (sqlite3-column-float statement i))
+	      ((eq? type SQLITE_NULL) (sql-null))
+	      ((eq? type SQLITE_TEXT) (sqlite3-column-text statement i))
+	      ((eq? type SQLITE_BLOB) (sqlite3-column-blob statement i))
+	      (else (error "Wrong sqlite3 column type"))))
+           result)))
+	((eqv? i 0) (apply proc (reverse! result))))))
+
 (define #;-inline (sqlite3-for-each db stmt fn)
   (do ((exit #f))
       (exit #t)
@@ -519,7 +536,7 @@ c-declare-end
 	((eqv? rc SQLITE_DONE) (set! exit #t) #f)
 	(else (abort-sqlite3-error sqlite3-for-each rc db s '())))))))
 
-(define (sqlite3-finalize db stmt)
+(define (sqlite3-statement-finalize db stmt)
   (let ((v ((c-lambda (sqlite3_stmt*) int "sqlite3_finalize") stmt)))
     (or (eqv? v SQLITE_OK)
 	(error (sqlite3-error-message db)))))
@@ -577,7 +594,7 @@ c-declare-end
        ((not prepared) (raise (abort-sqlite3-error sqlite3-exec #f db stmt)))
        (else
         (let ((result (sqlite3-exec/prepared db prepared args include-header)))
-          (sqlite3-finalize db prepared)
+          (sqlite3-statement-finalize db prepared)
           result)))))
    (else (sqlite3-exec/prepared db stmt args include-header))))
 
@@ -619,7 +636,7 @@ c-declare-end
         (let ((rows (/ (ggb-length result) n)))
           (make-mdvector
            (make-range (vector n rows))
-           (ggb->vector result)))))))
+           (ggb#ggb-buffer #;ggb->vector result)))))))
   (cond
    ((string? stmt)
     (let ((prepared (sqlite3-prepare db stmt)))
@@ -627,7 +644,7 @@ c-declare-end
        ((not prepared) (raise (abort-sqlite3-error sqlite3-exec #f db stmt)))
        (else
         (let ((result (sqlite3-exec/prepared db prepared args)))
-          (sqlite3-finalize db prepared)
+          (sqlite3-statement-finalize db prepared)
           result)))))
    (else (sqlite3-exec/prepared db stmt args))))
 

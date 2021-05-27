@@ -20,8 +20,9 @@
            (lambda (stmt)
              (assume (equal? (sqlite3-columns stmt) '#("one")) "unexpected column name")
              (assume (eqv? (sqlite3-column-type stmt 0) SQLITE_INTEGER) "unexpected type")
-             (assume (equal? (sqlite3-values->vector stmt) '#(1)) "unexpected result")))
-          (sqlite3-finalize db stmt)
+             (assume (equal? (sqlite3-values->vector stmt) '#(1)) "unexpected result")
+             (assume (equal? (call-with-sqlite3-values stmt vector) '#(1)) "unexpected result")))
+          (sqlite3-statement-finalize db stmt)
           (sqlite3-close db))))
  ;;
  )
@@ -38,7 +39,24 @@
              (assume (equal? (sqlite3-columns stmt) '#("one")) "unexpected column name")
              (assume (eqv? (sqlite3-column-type stmt 0) SQLITE_TEXT) "unexpected type")
              (assume (equal? (sqlite3-values->vector stmt) '#("one")) "unexpected result")))
-          (sqlite3-finalize db stmt)
+          (sqlite3-statement-finalize db stmt)
+          (sqlite3-close db))))
+ ;;
+ )
+
+(test-assert
+ "sqlite3-for-each #3"
+ (let ((db (sqlite3-open "file:test.db?mode=memory")))
+   (and (sqlite3-db? db)
+        (let ((stmt (sqlite3-prepare db "select 'one' as one, 2.73 as two")))
+          (assume (sqlite3-stmt? stmt) "prepare failed" stmt)
+          (sqlite3-for-each
+           db stmt
+           (lambda (stmt)
+             (assume (equal? (sqlite3-columns stmt) '#("one" "two")) "unexpected column name")
+             (assume (eqv? (sqlite3-column-type stmt 1) SQLITE_FLOAT) "unexpected type")
+             (assume (equal? (call-with-sqlite3-values stmt vector) '#("one" 2.73)) "unexpected result")))
+          (sqlite3-statement-finalize db stmt)
           (sqlite3-close db))))
  ;;
  )
@@ -92,7 +110,7 @@
               (stmt (sqlite3-prepare db "insert into p values(?1, ?2)")))
           (sqlite3-exec db stmt 23 42)
           (sqlite3-exec db stmt 1 3)
-          (sqlite3-finalize db stmt)
+          (sqlite3-statement-finalize db stmt)
           (set! result (sqlite3-exec db "select * from p"))
           (assume
            (equal? (mdvector-body result) '#(23 42 1 3))
