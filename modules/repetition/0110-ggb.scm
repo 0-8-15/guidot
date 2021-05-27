@@ -370,3 +370,9 @@
           (set! done i)
           (ggb-goto! ggb i)
           (ggb-delete! ggb 1))))))
+
+(define (ggb#ggb-buffer ggb) ;; internal
+  ;;
+  ;; may be used to avoid `ggb->vector` when it the value may be
+  ;; safely shared.
+  (macro-ggb-buffer ggb))
