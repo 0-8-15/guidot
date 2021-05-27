@@ -47,6 +47,8 @@
            result))))))
  (else))
 
+(register-command! "beaver" ot0cli-process-commands)
+
 ;;** Early on: execute registered commands
 (match
  (command-line)

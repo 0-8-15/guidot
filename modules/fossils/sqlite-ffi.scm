@@ -334,9 +334,16 @@ c-declare-end
 (c-define-type sqlite_prepare_args "sqlite_prepare_args")
 (c-define-type sqlite_prepare_args* (pointer sqlite_prepare_args (sqlite_prepare_args*) "gambit_free_prepare_args"))
 
+(define (sqlite3-db? obj) (let ((f (foreign-tags obj))) (and f (eq? (car f) 'sqlite3_db*))))
+
+(define (sqlite3-stmt? obj) (let ((f (foreign-tags obj))) (and f (eq? (car f) 'sqlite3_stmt*))))
+
 (define sqlite3_errstr (c-lambda (int) UTF-8-string "___return ((char*)sqlite3_errstr (___arg1));"))
 
-(define sqlite3-open (c-lambda (char-string int) sqlite3_db* "
+(define (sqlite3-open
+         dbn #!optional
+         (flags (bitwise-ior SQLITE_OPEN_READWRITE SQLITE_OPEN_CREATE SQLITE_OPEN_URI)))
+  (define return (c-lambda (char-string int) sqlite3_db* "
  sqlite3* db;
  sqlite3_db* result;
  int rc = sqlite3_open_v2(___arg1, &db, ___arg2, NULL);
@@ -350,6 +357,7 @@ c-declare-end
  result->bufsize=0;
  ___return(result);
 "))
+  (return dbn flags))
 
 (define sqlite3-close (c-lambda (sqlite3_db*) int "
    sqlite3_db* p=___arg1;
@@ -412,25 +420,25 @@ c-declare-end
                 "___return(sqlite3_bind_blob(___arg1, ___arg2,
                            U8_DATA(___arg3), U8_LEN(___arg3),
                            /*SQLITE_STATIC*/ SQLITE_TRANSIENT));")
-               stmt (fx+ i 1) v)))
+               stmt (+ i 1) v)))
       (if (eqv? rc SQLITE_OK) #f (abort-sqlite3-error 'bind! rc db stmt i v))))
    ((or (and (fixnum? v) v) (and (boolean? v) (if v 1 0)))
     => (lambda (v)
 	 (let ((rc ((c-lambda (sqlite3_stmt* int int) int "sqlite3_bind_int")
-		    stmt (fx+ i 1) v)))
+		    stmt (+ i 1) v)))
 	   (if (eqv? rc SQLITE_OK) #f (abort-sqlite3-error 'bind! rc db stmt i v)))))
    ((real? v)
     (let ((rc ((c-lambda (sqlite3_stmt* int double) int "sqlite3_bind_double")
-	       stmt (fx+ i 1) v)))
+	       stmt (+ i 1) v)))
       (if (eqv? rc SQLITE_OK) #f (abort-sqlite3-error 'bind! rc db stmt i v))))
    ((string? v)
     (let ((rc ((c-lambda (sqlite3_stmt* int UTF-8-string size_t) int
-			 "___return(sqlite3_bind_text(___arg1, ___arg2, ___arg3, ___arg4, /*SQLITE_STATIC*/ SQLITE_TRANSIENT));")
-	       stmt (fx+ i 1) v (string-length v))))
+                         "___return(sqlite3_bind_text(___arg1, ___arg2, ___arg3, ___arg4, SQLITE_TRANSIENT));")
+	       stmt (+ i 1) v (string-length v))))
       (if (eqv? rc SQLITE_OK) #f (abort-sqlite3-error 'bind! rc db stmt i v))))
    ((sql-null? v)
     (let ((rc ((c-lambda (sqlite3_stmt* int) int "sqlite3_bind_null")
-	       stmt (fx+ i 1))))
+	       stmt (+ i 1))))
       (if (eqv? rc SQLITE_OK) #f (abort-sqlite3-error 'bind! rc db stmt i v))))
    (else
     (abort-sqlite3-error "bind! blob, number, boolean, string or sql-null" #f db stmt i v))))
@@ -444,7 +452,7 @@ c-declare-end
   (let loop ((i 0) (args args))
     (if (null? args) #f
 	(let ((rc (sqlite3-bind-index! db stmt i (car args))))
-	  (if rc rc (loop (add1 i) (cdr args)))))))
+	  (if rc rc (loop (+ i 1) (cdr args)))))))
 
 (define sqlite3-column-type (c-lambda (sqlite3_stmt* int) int "sqlite3_column_type"))
 
@@ -466,6 +474,13 @@ c-declare-end
 
 (define sqlite3_data_count (c-lambda (sqlite3_stmt*) int "sqlite3_data_count"))
 
+(define (sqlite3-columns st)
+  (let* ((n (sqlite3-column-count st))
+	 (result (##make-vector n)))
+    (do ((i 0 (+ i 1)))
+	((eq? i n) result)
+      (##vector-set! result i (sqlite3-column-name st i)))))
+
 (define-macro (sqlite3-run-fn root param fn cont)
   ;; source code compatibility no-op with Askemos code
   `(,cont (,fn ,param) ,param))
@@ -473,18 +488,18 @@ c-declare-end
 (define (sqlite3-values->vector st)
   (let* ((n (sqlite3-column-count st))
 	 (result (make-vector n)))
-    (do ((i 0 (add1 i)))
+    (do ((i 0 (+ i 1)))
 	((eqv? i n) result)
-	(vector-set
-	 result i
-	 (let ((type (sqlite3-column-type st i)))
-	   (cond
-	    ((eq? type SQLITE_INTEGER) (sqlite3-column-int64 st i))
-	    ((eq? type SQLITE_FLOAT) (sqlite3-column-float st i))
-	    ((eq? type SQLITE_NULL) (sql-null))
-	    ((eq? type SQLITE_TEXT) (sqlite3-column-string st i))
-	    ((eq? type SQLITE_BLOB) (sqlite3-column-blob st i))
-	    (else (error "Wrong sqlite3 column type"))))))))
+      (vector-set!
+       result i
+       (let ((type (sqlite3-column-type st i)))
+	 (cond
+	  ((eq? type SQLITE_INTEGER) (sqlite3-column-int64 st i))
+	  ((eq? type SQLITE_FLOAT) (sqlite3-column-float st i))
+	  ((eq? type SQLITE_NULL) (sql-null))
+	  ((eq? type SQLITE_TEXT) (sqlite3-column-text st i))
+	  ((eq? type SQLITE_BLOB) (sqlite3-column-blob st i))
+	  (else (error "Wrong sqlite3 column type"))))))))
 
 (define #;-inline (sqlite3-for-each db stmt fn)
   (do ((exit #f))
@@ -507,7 +522,7 @@ c-declare-end
     (if (eqv? rc SQLITE_OK) #t
 	(raise (abort-sqlite3-error 'sqlite3:reset! rc db stmt args)))))
 
-(define (sqlite3-exec/prepared db stmt args)
+(define (sqlite3-exec/prepared db stmt args include-header)
   (if (sqlite3-debug-statements)
       (log-status (sqlite3-database-name db) ": \"" (sqlite3-statement-name stmt) "\" (prepared) on \n"  (object->string args)))
   (if (pair? args)
@@ -515,24 +530,19 @@ c-declare-end
 		   (sqlite3-statement-reset! db stmt args)
 		   (sqlite3-bind! db stmt args))))
 	(if exn (begin (sqlite3-statement-reset! stmt args) (raise exn)))))
-  (let ((r '())
-	(tm0 #f) (tm1 #f))
+  (let ((r '()))
     #; (if (sqlite3-debug-statements) (set! tm0 (current-milliseconds)))
     (sqlite3-for-each
-     db p
-     (lambda (row)
-       (set! r (cons row r))))
-    (if tm0 (set! tm1 (current-milliseconds)))
+     db stmt
+     (lambda (stmt)
+       (set! r (cons (sqlite3-values->vector stmt) r))))
     (let ((r0 (list->vector
-	       (cons
-		(sqlite3-columns p)
-		(reverse! r)))))
-      (if (and tm0 tm1)
-	  (let ((d (fp- tm1 tm0))
-		(n (sub1 (vector-length r0))))
-	    (logerr "~a: ~a results in ~a ms (~a)\n"
-		    (sqlite3-database-name db) n d
-		    (and (> n 0) (fp/ d (exact->inexact n))))))
+	       (cond
+                (include-header
+                 (cons
+		  (sqlite3-columns stmt)
+		  (reverse! r)))
+                (else (reverse! r))))))
       ;; See also "bind!": It is IMPORTANT that we keep a reference
       ;; to the args list here.
       ;;
@@ -542,10 +552,25 @@ c-declare-end
       r0)))
 
 (define (sqlite3-exec db stmt . args)
+  (define include-header
+    (cond
+     ((eq? db header:)
+      (let ((result stmt))
+        (unless (pair? args) (error "to few arguments" sqlite3-exec))
+        (set! db (car args))
+        (set! args (cdr args))
+        (unless (pair? args) (error "to few arguments" sqlite3-exec))
+        (set! stmt (car args))
+        (set! args (cdr args))
+        result))
+     (else #t)))
   (cond
    ((string? stmt)
     (let ((prepared (sqlite3-prepare db stmt)))
       (cond
        ((not prepared) (raise (abort-sqlite3-error sqlite3-exec #f db stmt)))
-       (else (sqlite3-exec/prepared db prepared args)))))
-   (else (sqlite3-exec/prepared db stmt args))))
+       (else
+        (let ((result (sqlite3-exec/prepared db prepared args include-header)))
+          (sqlite3-finalize db prepared)
+          result)))))
+   (else (sqlite3-exec/prepared db stmt args include-header))))
