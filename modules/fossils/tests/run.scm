@@ -7,9 +7,7 @@
 (test-assert
  "sqlite3-open returns db and close works"
  (let ((db (sqlite3-open "file:test.db?mode=memory")))
-   (and (sqlite3-db? db)
-        (let ((rc (sqlite3-close db)))
-          (eqv? rc SQLITE_OK)))))
+   (and (sqlite3-db? db) (eq? (sqlite3-close db) #t))))
 
 (test-assert
  "sqlite3-for-each #1"
@@ -24,8 +22,7 @@
              (assume (eqv? (sqlite3-column-type stmt 0) SQLITE_INTEGER) "unexpected type")
              (assume (equal? (sqlite3-values->vector stmt) '#(1)) "unexpected result")))
           (sqlite3-finalize db stmt)
-          (let ((rc (sqlite3-close db)))
-            (eqv? rc SQLITE_OK)))))
+          (sqlite3-close db))))
  ;;
  )
 
@@ -42,8 +39,7 @@
              (assume (eqv? (sqlite3-column-type stmt 0) SQLITE_TEXT) "unexpected type")
              (assume (equal? (sqlite3-values->vector stmt) '#("one")) "unexpected result")))
           (sqlite3-finalize db stmt)
-          (let ((rc (sqlite3-close db)))
-            (eqv? rc SQLITE_OK)))))
+          (sqlite3-close db))))
  ;;
  )
 
@@ -57,8 +53,7 @@
           (assume (equal? result ' #(#(1))) "unexpected result without header")
           (set! result (sqlite3-exec header: #f db "select 'correct'"))
           (assume (equal? result '#(#("correct"))) "unexpected result for string")
-          (let ((rc (sqlite3-close db)))
-            (eqv? rc SQLITE_OK)))))
+          (sqlite3-close db))))
  ;;
  )
 
@@ -80,7 +75,6 @@
           (assume (equal? result ' #(#(#u8(65)))) "unexpected result for u8vector a.k.a. blob")
           (set! result (sqlite3-exec header: #f db "select ?1" "a"))
           (assume (equal? result ' #(#("a"))) "unexpected result for string")
-          (let ((rc (sqlite3-close db)))
-            (eqv? rc SQLITE_OK)))))
+          (sqlite3-close db))))
  ;;
  )

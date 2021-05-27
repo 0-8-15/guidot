@@ -359,7 +359,8 @@ c-declare-end
 "))
   (return dbn flags))
 
-(define sqlite3-close (c-lambda (sqlite3_db*) int "
+(define (sqlite3-close db)
+  (define sqlite3-close (c-lambda (sqlite3_db*) int "
    sqlite3_db* p=___arg1;
    if(p->cnx) {
      sqlite3_close_v2(p->cnx);
@@ -371,6 +372,9 @@ c-declare-end
      p->bufsize=0;
    }
 "))
+  (let ((rc (sqlite3-close db)))
+    (if (eqv? rc SQLITE_OK) #t
+	(raise (abort-sqlite3-error sqlite3-close rc db #f)))))
 
 (define (sqlite3-prepare db sql)
   (define return
