@@ -137,3 +137,19 @@
           (sqlite3-close db))))
  ;;
  )
+
+(test-assert
+ "sqlite3-open/ro on non-existing file fails"
+ ;; In Wales this may fail :-/
+ (not (sqlite3-open/ro "file:Llanfairpwllgwyngyllgogerychwyrndrobwllllantysiliogogogoch")))
+
+(test-assert
+ "call-with-sqlite3-database with mode r/o in memory works anyway"
+ (call-with-sqlite3-database
+  "file:test.db?mode=memory"
+  (lambda (db)
+    (sqlite3-exec db "create table p(x integer)")
+    (sqlite3-exec db "insert into p values(?1)" 7)
+    (let ((result (sqlite3-exec db "select * from p")))
+      (eqv? (mdvector-ref result 0 0) 7)))
+  mode: 'r/o))
