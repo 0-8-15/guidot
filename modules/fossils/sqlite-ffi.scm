@@ -2,6 +2,8 @@
 ;; SQLite FFI
 ;;
 ;; (C) 2021 JFW; License: BSD
+;;
+;; See tests/run.scm for documentation.
 
 #;(declare
   (block)
