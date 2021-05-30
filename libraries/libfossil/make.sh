@@ -39,8 +39,11 @@ rmifexists $SYS_PREFIX/lib/libfossil.a
 
 # export SYS_AR SYS_PREFIX; echo warte in fossil build auf edit; pwd; bash -i
 
+cp src/sqlite3.h $SYS_PREFIX/include/
+
 case $SYS_PLATFORM in
     win32)
+        $SYS_STRIP fossil.exe
         cp fossil.exe $SYS_PREFIX/bin/fossil-new.exe
         # argv is not passed as wide char from Gambit
         sed -i  '/defined(BROKEN_MINGW_CMDLINE)/s/$/ || 1\
