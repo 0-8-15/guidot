@@ -475,7 +475,7 @@
        (error "invalid drawing handler" 'make-guide-payload on-redraw))
      (unless (or (procedure? on-any-event) (not on-any-event)
                  (and (vector? on-any-event)
-                      (do ((i (fx- (vector-length on-any-event) -1) (fx- i 1)))
+                      (do ((i (fx- (vector-length on-any-event) 1) (fx- i 1)))
                           ((or (eqv? i -1)
                                (not (procedure? (vector-ref any-event i))))
                            (eqv? i -1)))))
@@ -786,7 +786,7 @@
     select-font))
 
 (define (guide-font-height font)
-  (let ((override (MATURITY+1:ln-ttf:font-ref font (char->integer #\|))))
+  (let ((override (ln-ttf:font-ref font (char->integer #\|))))
     (cond
      (override (+ 2 (ttf:glyph-height override))) ;; TBD: +2 is garbage
      (else

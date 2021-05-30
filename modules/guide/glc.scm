@@ -786,14 +786,14 @@
     `(do ((,to ,start (##fx+ ,to 1))
           (,from ,source-start (##fx+ ,from 1)))
          ((eqv? ,to ,end))
-       (vector-set! ,result ,to (MATURITY+1:ln-ttf:font-ref ,font (vector-ref ,source ,from))))))
+       (vector-set! ,result ,to (ln-ttf:font-ref ,font (vector-ref ,source ,from))))))
 
 (define (vector-fill-glyphs-from-unicodevector! result start end source source-start font)
   #;(macro-MATURITY+2:vector-fill-glyphs-from-unicodevector! result start end source source-start font)
   (do ((to start (fx+ to 1))
        (from source-start (fx+ from 1)))
       ((eqv? to end))
-    (vector-set! result to (MATURITY+1:ln-ttf:font-ref font (vector-ref source from)))))
+    (vector-set! result to (ln-ttf:font-ref font (vector-ref source from)))))
 
 (define (MATURITY-1:vector->guide-glyphvector vec font)
   ;; TBD: don't store the source in the glyphvector; useless overhead.
@@ -841,7 +841,7 @@
        (let ((c (ggb-ref source from)))
          (##vector-set! result to c) ;; row 0: still u32 unicode, avoid!
          ;; row 1: the actual glyph
-         (##vector-set! result (##fx+ to end) (MATURITY+1:ln-ttf:font-ref font c)))))))
+         (##vector-set! result (##fx+ to end) (ln-ttf:font-ref font c)))))))
 
 (define utf8string->guide-glyphvector MATURITY-1:utf8string->guide-glyphvector)
 
@@ -888,7 +888,7 @@
 ;;;** Strings
 
 (define (%%glC:glyphvector-bounds glyphs font)
-  (let ((override (MATURITY+1:ln-ttf:font-ref font 124))) ;; (char->integer #\|)
+  (let ((override (ln-ttf:font-ref font 124))) ;; (char->integer #\|)
       ;; note: this path is usually always taken
       (if override
           (let ((goy (ttf:glyph-offsety override))
@@ -940,7 +940,7 @@
   (let* ((width
           (- width
              (if padding-right padding-right
-                 (let ((glyph (MATURITY+1:ln-ttf:font-ref font #\|)))
+                 (let ((glyph (ln-ttf:font-ref font #\|)))
                    (if glyph (ttf:glyph-advancex glyph) 3)))))
          (lines (ggb2d-lines into))
          (current-line
@@ -986,7 +986,7 @@
             (ggb-insert! current-line c)
             (push-line!))
            (else
-            (let* ((glyph (MATURITY+1:ln-ttf:font-ref font c))
+            (let* ((glyph (ln-ttf:font-ref font c))
                    (gw (if glyph
                            (let ((x (ttf:glyph-advancex glyph)))
                              (if (exact? x) (exact->inexact x) x))
