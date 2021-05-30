@@ -1,6 +1,6 @@
 ;;** Missplaced Code
 
-(include "../../front/apps/guide/DejaVuSans-14,24,32.scm")
+(include "../../apps/guide/DejaVuSans-14,24,32.scm")
 
 (cond-expand
  (debug
