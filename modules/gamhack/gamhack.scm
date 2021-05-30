@@ -43,7 +43,7 @@
 
 ;;** Lowlevel Port Operations
 
-(include "~~lib/_gambit#.scm")
+(include "~~tgt/lib/_gambit#.scm")
 
 (define-macro (macro-output-port-closed? port)
   `(macro-closed? (macro-port-woptions ,port)))
