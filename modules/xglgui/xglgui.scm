@@ -26,7 +26,7 @@
 
 (define (%%xglgui:glyphvector-height glyphs font) ;; unused?
   (receive (below above) (guide-glypvector-bounds glyphs)
-    (let ((override (MATURITY+1:ln-ttf:font-ref font (char->integer #\|))))
+    (let ((override (ln-ttf:font-ref font (char->integer #\|))))
       ;; note: this path is usually always taken
       (when override
         (let ((goy (ttf:glyph-offsety override)))
@@ -128,7 +128,7 @@
              (ccv (ggb->vector (utf8string->ggb txt))))
             ((eqv? i (vector-length ccv)))
           (let* ((charcode (vector-ref ccv i))
-                 (g (MATURITY+1:ln-ttf:font-ref fnt charcode)))
+                 (g (ln-ttf:font-ref fnt charcode)))
             (if g
                 (let ((img (ttf:glyph-image g)))
                   (if img
@@ -479,7 +479,7 @@
               (ggb-for-each
                line-buffer
                (lambda (i c)
-                 (let ((glyph (MATURITY+1:ln-ttf:font-ref font c)))
+                 (let ((glyph (ln-ttf:font-ref font c)))
                    (if glyph (set! w (+ w (ttf:glyph-advancex glyph)))))))
               (when (and (>= w text-width) (eqv? count 0))
                 (linebreak-again!)
@@ -527,7 +527,7 @@
                      line-buffer
                      (lambda (i c)
                        (if (eqv? i line-point) (set! width-before w))
-                       (let ((glyph (MATURITY+1:ln-ttf:font-ref font c)))
+                       (let ((glyph (ln-ttf:font-ref font c)))
                          (if glyph (set! w (+ w (ttf:glyph-advancex glyph)))))))
                     w))
                  (label! cursor-label!))
@@ -595,7 +595,7 @@
                        (ggb-for-each
                         target-line
                         (lambda (i c)
-                          (let ((glyph (MATURITY+1:ln-ttf:font-ref font c)))
+                          (let ((glyph (ln-ttf:font-ref font c)))
                             (if glyph (set! w (+ w (ttf:glyph-advancex glyph)))))
                           (if (< x w) (return i))))
                        (ggb-length target-line))))))
@@ -1013,7 +1013,7 @@
                       (ggb-for-each
                        value-buffer
                        (lambda (i c)
-                         (let ((glyph (MATURITY+1:ln-ttf:font-ref font c)))
+                         (let ((glyph (ln-ttf:font-ref font c)))
                            (if glyph (set! w (+ w (ttf:glyph-advancex glyph)))))
                          (if (< x w) (return i)))
                        value-display-offset)
@@ -1642,12 +1642,17 @@
                      label: "R" background-color: background-color color: color
                      guide-callback:
                      (lambda (rect payload event x y)
-                       ;; clipboard-paste can not be run asynchroneous under X11
                        (guide-critical-add!
                         (lambda ()
                           (let ((value (clipboard-paste)))
                             (thread-start! (make-thread (lambda () (kick! (lambda () (data value) (refresh-line! rect))))))))
-                        async: #f)
+                        ;; clipboard-paste can not be run
+                        ;; asynchroneous under X11 but should be
+                        ;; asynchroneous under Android
+                        async:
+                        (cond-expand
+                         ((or android) #t)
+                         (else #f)))
                        #t)))
                   (lambda (area row col)
                     (guide-button
