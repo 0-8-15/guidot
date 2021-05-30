@@ -16,7 +16,7 @@
 
 ;;;* Global Syntax Imports
 
-(include "~~lib/_gambit#.scm")
+(include "~~tgt/lib/_gambit#.scm")
 
 (define-macro (c-safe-lambda formals return c-code)
   (let ((tmp (gensym 'c-safe-lambda-result))
