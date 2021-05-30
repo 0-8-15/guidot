@@ -583,7 +583,7 @@ EOF
 ;; HACK, FIXME: make it work on lambdanative/android
 (define (ln-system-command-line* offset) ;; FIXME: depends on lambdanative!
   (cond-expand
-   (debug (MATURITY -1 "fake system command line" loc: daemonian:ln-system-command-line))
+   (debug (MATURITY -1 "fake system command line" loc: 'daemonian:ln-system-command-line))
    (else))
 #|
   (log-status "faking command line from offset " offset)
