@@ -11,6 +11,8 @@
 
 (include "capture-domain.scm")
 
+(define-macro (TBD-fork-failed-exit) '(exit 1))
+
 (cond-expand
  ((or android fossil-not-embedded)
   (register-command!
@@ -26,15 +28,15 @@
      (let ((conn (open-process
                   `(path: "fossil" arguments: ,args
                           stdin-redirection: #t stdout-redirection: #t show-console: #f))))
-       (when (port? conn)
-         (parameterize
-             ((port-copy-initial-timeout 2)
-              (port-copy-data-timeout 1))
-           (ports-connect! conn conn (current-input-port) (current-output-port))
-           (exit (/ (process-status conn) 256))))))))
+       (cond
+        ((port? conn)
+         (ports-connect! conn conn (current-input-port) (current-output-port))
+         (exit (/ (process-status conn) 256)))
+        (else (TBD-fork-failed-exit)))))))
  (else
   (include "../gamhack/gambit-embedded-chararray.scm")
   (c-declare "extern int fossil_main(int argc, char **argv);")
+  ;; FIXME: Strangely this version closes the connection after 45-70 Kbyte.
   (register-command!
    "fossil"
    (lambda (args)
