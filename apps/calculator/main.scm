@@ -288,7 +288,13 @@ NULL;
 
 (define (xload fn)
   (cond
-   ((source-fossil) (read-and-evaluate (fossil-command repository: (source-fossil) "cat" fn)))
+   ((source-fossil)
+    (let* ((port (fossil-command repository: (source-fossil) "cat" fn))
+           (exprs (read-all port)))
+      (cond
+       ((eqv? (process-status port) 0)
+        (for-each eval exprs))
+       (else (error "fossil failed on" fn)))))
    (else (load fn))))
 
 (define (debug-adhoc-network-port) 3333)
