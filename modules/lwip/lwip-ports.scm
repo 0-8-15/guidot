@@ -292,13 +292,14 @@
        ;; Copy `in` to `out` and close the input side of `in` and the
        ;; output side of `out` when EOF is reached on `in`.
        (let ((corout (quasi-port-writer out))
+             (tmo (lwip-connect-timeout))
              (buffer (%allocate-u8vector MTU)))
-         (input-port-timeout-set! in (lwip-connect-timeout))
          (let loop ((buffer buffer)
                     (offset 0)
                     (n 0)
                     (mtu MTU)
                     (corout corout))
+           (input-port-timeout-set! in tmo)
            (let ((n (read-subu8vector buffer offset mtu in 1)
                   #;(begin
                     (##wait-input-port in)
@@ -310,7 +311,7 @@
                ;; ??? FIXME: really close out???
                (close-output-port out))
               (else
-               (input-port-timeout-set! in (lwip-timeout mtu))
+               (set! tmo (lwip-timeout mtu))
                (corout buffer offset n mtu loop))))))))
 
 (define port-copy-to-lwip/default port-copy-lwip/flow-control)

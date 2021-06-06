@@ -43,7 +43,7 @@
 
 ;;** Lowlevel Port Operations
 
-(include "~~tgt/lib/_gambit#.scm")
+(include "~~bld/lib/_gambit#.scm")
 
 (define-macro (macro-output-port-closed? port)
   `(macro-closed? (macro-port-woptions ,port)))
@@ -95,7 +95,7 @@
    (else (close-output-port port))))
 
 (define (close-input-quasi-port port)
-  (close-port (quasi-port-read-port port)))
+  (close-input-port (quasi-port-read-port port)))
 
 (REDEFINE! (close-input-port port)
   (cond
@@ -199,13 +199,13 @@
                (corout (and (quasi-port? out) (quasi-port-writer out))))
       (let ((n (read-subu8vector buffer offset mtu in 1)))
         (cond
-         ((fx<= n 0)
+         ((<= n 0)
           (close-input-port in)
           ;; (force-output out) ;; part of close??
           (close-output-port out))
          ((procedure? corout) (corout buffer offset n mtu loop))
          (else
-          (if (fx= (write-subu8vector buffer 0 n out) n)
+          (if (eqv? (write-subu8vector buffer 0 n out) n)
               (begin
                 (force-output out)
                 (unless (macro-output-port-closed? out)
