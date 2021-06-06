@@ -40,6 +40,7 @@
   (register-command!
    "fossil"
    (lambda (args)
+     (MATURITY -10 "fossil requires early dispatch" loc: "fossil")
      (let* ((args (cons "-s fossil" args))
             (n (length args)))
        ((c-lambda (int char**) int "fossil_main") n args))))))
