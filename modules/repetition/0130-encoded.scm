@@ -107,7 +107,7 @@
     ((UTF-8) (ggb->string/encoding-utf8 ggb start end))
     (else
      (let ((result (make-string (fx- end start))))
-       (ggb-for-each ggb (lambda (i v) (string-set! result i v)) start end)
+       (ggb-for-each ggb (lambda (i v) (string-set! result i (integer->char v))) start end)
        result))))
 
 (define (utf8string->ggb str #!optional (encoding-error #f)) ;; deprecated
