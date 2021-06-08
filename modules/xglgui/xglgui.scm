@@ -940,7 +940,7 @@
           (label! vertical-align: vertical-align)
           (label! font: font)
           (label! color: color)
-          (label! size: w line-height)
+          (label! size: w h)
           (label! position: xsw (round (+ ysw border-width)))
           (label! text: value-buffer-as-string)
           label!))
