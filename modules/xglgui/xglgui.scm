@@ -979,7 +979,7 @@
                   (label! vertical-align: vertical-align)
                   (label! font: font)
                   (label! color: highlight-color)
-                  (label! size: w line-height)
+                  (label! size: w h)
                   (label!
                    position:
                    (round (+ xsw
