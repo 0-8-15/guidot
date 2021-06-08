@@ -593,17 +593,24 @@ NULL;
     (define (setsize! interval)
       (set! area interval)
       (parse `(,CMD . ,more)))
+    (define w*h (rx "^([0-9]+)x([0-9]+)$"))
     (match
      SIZE
-     ((or "tiny" "320x480") (setsize! (make-mdv-rect-interval 0 0 320 480)))
-     ((or "small" "640x960")  (setsize! (make-mdv-rect-interval 0 0 640 960)))
-     ((or "medium" "640x1200")  (setsize! (make-mdv-rect-interval 0 0 640 1200)))
-     ((or "large" "1920x1200") (setsize! (make-mdv-rect-interval 0 0 1920 1200)))
+     ("tiny" (setsize! (make-mdv-rect-interval 0 0 320 480)))
+     ("small"  (setsize! (make-mdv-rect-interval 0 0 640 960)))
+     ("medium"  (setsize! (make-mdv-rect-interval 0 0 640 1200)))
+     ("large" (setsize! (make-mdv-rect-interval 0 0 1920 1200)))
      ;; ("ask" (test-guide-size-select-toplevel-payload area more))
      (otherwise
-      (println port: (current-error-port) "Unhandled size "
-               (system-cmdargv 0) " did not parse: " (object->string otherwise))
-      (exit 23))))
+      (cond
+       ((rx~ w*h otherwise) =>
+        (lambda (w*h)
+          (let ((d (lambda (n) (string->number (rxm-ref w*h n)))))
+            (setsize! (make-mdv-rect-interval 0 0 (d 1) (d 2))))))
+       (else
+        (println port: (current-error-port) "Unhandled size "
+                 (system-cmdargv 0) " did not parse: " (object->string otherwise))
+        (exit 23))))))
   (define parse
     (match-lambda
      ((CMD) (calculator area chat-dir))
