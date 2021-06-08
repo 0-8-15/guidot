@@ -13,18 +13,20 @@
          (background (guide-background default: in: in))
          (name 'guidot-frame))
   (define-values (xsw xno ysw yno) (guide-boundingbox->quadrupel in))
-  (let ((view! (make-guide-figure-view))
-        (table
-         (make-guide-table
-          (make-mdvector
-           (range '#(1 1))
-           (vector (lambda (area row col) (content area))))
-          in: in
-          border-ratio: border-ratio
-          name: name)))
+  (let* ((view! (make-guide-figure-view))
+         (width (- xno xsw))
+         (height (- yno ysw))
+         (table
+          (make-guide-table
+           (make-mdvector
+            (range '#(1 1))
+            (vector (lambda (area row col) (content area))))
+           in: (make-mdv-rect-interval 0 0 width height)
+           border-ratio: border-ratio
+           name: name)))
     (view! background: background)
     (view! color: color)
-    (view! size: (- xno xsw) (- yno ysw))
+    (view! size: width height)
     (view! position: xsw ysw)
     (view! foreground: (guide-payload-on-redraw table))
     (make-guide-payload
