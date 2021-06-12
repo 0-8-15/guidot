@@ -1900,18 +1900,18 @@
 (define (guide-list-select-payload
          in content
          #!key
-         (font #f)
          (done #f)
          (action #f) (guide-callback #f)
+         (style (guide-current-style))
+         (line-height (guide-font-height (guide-style-ref style font:)))
+         (font (guide-select-font height: line-height))
          (background %%guide-default-background)
-         (background-color (guide-select-color-1))
-         (color (guide-select-color-2))
-         (horizontal-align 'center)
-         (vertical-align 'center)
-         (line-height 35)
+         (background-color (guide-style-ref style background-color:))
+         (color (guide-style-ref style color:))
+         (horizontal-align (or (guide-style-ref style horizontal-align:) 'center))
+         (vertical-align (or (guide-style-ref style vertical-align:) 'center))
          ;; non-functional; for debugging:
          (name 'list-select-payload))
-  (unless font (set! font (guide-select-font height: line-height)))
   (let* ((content (let ((content (content)))
                     (if (vector? content) content (apply vector content))))
          (len (vector-length content)))
