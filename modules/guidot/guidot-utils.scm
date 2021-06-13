@@ -62,7 +62,8 @@
          content
          #!key
          (in (current-guide-gui-interval))
-         (border-ratio 1/20)
+         (padding #f)
+         (border-ratio 1/20) ;; deprecated, outdated
          (color
           (let* ((color (guide-select-color-3))
                  (r (color-red color))
@@ -73,17 +74,17 @@
          (background (guide-background default: in: in))
          (name 'guidot-frame))
   (define-values (xsw xno ysw yno) (guide-boundingbox->quadrupel in))
-  (let ((view! (make-guide-figure-view))
-        (width (- xno xsw))
-        (height (- yno ysw))
-        (table
-         (make-guide-table
-          (make-mdvector
-           (range '#(1 1))
-           (vector (lambda (area row col) (content area))))
-          in: in
-          border-ratio: border-ratio
-          name: name)))
+  (let* ((view! (make-guide-figure-view))
+         (pad (%%guide:parse-padding guidot-frame in (or padding border-ratio)))
+         (width (- xno xsw))
+         (height (- yno ysw))
+         (inner
+          (content
+           (make-x0y0x1y1-interval/coerce
+            (+ xsw (vector-ref pad 3))
+            (+ ysw (vector-ref pad 2))
+            (- xno (vector-ref pad 1))
+            (+ yno (vector-ref pad 0))))))
     (view! background: background)
     (view! color: color)
     (view! size: width height)
@@ -91,9 +92,9 @@
     (make-guide-payload
      in: in name: name
      on-redraw:
-     (let ((bg (view!)) (fg (guide-payload-on-redraw table)))
-       (lambda () (bg) (fg)))
-     on-any-event: (guide-payload-on-any-event table)
+     (let ((bg (view!)))
+       (lambda () (bg) (guide-event-dispatch-to-payload/redraw inner)))
+     on-any-event: (guide-payload-on-any-event inner)
      lifespan: 'ephemeral widget: #f)))
 
 (define (guidot-layers
