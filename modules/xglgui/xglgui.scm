@@ -339,7 +339,7 @@
     (set! font (guide-select-font size: 'medium))
     (set! line-height (guide-font-height font))))
   ;;
-  (let ((fh (guide-font-height font)))
+  (let ((fh line-height))
     (set! rows (min rows (floor (/ (mdv-rect-interval-height in) fh)))))
   (let*
       ((newline-indicator 10)
@@ -1903,8 +1903,13 @@
          (done #f)
          (action #f) (guide-callback #f)
          (style (guide-current-style))
-         (line-height (guide-font-height (guide-style-ref style font:)))
-         (font (guide-select-font height: line-height))
+         (line-height #f)
+         (font
+          (cond
+           (line-height (guide-select-font height: line-height))
+           ((guide-style-ref style font:) => identity)
+           ;; deprecated legacy default:
+           (else (guide-select-font height: 35))))
          (background %%guide-default-background)
          (background-color (guide-style-ref style background-color:))
          (color (guide-style-ref style color:))
@@ -1912,6 +1917,9 @@
          (vertical-align (or (guide-style-ref style vertical-align:) 'center))
          ;; non-functional; for debugging:
          (name 'list-select-payload))
+  ;; legacy parameter cleanup
+  (unless line-height (set! line-height (guide-font-height font)))
+  ;;
   (let* ((content (let ((content (content)))
                     (if (vector? content) content (apply vector content))))
          (len (vector-length content)))

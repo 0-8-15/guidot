@@ -786,6 +786,8 @@
     select-font))
 
 (define (guide-font-height font)
+  ;;(unless (ln-ttf:font? font) (error "invalid font argument" guide-font-height font))
+  ;;(assume (ln-ttf:font? font) "invalid font argument" guide-font-height font)
   (let ((override (ln-ttf:font-ref font (char->integer #\|))))
     (cond
      (override (+ 2 (ttf:glyph-height override))) ;; TBD: +2 is garbage
