@@ -84,7 +84,7 @@
             (+ xsw (vector-ref pad 3))
             (+ ysw (vector-ref pad 2))
             (- xno (vector-ref pad 1))
-            (+ yno (vector-ref pad 0))))))
+            (- yno (vector-ref pad 0))))))
     (view! background: background)
     (view! color: color)
     (view! size: width height)
