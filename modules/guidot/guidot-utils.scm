@@ -94,7 +94,14 @@
      on-redraw:
      (let ((bg (view!)))
        (lambda () (bg) (guide-event-dispatch-to-payload/redraw inner)))
-     on-any-event: (guide-payload-on-any-event inner)
+     on-any-event:
+     (guide-payload-on-any-event inner)
+     #;(lambda (rect payload event x y)
+       (cond
+        ((and (guide-event-graphics? event)
+              (guide-payload-contains/xy? inner x y))
+         (guide-payload-on-any-event inner))
+        (else #f)))
      lifespan: 'ephemeral widget: #f)))
 
 (define (guidot-layers

@@ -1814,5 +1814,26 @@
        (else (exit code))))
     (values guide-toplevel-payload guide-main guide-exit)))
 
+(define (guide-toplevel-capture-return)
+  (let ((before (guide-toplevel-payload)))
+    (lambda _
+      (cond
+       (before (guide-toplevel-payload before))
+       (else
+        (let ((return (guide-toplevel-capture-return)))
+          (guide-toplevel-payload
+           (guide-table-layout
+            (guide-payload-measures (guide-toplevel-payload))
+            name: "Sure to exit?"
+            cols: 1 rows: 3
+            (lambda (area row col)
+              (guide-button
+               in: area label: "Sure to exit?"
+               background: (guide-background default: in: area)
+               guide-callback: (lambda _ #t)))
+            (lambda (area row col)
+              (guide-button in: area label: "No, Go Back." guide-callback: return))
+            (lambda (area row col)
+              (guide-button in: area label: "Exit"))))))))))
 
 ;; #eof
