@@ -208,6 +208,38 @@
         ((3) ;; top,x,bottom
          (vector (vector-ref k 0) (vector-ref k 1) (vector-ref k 2) (vector-ref k 1)))))))
 
+(define (%%guide:parse-padding location area arg)
+  ;; Like %%guide:complete-padding-css then replace numbers < 1 with
+  ;; fractions of the context area.
+  (define (resolve-relative x)
+    (let ((w (mdv-rect-interval-width area))
+          (h (mdv-rect-interval-height area)))
+      (define (width n) (if (< n 1) (* n w) n))
+      (define (height n)  (if (< n 1) (* n h) n))
+      (vector
+       (width (vector-ref x 0))
+       (height (vector-ref x 1))
+       (width (vector-ref x 2))
+       (height (vector-ref x 3)))))
+  (let ((k
+         (cond
+          ((pair? arg) (apply vector arg))
+          ((vector? arg) arg)
+          ((number? arg) (make-vector 4 arg))
+          (else (error "invalid padding argument" location arg)))))
+    (let ((len (vector-length k)))
+      (do ((i 0 (fx+ i 1))) (eqv? i len)
+        (let ((v (vector-ref k i)))
+          (unless (and (number? v) (>= v 0))
+            (error "invalid argument" location i v))))
+      (resolve-relative
+       (case len
+         ((4) k)
+         ((2) ;; y,x
+          (vector (vector-ref k 0) (vector-ref k 1) (vector-ref k 0) (vector-ref k 1)))
+         ((3) ;; top,x,bottom
+          (vector (vector-ref k 0) (vector-ref k 1) (vector-ref k 2) (vector-ref k 1))))))))
+
 (define (MATURITY+2:make-guide-label-view)
   (define %%ttf:font-height glgui:fontheight)
   (define (color-conv color)
