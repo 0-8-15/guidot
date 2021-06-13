@@ -1,8 +1,11 @@
 VERSION=2.1.2
 VERSION_CONTRIB=2.1.0
-# PKGURL=http://download.savannah.nongnu.org/releases/lwip/lwip-$VERSION.zip
-PKGURL=lwip-$VERSION.tar.gz
-PKGHASH=1e6b92739fde38899ed0c75ffc0730eb5683600d
+
+PKGURL=http://git.savannah.gnu.org/git/lwip.git
+PKGHASH=159e31b6    # 159e31b6 == STABLE-2_1_2_RELEASE
+CONTRIBURL=http://git.savannah.gnu.org/git/lwip/lwip-contrib.git
+CONTRIBHASH=35b011d # 35b011d == STABLE-2_1_0_RELEASE
+
 
 # To rebuild the package do:
 #
@@ -10,8 +13,15 @@ PKGHASH=1e6b92739fde38899ed0c75ffc0730eb5683600d
 
 if [ ! -f testing ]; then
 
+  contrib_git_file="$SYS_PREFIXROOT/packages/"`basename $CONTRIBURL`"-$CONTRIBHASH.tgz"
+  if [ ! -f $contrib_git_file ]; then
+    ( package_download  $CONTRIBURL $CONTRIBHASH ) # run in a sub shell - so we are back in this dir
+  fi
   package_download $PKGURL $PKGHASH
 
+  package_unpack "$contrib_git_file"
+  mv lwip-contrib contrib
+  sed -i 's/\r$//' ../*.patch
   package_patch
 
 else
@@ -81,6 +91,8 @@ lwip_build() # build using plain make
     # Where to place results
     test -f ${D0}/src/include/lwip/lwipopts.h || cp $libdir/lwipopts.h ${D0}/src/include/lwip/
 # TODO make ...
+
+# sed -i 's/-Werror//' ${D0}/contrib/ports/Common.allports.mk # for really old compilers
     cp $libdir/BuildMakefile ${D0}/Makefile
     make -C ${D0} LWIPARCH=${LWIP_PORT_I} LWIP_PORT=${LWIP_PORT} LWIP_ARCH_VARIANT=${LWIP_ARCH_VARIANT} CC=${lncc} "LWIP_PORT_DEF=${LWIP_PORT_DEF}" $EXTRACONF
     # install
