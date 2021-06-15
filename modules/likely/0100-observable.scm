@@ -15,7 +15,7 @@
 (define (make-observable v #!optional pred filter name)
   (let ((v (if filter (filter v v) v)))
     (if (and pred (not (pred v)))
-        (error "value did not pass guard predicate" pred v))
+        (error "value did not pass guard predicate" name: name pred: pred value: v))
     (%make-observable 0 v 0 '() name pred filter)))
 
 (define (observable? var) (%observable? var))
