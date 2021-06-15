@@ -560,7 +560,7 @@ c-declare-end
       (let ((exn (begin
 		   (sqlite3-statement-reset! db stmt args)
 		   (sqlite3-bind! db stmt args))))
-	(if exn (begin (sqlite3-statement-reset! stmt args) (raise exn)))))
+	(if exn (begin (sqlite3-statement-reset! db stmt args) (raise exn)))))
   (let ((r '()))
     (sqlite3-for-each
      db stmt
