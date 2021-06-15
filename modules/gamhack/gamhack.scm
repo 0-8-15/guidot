@@ -254,4 +254,8 @@
 
 (include "srfi-1.scm")
 
+;;** UUID
+
+(include "uuid.scm")
+
 ;;#| eof
