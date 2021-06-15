@@ -347,8 +347,8 @@ c-declare-end
 
 (define-type sqlite3-error loc code db stmt more)
 
-(define-macro (abort-sqlite3-error loc code db stmt . more)
-  `(make-sqlite3-error (and ,db (sqlite3-error-message ,db)) ,code ,db ,stmt ,@more))
+(define-macro (%%abort-sqlite3-error loc code db stmt . more)
+  `(make-sqlite3-error ,loc (or (and ,db (sqlite3-error-message ,db)) ,code) ,db ,stmt ',more))
 
 (define (sqlite3-open
          dbn #!optional
