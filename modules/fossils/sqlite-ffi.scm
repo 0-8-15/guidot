@@ -336,9 +336,9 @@ c-declare-end
 (c-define-type sqlite_prepare_args "sqlite_prepare_args")
 (c-define-type sqlite_prepare_args* (pointer sqlite_prepare_args (sqlite_prepare_args*) "gambit_free_prepare_args"))
 
-(define (sqlite3-db? obj) (let ((f (foreign-tags obj))) (and f (eq? (car f) 'sqlite3_db*))))
+(define (sqlite3-db? obj) (and (foreign? obj) (let ((f (foreign-tags obj))) (and f (eq? (car f) 'sqlite3_db*)))))
 
-(define (sqlite3-stmt? obj) (let ((f (foreign-tags obj))) (and f (eq? (car f) 'sqlite3_stmt*))))
+(define (sqlite3-stmt? obj) (and (foreign? obj) (let ((f (foreign-tags obj))) (and f (eq? (car f) 'sqlite3_stmt*)))))
 
 (define sqlite3_errstr (c-lambda (int) UTF-8-string "___return ((char*)sqlite3_errstr (___arg1));"))
 
@@ -608,7 +608,7 @@ c-declare-end
 (define (sqlite3-exec* db stmt args)
   (define (sqlite3-exec/prepared db stmt args)
     (if (sqlite3-debug-statements)
-        (log-status (sqlite3-database-name db) ": \"" (sqlite3-statement-name stmt) "\" (prepared) on \n"  (object->string args)))
+        (print port: (current-error-port) db ": \"" '(sqlite3-statement-name stmt) "\" (prepared) on \n"  (object->string args)))
     (if (pair? args)
         (let ((exn (begin
 		     (sqlite3-statement-reset! db stmt args)
