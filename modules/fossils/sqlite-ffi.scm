@@ -327,8 +327,8 @@ static ___SCMOBJ gambit_free_pointer (void *ptr);
 c-declare-end
 )
 
-(c-define-type sqlite3 "sqlite3")
-(c-define-type sqlite3* (pointer sqlite3 (sqlite3*)))
+;; (c-define-type sqlite3 "sqlite3")
+;; (c-define-type sqlite3* (pointer sqlite3 (sqlite3*)))
 (c-define-type sqlite3_stmt "sqlite3_stmt")
 (c-define-type sqlite3_stmt* (pointer sqlite3_stmt (sqlite3_stmt*)))
 (c-define-type sqlite3_db "sqlite3_db")
@@ -517,7 +517,7 @@ c-declare-end
 
 (define (call-with-sqlite3-values statement proc)
   (let* ((n (sqlite3-column-count statement)))
-    (do ((i n (- i 1))
+    (do ((i (- n 1) (- i 1))
          (result
           '()
           (cons
@@ -530,7 +530,7 @@ c-declare-end
 	      ((eq? type SQLITE_BLOB) (sqlite3-column-blob statement i))
 	      (else (error "Wrong sqlite3 column type"))))
            result)))
-	((eqv? i 0) (apply proc (reverse! result))))))
+	((eqv? i -1) (apply proc result)))))
 
 (define #;-inline (sqlite3-for-each db stmt fn)
   (do ((exit #f))
@@ -542,6 +542,41 @@ c-declare-end
 	((eqv? rc SQLITE_ROW) (fn s))
 	((eqv? rc SQLITE_DONE) (set! exit #t) #f)
 	(else (%%abort-sqlite3-error sqlite3-for-each rc db s '())))))))
+
+(define (sqlite3-for-each* dbn fn sql params) ;; opens and closes db
+  (define (close-db db stmt)
+    (let ((exn #f))
+      (when (sqlite3-stmt? stmt)
+        (unless (eqv? ((c-lambda (sqlite3_stmt*) int "sqlite3_finalize") stmt) SQLITE_OK)
+          (set! exn (%%abort-sqlite3-error sqlite3-for-each* dbn db sql params))))
+      (unless (sqlite3-close db) (raise (%%abort-sqlite3-error sqlite3-for-each* dbn db sql params)))
+      (when exn (raise exn))))
+  (let ((db (sqlite3-open
+             dbn
+             (bitwise-ior SQLITE_OPEN_READWRITE SQLITE_OPEN_CREATE SQLITE_OPEN_URI))))
+    (unless (sqlite3-db? db)
+      (raise (%%abort-sqlite3-error sqlite3-for-each* #f #f sql params)))
+    (let ((prepared
+           (cond
+            ((string? sql) (sqlite3-prepare db sql))
+            (else
+             (sqlite3-close db)
+             (error "invalid SQL" dbn sql params)))))
+      (cond
+       ((sqlite3-stmt? prepared)
+        (let ((exn (sqlite3-bind! db prepared params)))
+          (when exn (close-db db prepared) (raise exn)))
+        (with-exception-catcher
+         (lambda (exn)
+           (close-db db prepared)
+           (raise exn))
+         (lambda ()
+           (sqlite3-for-each db prepared fn)
+           (close-db db prepared))))
+       (else
+        (let ((exn (%%abort-sqlite3-error sqlite3-for-each* dbn db sql params)))
+          (close-db db #f)
+          (raise exn)))))))
 
 (define (sqlite3-statement-finalize db stmt)
   (let ((v ((c-lambda (sqlite3_stmt*) int "sqlite3_finalize") stmt)))
@@ -657,15 +692,63 @@ c-declare-end
 
 (define (sqlite3-exec db stmt . args) (sqlite3-exec* db stmt args))
 
+;;** File API
+
 (define (call-with-sqlite3-database dbn proc #!key (mode #f))
   ;; draft
   (let ((db
          (case mode
            ((r r/o) (sqlite3-open/ro dbn))
-           (else (sqlite3-open dbn)))))
+           (else (sqlite3-open
+                  dbn
+                  (bitwise-ior SQLITE_OPEN_READWRITE SQLITE_OPEN_CREATE SQLITE_OPEN_URI))))))
     (cond
      (db
-      (let ((result (proc db)))
-        (sqlite3-close db)
-        result))
+      (with-exception-catcher
+       (lambda (exn)
+         (let ((msg (sqlite3-error-message db)))
+           (if (eq? mode 'transaction) (sqlite3-exec db "rollback"))
+           (sqlite3-close db) ;; FIXME: need to finalize all statements first
+           (error msg)))
+       (lambda ()
+         (case mode
+           ((transaction) (sqlite3-exec db "begin DEFERRED transaction")))
+         (let ((result (proc db)))
+           (case mode
+             ((transaction) (sqlite3-exec db "commit")))
+           (sqlite3-close db)
+           result))))
      (else (raise (%%abort-sqlite3-error with-sqlite3-database #f dbn 'open))))))
+
+(define (sqlite3-file-query
+         filename
+         query #!key
+         (params '())
+         (accu (make-ggb))
+         (row (lambda args (for-each (lambda (e) (ggb-insert! accu e)) args) accu))
+         (out (lambda (e i) i)))
+  (sqlite3-for-each*
+   filename
+   (lambda (step)
+     (out (call-with-sqlite3-values step row) accu))
+   query params)
+  accu)
+
+(define (sqlite3-file-command*! filename sql params)
+  (define (return . _) (error "never reached for commands"))
+  (sqlite3-for-each* filename return sql params))
+
+(define (sqlite3-file-command-for-each! filename sql lst)
+  ;; lst is a list of lists of SQL parameters
+  (call-with-sqlite3-database
+   filename
+   (lambda (db)
+     (let ((statement (sqlite3-prepare db sql)))
+       (cond
+        ((not statement)
+         (error (sqlite3-error-message db)))
+        (else
+         (for-each
+          (lambda (params) (sqlite3-exec* db statement params))
+          lst)
+         (sqlite3-statement-finalize db statement)))))))
