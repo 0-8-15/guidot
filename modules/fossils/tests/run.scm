@@ -160,19 +160,16 @@
       (eqv? (mdvector-ref result 0 0) 7)))
   mode: 'r/o))
 
-#| fix tests environment first!!
-(test-error
+(test-condition
  "SQL conflict results in condition"
  (call-with-sqlite3-database
    "file:test.db?mode=memory"
    (lambda (db)
      (sqlite3-exec db "create table p(x integer unique)")
      ;; second insert expected to fail
-     ;;(sqlite3-exec db "insert into p values(?1)" 7)
      (sqlite3-exec db "insert into p values(?1)" 7)
-     (* 2 23.42))
+     (sqlite3-exec db "insert into p values(?1)" 7)
+     "ran to completion without exception")
    mode: 'r/o)
- (lambda (exn)
-   (debug "SQL conflict results in condition" exn)
-   #f))
-|#
+ sqlite3-error?)
+

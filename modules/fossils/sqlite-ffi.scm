@@ -541,7 +541,10 @@ c-declare-end
        (cond
 	((eqv? rc SQLITE_ROW) (fn s))
 	((eqv? rc SQLITE_DONE) (set! exit #t) #f)
-	(else (%%abort-sqlite3-error sqlite3-for-each rc db s '())))))))
+	(else
+         (let ((exn (%%abort-sqlite3-error sqlite3-for-each rc db s '())))
+           ((c-lambda (sqlite3_stmt*) int "sqlite3_finalize") stmt)
+           (raise exn))))))))
 
 (define (sqlite3-for-each* dbn fn sql params) ;; opens and closes db
   (define (close-db db stmt)
@@ -706,10 +709,13 @@ c-declare-end
      (db
       (with-exception-catcher
        (lambda (exn)
-         (let ((msg (sqlite3-error-message db)))
+         (let ((msg
+                (cond
+                 ((sqlite3-error? exn) exn)
+                 (else (sqlite3-error-message db)))))
            (if (eq? mode 'transaction) (sqlite3-exec db "rollback"))
            (sqlite3-close db) ;; FIXME: need to finalize all statements first
-           (error msg)))
+           (if (sqlite3-error? exn) (raise exn) (error msg))))
        (lambda ()
          (case mode
            ((transaction) (sqlite3-exec db "begin DEFERRED transaction")))
