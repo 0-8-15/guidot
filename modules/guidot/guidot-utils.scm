@@ -64,7 +64,7 @@
          (in (current-guide-gui-interval))
          (padding #f)
          (border-ratio 1/20) ;; deprecated, outdated
-         (color
+         (color ;; maybe a procedure
           (let* ((color (guide-select-color-3))
                  (r (color-red color))
                  (g (color-green color))
@@ -86,13 +86,25 @@
             (- xno (vector-ref pad 1))
             (- yno (vector-ref pad 0))))))
     (view! background: background)
-    (view! color: color)
+    (cond
+     ((procedure? color))
+     (else (view! color: color)))
     (view! size: width height)
     (view! position: xsw ysw)
     (make-guide-payload
      in: in name: name
      on-redraw:
-     (let ((bg (view!)))
+     (let ((bg
+            (cond
+             ((procedure? color)
+              (let ((cached
+                     (macro-memoize:1->1 ;; memoize-last
+                      (lambda (value)
+                        (view! color: value)
+                        (view!))
+                      eqv?)))
+                (lambda () ((cached (color))))))
+             (else (view!)))))
        (lambda () (bg) (guide-event-dispatch-to-payload/redraw inner)))
      on-any-event:
      (guide-payload-on-any-event inner)
