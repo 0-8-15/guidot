@@ -753,16 +753,17 @@
           (and (http-proxy-url)
                (or (current-fossil-pathname)
                    (and (eq? (mode) 'clone) (clone-target-pathname)))))
+        (define running #f)
         (guide-button
          name: 'fossil-run
          in: area name: "fossil go"
          label:
-         (let ((ok "go") (no "n/a"))
-           (lambda () (if (go?) ok no)))
+         (let ((ok "go") (no "n/a") (busy "busy"))
+           (lambda () (cond (running busy) ((go?) ok) (else no))))
          ;; background-color: background-color color: color
          guide-callback:
          (lambda _
-           (when (go?)
+           (when (and (not running) (go?))
              (guide-critical-add!
               (let ((mode (mode))
                     (remote-url (remote-url))
@@ -773,6 +774,7 @@
                     (proxy (http-proxy-url)))
                 (lambda ()
                   (output-control! text: #f)
+                  (set! running #t)
                   (output-control!
                    insert:
                    (%%fossil-cmd
@@ -781,7 +783,8 @@
                     directory: directory
                     into: into
                     log: (lambda (args) (debug 'fossil-go args))
-                    proxy: proxy))))
+                    proxy: proxy))
+                  (set! running #f)))
               async: #t)))))
       (define (mk-kx area row col)
         (guide-button
