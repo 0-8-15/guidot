@@ -775,15 +775,20 @@
                 (lambda ()
                   (output-control! text: #f)
                   (set! running #t)
-                  (output-control!
-                   insert:
-                   (%%fossil-cmd
-                    mode remote-url
-                    title: title key: key
-                    directory: directory
-                    into: into
-                    log: (lambda (args) (debug 'fossil-go args))
-                    proxy: proxy))
+                  (let ((output
+                         (%%fossil-cmd
+                          mode remote-url
+                          title: title key: key
+                          directory: directory
+                          into: into
+                          log: (lambda (args) (debug 'fossil-go args))
+                          proxy: proxy)))
+                    (output-control! insert: output wrap: #t)
+                    ;; BEWARE: strange dependency: insert resets to
+                    ;; begin of buffer when wrap mod is used (in the
+                    ;; line above).  This *might* change.
+                    (let ((summary (string-append "Exited with: " (number->string (/ (process-status output) 256)) "\n")))
+                      (output-control! insert: summary)))
                   (set! running #f)))
               async: #t)))))
       (define (mk-kx area row col)
