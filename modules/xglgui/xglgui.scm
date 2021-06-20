@@ -1055,7 +1055,12 @@
           (or
            (eq? press: p/r) ;; ignore press - maybe more
            (let ((x (on-key p/r key mod)))
-             (if x (%%guide-post-speculative (handle-key p/r key mod)) #t)))))
+             (cond
+              ((eqv? x EVENT_KEYENTER)
+               (data (ggb->string value-buffer 0 (ggb-length value-buffer) encoding: data-char-encoding)) ;; speculative
+               (%%guide-post-speculative (handle-key p/r key mod)))
+              (x (%%guide-post-speculative (handle-key p/r key mod)))
+              (else #t))))))
 
        (redraw! (vector
                  (lambda () (and value-draw (value-draw)))
@@ -1064,13 +1069,7 @@
         (let ((armed #f))
           (lambda (rect payload event x y)
             (case event
-              ((press: release:)
-               (cond
-                ((eqv? x EVENT_KEYENTER)
-                 (data (ggb->string value-buffer 0 (ggb-length value-buffer) encoding: data-char-encoding)) ;; speculative
-                 (local-on-key event x y)
-                 #t)
-                (else (local-on-key event x y))))
+              ((press: release:) (local-on-key event x y))
               ((reload:) ;;  Bad style!
                ;;
                ;; NOTE: This is to document possible style as bad.  TBD:
