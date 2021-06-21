@@ -1048,7 +1048,7 @@
             (ggb-insert! value-buffer (char->integer key))
             (when (procedure? validate) (validate value-buffer))
             (update-cursor!))
-           (else (debug "ignored key" (list 'guide-line-input key))))))
+           (else (debug "ignored key" (list 'guide-line-input key)) #t))))
 
        (local-on-key ;; rename for clarity
         (lambda (p/r key mod)
