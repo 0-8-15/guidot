@@ -1042,6 +1042,7 @@
             ;; (data (%%value-buffer->string value-buffer))
             (set! value-display-offset 0)
             (set! value-buffer (input->buffer data))
+            (when (procedure? validate) (validate value-buffer))
             (update-cursor!))
            ((eqv? key #\null)) ;; should have been ignored, more harm than good
            ((char? key)
@@ -1054,12 +1055,17 @@
         (lambda (p/r key mod)
           (or
            (eq? press: p/r) ;; ignore press - maybe more
-           (let ((x (on-key p/r key mod)))
+           (let ((key (on-key p/r key mod)))
              (cond
-              ((eqv? x EVENT_KEYENTER)
-               (data (ggb->string value-buffer 0 (ggb-length value-buffer) encoding: data-char-encoding)) ;; speculative
+              ((eqv? key EVENT_KEYENTER)
+               (cond ;; speculative
+                ;; TBD: should we use value-buffer-as-string here?
+                ((procedure? validate)
+                 (when (validate value-buffer)
+                   (data (ggb->string value-buffer 0 (ggb-length value-buffer) encoding: data-char-encoding)) ))
+                (else (data (ggb->string value-buffer 0 (ggb-length value-buffer) encoding: data-char-encoding))))
                (%%guide-post-speculative (handle-key p/r key mod)))
-              (x (%%guide-post-speculative (handle-key p/r key mod)))
+              (key (%%guide-post-speculative (handle-key p/r key mod)))
               (else #t))))))
 
        (redraw! (vector
