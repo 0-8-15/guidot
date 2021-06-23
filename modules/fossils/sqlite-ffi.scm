@@ -744,17 +744,38 @@ c-declare-end
   (define (return . _) (error "never reached for commands"))
   (sqlite3-for-each* filename return sql params))
 
-(define (sqlite3-file-command-for-each! filename sql lst)
+(define (sqlite3-file-command-for-each! dbn sql lst)
   ;; lst is a list of lists of SQL parameters
-  (call-with-sqlite3-database
-   filename
-   (lambda (db)
-     (let ((statement (sqlite3-prepare db sql)))
-       (cond
-        ((not statement)
-         (error (sqlite3-error-message db)))
-        (else
-         (for-each
-          (lambda (params) (sqlite3-exec* db statement params))
-          lst)
-         (sqlite3-statement-finalize db statement)))))))
+  (let ((db
+         (sqlite3-open
+          dbn
+          (bitwise-ior SQLITE_OPEN_READWRITE SQLITE_OPEN_CREATE SQLITE_OPEN_URI)))
+        (statement #f))
+    (cond
+     (db
+      (with-exception-catcher
+       (lambda (exn)
+         (let ((msg
+                (cond
+                 ((sqlite3-error? exn) exn)
+                 (else (sqlite3-error-message db)))))
+           (when statement (sqlite3-statement-finalize db statement))
+           (sqlite3-exec db "rollback")
+           (sqlite3-close db)
+           (if (sqlite3-error? exn) (raise exn) (error msg sql lst))))
+       (lambda ()
+         (sqlite3-exec db "begin DEFERRED transaction")
+         (set! statement (sqlite3-prepare db sql))
+         (let ((result
+                (cond
+                 ((not statement)
+                  (error (sqlite3-error-message db)))
+                 (else
+                  (for-each
+                   (lambda (params) (sqlite3-exec* db statement params))
+                   lst)
+                  (sqlite3-statement-finalize db statement)))))
+           (sqlite3-exec db "commit")
+           (sqlite3-close db)
+           result))))
+     (else (raise (%%abort-sqlite3-error with-sqlite3-database #f dbn 'open))))))
