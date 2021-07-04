@@ -546,7 +546,10 @@ c-declare-end
            ((c-lambda (sqlite3_stmt*) int "sqlite3_finalize") stmt)
            (raise exn))))))))
 
-(define (sqlite3-for-each* dbn fn sql params) ;; opens and closes db
+(define (sqlite3-for-each* ;; opens and closes db
+         dbn fn sql params #!key
+         (mode #f)
+         (flags SQLITE_OPEN_URI))
   (define (close-db db stmt)
     (let ((exn #f))
       (when (sqlite3-stmt? stmt)
@@ -554,9 +557,14 @@ c-declare-end
           (set! exn (%%abort-sqlite3-error sqlite3-for-each* dbn db sql params))))
       (unless (sqlite3-close db) (raise (%%abort-sqlite3-error sqlite3-for-each* dbn db sql params)))
       (when exn (raise exn))))
-  (let ((db (sqlite3-open
-             dbn
-             (bitwise-ior SQLITE_OPEN_READWRITE SQLITE_OPEN_CREATE SQLITE_OPEN_URI))))
+  (cond ;; handle mode and flags composition, TBD reduce clutter
+   ((not mode) (set! mode (bitwise-ior SQLITE_OPEN_READWRITE SQLITE_OPEN_CREATE flags)))
+   ((integer? mode) (bitwise-ior mode flags))
+   (else
+    (case mode
+     ((r/o) (set! mode (bitwise-ior SQLITE_OPEN_READONLY flags)))
+     (else (set! mode (bitwise-ior SQLITE_OPEN_READWRITE SQLITE_OPEN_CREATE flags))))))
+  (let ((db (sqlite3-open dbn mode)))
     (unless (sqlite3-db? db)
       (raise (%%abort-sqlite3-error sqlite3-for-each* #f #f sql params)))
     (let ((prepared
@@ -737,12 +745,9 @@ c-declare-end
    filename
    (lambda (step)
      (out (call-with-sqlite3-values step row) accu))
-   query params)
+   query params
+   mode: 'r/o)
   accu)
-
-(define (sqlite3-file-command*! filename sql params)
-  (define (return . _) (error "never reached for commands"))
-  (sqlite3-for-each* filename return sql params))
 
 (define (sqlite3-file-command-for-each! dbn sql lst)
   ;; lst is a list of lists of SQL parameters
@@ -779,3 +784,7 @@ c-declare-end
            (sqlite3-close db)
            result))))
      (else (raise (%%abort-sqlite3-error with-sqlite3-database #f dbn 'open))))))
+
+(define (sqlite3-file-command*! filename sql params)
+  (define (return . _) (error "never reached for commands"))
+  (sqlite3-for-each* filename return sql params))
