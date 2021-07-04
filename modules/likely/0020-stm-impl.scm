@@ -323,13 +323,13 @@ nonono: (raise 'stm-conflict)))
             (let ((source (%stmref-source x)) (slot (%stmref-slot x)))
               (let ((tag (and source (##unchecked-structure-ref source slot 'any 'transaction-commit!))))
                 (cond
-                 ((eq? tag lock-tag) ;; eqv? ??
+                 ((eqv? tag lock-tag) ;; eq?/eqv? ??
                   ;; Referenced in this transaction later (list is
                   ;; reverse access order).  Ignore prior ref.
                   (cond-expand
                    ((and (not debug) no-dirty-tagging) #t)
                    (else
-                    (stm-consistency-error "Warning: 'hopefully' conflict free transaction ran into double reference\n")))
+                    (stm-consistency-error "Warning: 'hopefully' conflict free transaction ran into double reference\n" x transaction)))
                   (loop (cdr refs) dirty))
                  ((not (eq? tag (%stmref-tag x)))
                   ;; Conflict. Undo dirty tagging.
