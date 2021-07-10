@@ -186,6 +186,18 @@
       ((%%guide:legacy-special-key? x) x)
       (else (integer->char x))))))
 
+(define (guide-event-graphics? event)
+  (or
+   (eqv? EVENT_MOTION event)
+   (eqv? EVENT_BUTTON1UP event)
+   (eqv? EVENT_BUTTON1DOWN event)
+   (eqv? EVENT_BUTTON2UP event)
+   (eqv? EVENT_BUTTON2DOWN event)
+   (eqv? EVENT_BUTTON3UP event)
+   (eqv? EVENT_BUTTON3DOWN event)
+   ;; (eqv? EVENT_MULTITOUCH event) ;; ???
+   ))
+
 ;;** Payload Model
 
 (define-structure guide-widget redraw) ;; temporary helper for type safety

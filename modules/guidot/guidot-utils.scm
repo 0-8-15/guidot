@@ -1,15 +1,3 @@
-(define (guide-event-graphics? event)
-  (or
-   (eqv? EVENT_MOTION event)
-   (eqv? EVENT_BUTTON1UP event)
-   (eqv? EVENT_BUTTON1DOWN event)
-   (eqv? EVENT_BUTTON2UP event)
-   (eqv? EVENT_BUTTON2DOWN event)
-   (eqv? EVENT_BUTTON3UP event)
-   (eqv? EVENT_BUTTON3DOWN event)
-   ;; (eqv? EVENT_MULTITOUCH event) ;; ???
-   ))
-
 (define (guide-dispatch/graphics-shift handler x0 y0)
   (lambda (rect payload event x y)
     (cond

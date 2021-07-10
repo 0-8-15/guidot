@@ -22,7 +22,11 @@
   initial: #f
   name: "Calculator value in display")
 
-(define (make-calculator-payload interval)
+(define (make-calculator-payload
+         interval #!key
+         (done #f)
+         (style (guide-current-style))
+         (name 'calculator))
 
   (define calculator-color-bgn (lambda _ Gray) #;guide-select-color-1)
   (define calculator-color-fgn guide-select-color-2)
@@ -105,8 +109,21 @@
          (ysw (mdvector-interval-lower-bound interval 1))
          (xno (mdvector-interval-upper-bound interval 0))
          (yno (mdvector-interval-upper-bound interval 1))
+         (size-subdisplay 25)
+         (font-subdisplay (guide-select-font size: 'small))
+         (close-width (if (procedure? done)
+                          (max (guide-font-height font-subdisplay) size-subdisplay)
+                          0))
          (w (- xno xsw))
          (h (- yno ysw)))
+    (define close-button
+      (and (procedure? done)
+           (guide-button
+            label: "X"
+            in: (make-mdv-rect-interval (- w close-width) (- h size-subdisplay) w h)
+            style: style
+            font: font-subdisplay
+            guide-callback: done)))
     (define calculator-subdisplay
       (let ((label! (make-guide-label-view))
             (check!
@@ -122,11 +139,11 @@
                      (lambda (a b) #t) equal? equal? equal?)))
                (lambda (update!) (cached update! (calculator-input) (calculator-result) (calculator-mem1))))))
         (label! color: (calculator-color-bgn))
-        (label! size: w 20)
+        (label! size: (- w close-width) size-subdisplay)
         (label! vertical-align: 'bottom)
         (label! horizontal-align: 'right)
-        (label! position: 0 (- h 20))
-        (label! font: (guide-select-font size: 'small))
+        (label! position: 0 (- h size-subdisplay))
+        (label! font: font-subdisplay)
         (label! check! "calculator subdisplay")))
     (define calculator-display
       (let ((label! (make-guide-label-view))
@@ -227,6 +244,7 @@
         (vector
          (lambda ()
            (calculator-subdisplay) (calculator-display)
+           (when close-button (guide-event-dispatch-to-payload/redraw close-button))
            (do ((i (fx- (vector-length keys) 1) (fx- i 1)))
                ((eqv? i -1))
              (let ((payload (vector-ref keys i)))
@@ -279,6 +297,8 @@
                     (calculator-main-display
                      (string->number (string-append n (string x))))
                     #t)))))))
+       ((and (guide-event-graphics? event) (guide-payload-contains/xy? close-button x y))
+        (guide-event-dispatch-to-payload rect close-button event x y))
        (else ((vector-ref kpd 1) rect payload event x y))))
 
     (make-guide-payload in: interval widget: #f on-redraw: (vector-ref kpd 0) on-any-event: calculator-on-event)))
