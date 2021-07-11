@@ -297,7 +297,9 @@
                     (calculator-main-display
                      (string->number (string-append n (string x))))
                     #t)))))))
-       ((and (guide-event-graphics? event) (guide-payload-contains/xy? close-button x y))
+       ((and close-button
+             (guide-event-graphics? event)
+             (guide-payload-contains/xy? close-button x y))
         (guide-event-dispatch-to-payload rect close-button event x y))
        (else ((vector-ref kpd 1) rect payload event x y))))
 

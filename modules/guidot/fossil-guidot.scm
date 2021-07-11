@@ -687,7 +687,7 @@
                              (interactive select-clone-source in: area)
                              (off (active)))
                             ((eqv? n 4) ;; wiki
-                             (done (guidot-fossil-wiki (current-guide-gui-interval)))
+                             (done (guidot-fossil-wiki dialog-area))
                              (off (active)))
                             (else
                              (mode (string->symbol (vector-ref options n)))
@@ -773,24 +773,25 @@
                     (into (clone-target-pathname))
                     (proxy (http-proxy-url)))
                 (lambda ()
-                  (output-control! text: #f)
-                  (set! running #t)
-                  (let ((output
-                         (%%fossil-cmd
-                          mode remote-url
-                          title: title key: key
-                          directory: directory
-                          into: into
-                          log: (lambda (args) (debug 'fossil-go args))
-                          proxy: proxy)))
-                    (output-control! insert: output wrap: #t)
-                    ;; BEWARE: strange dependency: insert resets to
-                    ;; begin of buffer when wrap mod is used (in the
-                    ;; line above).  This *might* change.
-                    (let ((summary (string-append "Exited with: " (number->string (/ (process-status output) 256)))))
-                      (output-control! insert: summary wrap: #f)
-                      (output-control! insert: #\newline)))
-                  (set! running #f)))
+                  (unless running
+                    (set! running #t)
+                    (output-control! text: #f)
+                    (let ((output
+                           (%%fossil-cmd
+                            mode remote-url
+                            title: title key: key
+                            directory: directory
+                            into: into
+                            log: (lambda (args) (debug 'fossil-go args))
+                            proxy: proxy)))
+                      (output-control! insert: output wrap: #t)
+                      ;; BEWARE: strange dependency: insert resets to
+                      ;; begin of buffer when wrap mod is used (in the
+                      ;; line above).  This *might* change.
+                      (let ((summary (string-append "Exited with: " (number->string (/ (process-status output) 256)))))
+                        (output-control! insert: summary wrap: #f)
+                        (output-control! insert: #\newline)))
+                    (set! running #f))))
               async: #t)))))
       (define (mk-kx area row col)
         (guide-button
@@ -841,7 +842,7 @@
   (dialog-control! top: (guide-ggb-layout area vbuf direction: 'topdown fixed: #f name: name))
   result)
 
-(define (guidot-make-fossil-wiki-constructur
+(define (guidot-make-fossil-wiki-constructor
          area #!key
          (font (guide-select-font size: 'medium))
          (keypad guide-keypad/default)
@@ -926,7 +927,7 @@
         ((use-notes) (fossil-command "wiki" "export" "-t" (wiki-selected) "-"))
         (else (fossil-command "wiki" "export" (wiki-selected) "-")))
        #f))
-    (define (with-page)
+    (define (with-page #!key (mode 'commit))
       (define page-content
         (make-pin
          initial: (get-wiki-page)
@@ -994,12 +995,17 @@
                               ((eof-object? c))
                               ((eqv? c #\newline))
                               (else (ggb-insert! ggb c) (loop (read-char port)))))))
-                        (ggb->string/encoding-utf8 ggb))))
-                 (fossil-command input: content "wiki" "commit" comment "-" "-t" name "-M" "text/x-markdown")))
+                        (ggb->string/encoding-utf8 ggb)))
+                     (cmd (case mode
+                            ((create) "create")
+                            (else "commit"))))
+                 (fossil-command input: content "wiki" cmd comment "-" "-t" name "-M" "text/x-markdown")))
               (else
                ;; ignoring the response upon success
                (fossil-command/json
-                `((command . "wiki/save")
+                `((command . ,(case mode
+                                ((create) "wiki/create")
+                                (else "wiki/save")))
                   (payload
                    (name . ,name)
                    (content . ,content)
@@ -1062,11 +1068,9 @@
                    keypad: guide-keypad/default
                    on-key: %%guide-textarea-keyfilter
                    validate:
-                   (macro-guidot-check-ggb/string-pred
-                    (lambda (str) ;; TBD: correct check
-                      (cond
-                       ((equal? str "")) ;; abort
-                       (else (> (string-length str) 3)))))
+                   (lambda (ggb) ;; TBD: correct check
+                     (let ((n (ggb-length ggb)))
+                       (or (eqv? n 0) (> n 3))))
                    data:
                    (case-lambda
                     (() "")
@@ -1075,21 +1079,8 @@
                      (cond
                       ((equal? val "")) ;; abort
                       (else
-                       (guide-critical-add!
-                        (lambda ()
-                          (cond
-                           ((use-notes)
-                            (fossil-command "wiki" "create" val "-t" "now"))
-                           (else
-                            ;; ignoring the response here
-                            (debug 'create-wiki-response
-                                   (fossil-command/json
-                                    `((command . "wiki/create")
-                                      (payload
-                                       (name . ,val)
-                                       (content . "")
-                                       (contentFormat . "raw"))))))))
-                        async: #t)))))))
+                       (wiki-selected val)
+                       (dialog-control top: (with-page mode: 'create))))))))
                 notify: selfie))
              #t)
             ((equal? ssc "timeline")
@@ -1160,7 +1151,8 @@
 (define (guidot-fossil-wiki
          area #!key
          (done (%%macro-guidot-capture-guide-toplevel))
-         (font (guide-select-font size: 'medium))
+         (style (guide-current-style))
+         (font (or (guide-style-ref style font:) (guide-select-font size: 'medium)))
          (keypad guide-keypad/default)
          (menu-height 55)
          (dialog-control #f)
@@ -1187,7 +1179,7 @@
                (lambda (payload control) (set-box! selfie payload) control)))))
     (dialog-control
      top:
-     ((guidot-make-fossil-wiki-constructur
+     ((guidot-make-fossil-wiki-constructor
        area selected: selected
        dialog-control: dialog-control
        color: color background: background
@@ -1267,7 +1259,7 @@
     (def! "whoami" #f)
     #;(ddef! "wiki" '("create" "diff" "get" "list" "preview" "save" "timeline"))
     (def! "wiki"
-      (guidot-make-fossil-wiki-constructur
+      (guidot-make-fossil-wiki-constructor
        area selected: wiki-selected
        dialog-control: dialog-control!
        color: frame-color background: frame-background

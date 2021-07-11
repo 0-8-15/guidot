@@ -2294,8 +2294,16 @@
        ;; paste
        (let ((action
               (lambda _
-                (%%guide-post-speculative;/async
-                 ((edit-control) insert: (clipboard-paste) char-encoding: 'UTF-8)))))
+                (guide-critical-add!
+                 (lambda ()
+                   ((edit-control) insert: (clipboard-paste) char-encoding: 'UTF-8))
+                 ;; clipboard-paste can not be run
+                 ;; asynchroneous under X11 but should be
+                 ;; asynchroneous under Android
+                 async:
+                 (cond-expand
+                  ((or android) #t)
+                  (else #f))))))
          (lambda (in row col)
            (guide-button
             in: in
