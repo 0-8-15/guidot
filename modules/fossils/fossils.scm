@@ -114,7 +114,7 @@
          (directory (fossils-directory))
          (repository #t)
          (user (getenv "USER" "u")))
-  (let ((port (fossil-command-port/json repository: repository)))
+  (let ((port (fossil-command-port/json repository: repository user: user)))
     (json-write json-sexpr port)
     (close-output-port port)
     (let ((json (json-read port)))
@@ -141,7 +141,7 @@
 (define (fossil-command/sql
          sql-string
          #!key
-         (log (and #f (lambda (args) (debug 'fossil-command/json args))))
+         (log (and #f (lambda (args) (debug 'fossil-command/sql args))))
          (directory (fossils-directory))
          (repository #f)
          (user (getenv "USER" "u")))
@@ -195,15 +195,10 @@
       str))
 
 (define (fossil-project-title-set! repository title)
-  (let ((port
-         (fossil-command/sql
-          (string-append
-           "update repository.config set value='"
-           (sql-quote title)
-           "' where name='project-name'")
-          repository: repository)))
-    (close-port port)
-    (eqv? (process-status port) 0)))
+  (sqlite3-file-command*!
+   repository
+   "insert or replace into config (name, value, mtime) values('project-name', ?1, ?2)"
+   (list title (current-seconds))))
 
 ;;** fossils directory and service
 
@@ -239,25 +234,42 @@
   (let ((dir (fossils-directory)))
     (and dir (make-pathname dir project "fossil"))))
 
+(define MATURITY-1:beaver-default-unit-wiki-content (make-parameter #f))
+
 (wire!
  (list fossils-directory beaver-local-unit-id)
  sequence:
- (lambda (oldd newd oa na)
+ (lambda (oldd newd oa unit-id)
+   (define (set-default-homepage-content! fn user name content)
+     (fossil-command/json
+      `((command . "wiki/create")
+        (payload
+         (name . ,name)
+         (content . ,content)
+         (mimetype . "text/x-markdown")
+         (contentFormat . "raw")))
+      repository: fn
+      user: user))
    (when newd
      (unless (file-exists? newd)
        (create-directory newd))
-     (let* ((unit-id (beaver-local-unit-id))
-            (fallback-name (and (beaver-local-unit-id) (fossils-fallback-name unit-id)))
-            (fallback (and fallback-name (fossils-project-filename fallback-name))))
-       (when (and fallback (not (file-exists? fallback)))
-         ;; clone default
-         (log-status "cloning default fossil")
-         (let ((template (make-pathname (system-directory) "templates/template" "fossil")))
-           (log-status "cloning default fossil" (object->string (list run/boolean "fossil" "clone" template fallback "--once" "-A" fallback-name)))
-           (unless (run-logging/boolean "fossil" "clone" template fallback "--once" "-A" fallback-name)
-             (fossil-project-title-set! fallback fallback-name)
-             (log-error "fossil is: " (run->string "fossil" "version"))
-             (log-error "Again: " (run->error-string "fossil" "clone" template fallback "--once" "-A" fallback-name)))))))))
+     (when (and newd unit-id)
+       (let* ((admin (fossils-fallback-name unit-id))
+              (fn (fossils-project-filename admin)))
+         (unless (file-exists? fn)
+           (let* ((port (fossil-command "init" "-A" admin fn))
+                  (rc (process-status port)))
+             ;;(fossil-command repository: fn "user" "new" "u") ;; FIXME: remove!
+             (case rc
+               ((0)
+                (fossil-project-title-set! fn admin)
+                (let loop ((content (MATURITY-1:beaver-default-unit-wiki-content)))
+                  (cond
+                   ((not content))
+                   ((procedure? content) (loop (content unit-id)))
+                   ((string? content) (set-default-homepage-content! fn admin admin content))
+                   (else (error "fossils: default home page content: unhandled" content)))))
+               (else (log-error "fossil init failed" port rc))))))))))
 
 (define fossils-directory-handler
   (let ((v #f))

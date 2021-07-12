@@ -1009,6 +1009,7 @@
                   (payload
                    (name . ,name)
                    (content . ,content)
+                   (mimetype . "text/x-markdown")
                    (contentFormat . "raw"))))))))))
       this)
     (let ((tl-options '#("create" "list" "timeline"#; "close")))
@@ -1053,35 +1054,37 @@
                #t))
             ((equal? ssc "create")
              (dismiss)
-             (let ((selfie (box #f)))
-               (dialog-control
-                top:
-                (let ((label
+             (cond
+              ((use-notes)
+               (wiki-selected "now")
+               (dialog-control top: (with-page mode: 'create)))
+              (else
+               (let ((selfie (box #f)))
+                 (dialog-control
+                  top:
+                  (let ((label "New Wiki Page"))
+                    (guide-value-edit-dialog
+                     name: label
+                     in: area
+                     done: (lambda _ (dialog-control close: selfie))
+                     label: label
+                     keypad: guide-keypad/default
+                     on-key: %%guide-textarea-keyfilter
+                     validate:
+                     (lambda (ggb) ;; TBD: correct check
+                       (let ((n (ggb-length ggb)))
+                         (or (eqv? n 0) (> n 3))))
+                     data:
+                     (case-lambda
+                      (() "")
+                      ((val)
+                       (dialog-control close: selfie)
                        (cond
-                        ((use-notes) "New Note")
-                        (else "New Wiki Page"))))
-                  (guide-value-edit-dialog
-                   name: label
-                   in: area
-                   done: (lambda _ (dialog-control close: selfie))
-                   label: label
-                   keypad: guide-keypad/default
-                   on-key: %%guide-textarea-keyfilter
-                   validate:
-                   (lambda (ggb) ;; TBD: correct check
-                     (let ((n (ggb-length ggb)))
-                       (or (eqv? n 0) (> n 3))))
-                   data:
-                   (case-lambda
-                    (() "")
-                    ((val)
-                     (dialog-control close: selfie)
-                     (cond
-                      ((equal? val "")) ;; abort
-                      (else
-                       (wiki-selected val)
-                       (dialog-control top: (with-page mode: 'create))))))))
-                notify: selfie))
+                        ((equal? val "")) ;; abort
+                        (else
+                         (wiki-selected val)
+                         (dialog-control top: (with-page mode: 'create))))))))
+                  notify: selfie))))
              #t)
             ((equal? ssc "timeline")
              (guide-critical-add!
