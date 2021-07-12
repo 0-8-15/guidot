@@ -464,3 +464,9 @@
 (define (rx-split rx str . args)
   (check-compiled-regular-expression! rx-split rx)
   (apply irregex-split (%rx-regex-v rx) str args))
+
+;;** Some reexps
+
+(define uuid-string?
+  (let ((re (rx "[0-9A-F]{8}-[0-9A-F]{4}-4[0-9A-F]{3}-[89AB][0-9A-F]{3}-[0-9A-F]{12}" 'fast)))
+    (lambda (s) (and (string? s) (rx~=? re s)))))
