@@ -71,7 +71,7 @@
          (log `(cwd: ,working-directory arguments: ,@arguments)))
        #t)
      "unreachable")
-    (let ((port (semi-fork "fossil" arguments stderr-redirection #|directory: directory|#)))
+    (let ((port (semi-fork "fossil" arguments stderr-redirection directory: directory)))
       (cond
        ((not input) (close-output-port port))
        ((string? input)
