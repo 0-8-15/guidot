@@ -71,7 +71,7 @@
          (log `(cwd: ,working-directory arguments: ,@arguments)))
        #t)
      "unreachable")
-    (let ((port (semi-fork "fossil" arguments stderr-redirection directory: directory)))
+    (let ((port (semi-fork "fossil" arguments stderr-redirection directory: working-directory)))
       (cond
        ((not input) (close-output-port port))
        ((string? input)
@@ -105,7 +105,7 @@
          (log `(cwd: ,working-directory arguments: ,@arguments)))
        #t)
      "unreachable")
-    (semi-fork "fossil" arguments stderr-redirection #|directory: working-directory|#)))
+    (semi-fork "fossil" arguments stderr-redirection directory: working-directory)))
 
 (define (fossil-command/json
          json-sexpr
@@ -161,7 +161,7 @@
                 (log `(cwd: ,working-directory arguments: ,@arguments)))
               #t)
             "unreachable")
-           (semi-fork "fossil" arguments stderr-redirection #|directory: working-directory|#))))
+           (semi-fork "fossil" arguments stderr-redirection directory: working-directory))))
     (display sql-string port)
     (close-output-port port)
     port))
