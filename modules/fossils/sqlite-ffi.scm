@@ -382,7 +382,7 @@ c-declare-end
    int rc;
    if(dbc) {
      do {
-       stmt=sqlite3_next_stmt(dbc, stmt);
+       stmt=sqlite3_next_stmt(dbc, NULL);
        if(stmt!=NULL) {
          sqlite3_finalize(stmt);
        }
