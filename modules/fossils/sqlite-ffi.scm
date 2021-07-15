@@ -377,9 +377,17 @@ c-declare-end
 (define (sqlite3-close db)
   (define sqlite3-close (c-lambda (sqlite3_db*) int "
    sqlite3_db* p=___arg1;
+   sqlite3* dbc=p->cnx;
+   sqlite3_stmt* stmt=NULL;
    int rc;
-   if(p->cnx) {
-     rc=sqlite3_close(p->cnx);
+   if(dbc) {
+     do {
+       stmt=sqlite3_next_stmt(dbc, stmt);
+       if(stmt!=NULL) {
+         sqlite3_finalize(stmt);
+       }
+     } while(stmt!=NULL);
+     rc=sqlite3_close(dbc);
      if(rc==SQLITE_OK) {
        p->cnx=NULL;
        if(p->buf) {
@@ -717,13 +725,9 @@ c-declare-end
      (db
       (with-exception-catcher
        (lambda (exn)
-         (let ((msg
-                (cond
-                 ((sqlite3-error? exn) exn)
-                 (else (sqlite3-error-message db)))))
-           (if (eq? mode 'transaction) (sqlite3-exec db "rollback"))
-           (sqlite3-close db) ;; FIXME: need to finalize all statements first
-           (if (sqlite3-error? exn) (raise exn) (error msg))))
+         (if (eq? mode 'transaction) (sqlite3-exec db "rollback"))
+         (sqlite3-close db)
+         (raise exn))
        (lambda ()
          (case mode
            ((transaction) (sqlite3-exec db "begin DEFERRED transaction")))
