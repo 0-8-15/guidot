@@ -197,7 +197,7 @@
 (define (fossil-config-set! repository key value)
   (sqlite3-file-command*!
    repository
-   "insert or replace into config (name, value, mtime) values('?1', ?2, ?3)"
+   "insert or replace into config (name, value, mtime) values(?1, ?2, ?3)"
    (list key value (current-seconds))))
 
 (define (fossil-project-title-set! repository title)
