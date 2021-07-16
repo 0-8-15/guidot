@@ -424,9 +424,6 @@ c-declare-end
 
 (define sqlite3-column-name (c-lambda (sqlite3_stmt* int) UTF-8-string "sqlite3_column_name"))
 
-(define sqlite3-column-type (c-lambda (sqlite3_stmt* int) int "sqlite3_column_type"))
-
-
 #| TBD ISSUE: documented in sqlite.org not found fossil
 (define sqlite3_column_decltype (c-lambda (sqlite3_stmt* int) UTF-8-string "sqlite3_column_decltype"))
 ;;|#
@@ -476,14 +473,6 @@ c-declare-end
 	(let ((rc (sqlite3-bind-index! db stmt i (car args))))
 	  (if rc rc (loop (+ i 1) (cdr args)))))))
 
-(define sqlite3-column-type (c-lambda (sqlite3_stmt* int) int "sqlite3_column_type"))
-
-(define sqlite3-column-int64 (c-lambda (sqlite3_stmt* int) int64 "sqlite3_column_int64"))
-
-(define sqlite3-column-float (c-lambda (sqlite3_stmt* int) double "sqlite3_column_double"))
-
-(define sqlite3-column-text (c-lambda (sqlite3_stmt* int) UTF-8-string "sqlite3_column_text"))
-
 (define (sqlite3-column-blob stmt i)
   (let* ((n ((c-lambda (sqlite3_stmt* int) int "sqlite3_column_bytes") stmt i))
          (result (make-u8vector n)))
@@ -507,37 +496,31 @@ c-declare-end
   ;; source code compatibility no-op with Askemos code
   `(,cont (,fn ,param) ,param))
 
+(define-macro (sqlite3-column-value statement i)
+  (let ((type (gensym 'type)))
+    `(let ((,type ((c-lambda (sqlite3_stmt* int) int "sqlite3_column_type") ,statement ,i)))
+       (cond
+        ((eq? ,type SQLITE_INTEGER)
+         ((c-lambda (sqlite3_stmt* int) int64 "sqlite3_column_int64") ,statement ,i))
+        ((eq? ,type SQLITE_FLOAT)
+         ((c-lambda (sqlite3_stmt* int) double "sqlite3_column_double") ,statement ,i))
+        ((eq? ,type SQLITE_NULL) (sql-null))
+        ((eq? ,type SQLITE_TEXT)
+         ((c-lambda (sqlite3_stmt* int) UTF-8-string "sqlite3_column_text") ,statement ,i))
+        ((eq? ,type SQLITE_BLOB) (sqlite3-column-blob ,statement ,i))
+        (else (error "Wrong sqlite3 column type"))))))
+
 (define (sqlite3-values->vector st)
   (let* ((n (sqlite3-column-count st))
 	 (result (make-vector n)))
     (do ((i 0 (+ i 1)))
 	((eqv? i n) result)
-      (vector-set!
-       result i
-       (let ((type (sqlite3-column-type st i)))
-	 (cond
-	  ((eq? type SQLITE_INTEGER) (sqlite3-column-int64 st i))
-	  ((eq? type SQLITE_FLOAT) (sqlite3-column-float st i))
-	  ((eq? type SQLITE_NULL) (sql-null))
-	  ((eq? type SQLITE_TEXT) (sqlite3-column-text st i))
-	  ((eq? type SQLITE_BLOB) (sqlite3-column-blob st i))
-	  (else (error "Wrong sqlite3 column type"))))))))
+      (vector-set! result i (sqlite3-column-value st i)))))
 
 (define (call-with-sqlite3-values statement proc)
   (let* ((n (sqlite3-column-count statement)))
     (do ((i (- n 1) (- i 1))
-         (result
-          '()
-          (cons
-           (let ((type (sqlite3-column-type statement i)))
-	     (cond
-	      ((eq? type SQLITE_INTEGER) (sqlite3-column-int64 statement i))
-	      ((eq? type SQLITE_FLOAT) (sqlite3-column-float statement i))
-	      ((eq? type SQLITE_NULL) (sql-null))
-	      ((eq? type SQLITE_TEXT) (sqlite3-column-text statement i))
-	      ((eq? type SQLITE_BLOB) (sqlite3-column-blob statement i))
-	      (else (error "Wrong sqlite3 column type"))))
-           result)))
+         (result '() (cons (sqlite3-column-value statement i) result)))
 	((eqv? i -1) (apply proc result)))))
 
 (define #;-inline (sqlite3-for-each db stmt fn)
@@ -675,16 +658,7 @@ c-declare-end
        (lambda (stmt)
          (do ((i 0 (+ i 1)))
 	     ((eqv? i n) result)
-           (ggb-insert!
-            result
-            (let ((type (sqlite3-column-type stmt i)))
-	      (cond
-	       ((eq? type SQLITE_INTEGER) (sqlite3-column-int64 stmt i))
-	       ((eq? type SQLITE_FLOAT) (sqlite3-column-float stmt i))
-	       ((eq? type SQLITE_NULL) (sql-null))
-	       ((eq? type SQLITE_TEXT) (sqlite3-column-text stmt i))
-	       ((eq? type SQLITE_BLOB) (sqlite3-column-blob stmt i))
-	       (else (error "Wrong sqlite3 column type"))))))))
+           (ggb-insert! result (sqlite3-column-value stmt i)))))
       ;; See also "bind!": It is IMPORTANT that we keep a reference
       ;; to the args list here.
       ;;
