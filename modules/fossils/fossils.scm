@@ -194,11 +194,14 @@
                       res))))))
       str))
 
-(define (fossil-project-title-set! repository title)
+(define (fossil-config-set! repository key value)
   (sqlite3-file-command*!
    repository
-   "insert or replace into config (name, value, mtime) values('project-name', ?1, ?2)"
-   (list title (current-seconds))))
+   "insert or replace into config (name, value, mtime) values('?1', ?2, ?3)"
+   (list key value (current-seconds))))
+
+(define (fossil-project-title-set! repository title)
+  (fossil-config-set! repository "project-name" title))
 
 ;;** fossils directory and service
 
