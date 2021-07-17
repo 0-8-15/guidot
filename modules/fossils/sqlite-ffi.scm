@@ -451,9 +451,9 @@ c-declare-end
 	       stmt (+ i 1) v)))
       (if (eqv? rc SQLITE_OK) #f (%%abort-sqlite3-error 'bind! rc db stmt i v))))
    ((string? v)
-    (let ((rc ((c-lambda (sqlite3_stmt* int UTF-8-string size_t) int
-                         "___return(sqlite3_bind_text(___arg1, ___arg2, ___arg3, ___arg4, SQLITE_TRANSIENT));")
-	       stmt (+ i 1) v (string-length v))))
+    (let ((rc ((c-lambda (sqlite3_stmt* int UTF-8-string) int
+                         "___return(sqlite3_bind_text(___arg1, ___arg2, ___arg3, strlen(___arg3), SQLITE_TRANSIENT));")
+	       stmt (+ i 1) v)))
       (if (eqv? rc SQLITE_OK) #f (%%abort-sqlite3-error 'bind! rc db stmt i v))))
    ((sql-null? v)
     (let ((rc ((c-lambda (sqlite3_stmt* int) int "sqlite3_bind_null")
