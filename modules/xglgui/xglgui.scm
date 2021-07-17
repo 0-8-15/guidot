@@ -890,7 +890,7 @@
          #!key
          (in (current-guide-gui-interval))
          (data (let ((state "n/a")) (case-lambda (() state) ((val) (set! state val)))))
-         (data-char-encoding 'UTF-8) ;; only applicable if data is string or u8vector
+         (data-char-encoding 'UNICODE) ;; TBD: remove; only applicable if data is string or u8vector
          (validate #f)
          (on-key %%guide-textarea-keyfilter);; filter characters to handle
          (style (guide-current-style))
