@@ -5,7 +5,8 @@
 (cond-expand
  (debug
   (define-macro (assume obj msg . more)
-    `(if ,obj ,obj (apply error ,msg ,@more))))
+    (let ((tmp (gensym 'assume)))
+      `(let ((,tmp ,obj)) (if ,tmp ,tmp (apply error ,msg ,@more))))))
  (else
   (define-macro (assume obj msg . more) obj)))
 
