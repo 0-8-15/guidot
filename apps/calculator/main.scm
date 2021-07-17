@@ -290,11 +290,11 @@ NULL;
   (cond
    ((source-fossil)
     (let* ((port (fossil-command repository: (source-fossil) "cat" fn))
-           (exprs (read-all port)))
+           (exprs (read-all port))
+           (status (process-status port)))
       (cond
-       ((eqv? (process-status port) 0)
-        (for-each eval exprs))
-       (else (error "fossil failed on" fn)))))
+       ((eqv? status 0) (for-each eval exprs))
+       (else (error "fossil failed on" (source-fossil) fn (modulo status 255))))))
    (else (load fn))))
 
 (define (debug-adhoc-network-port) 3333)
@@ -526,6 +526,20 @@ NULL;
   (define (capdom) "bvr")
   (httpproxy-atphone-set! at-phone-decoder)
   (httpproxy-connect-set! ot0cli-connect)
+  (MATURITY-1:beaver-default-unit-wiki-content
+   (lambda (id)
+     (with-output-to-string
+       (lambda ()
+         (print "# " id "
+# Biberburg
+
+This is a fresh location in the [Beaver Network](wiki?name=BeaverVPN) to be changed as you please.
+
+Note that outgoing links into the network work **only** when the service is used by your browser as a proxy:
+
+- [Download](http://download.bvr/ot0/uv)
+- [Issues](http://beaver-dam.bvr/jfw/rptview?rn=1)
+")))))
   (init-beaverchat-gui! area webview-launch! capdom)
   (kick (audible-beep audible-beep!))
   ;; end of invocation independent initializations
