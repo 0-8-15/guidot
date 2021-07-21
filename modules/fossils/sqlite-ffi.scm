@@ -460,7 +460,7 @@ c-declare-end
 	       stmt (+ i 1))))
       (if (eqv? rc SQLITE_OK) #f (%%abort-sqlite3-error 'bind! rc db stmt i v))))
    (else
-    (%%abort-sqlite3-error "bind! blob, number, boolean, string or sql-null" #f db stmt i v))))
+    (make-sqlite3-error sqlite3-bind-index! "bind! blob, number, boolean, string or sql-null" db stmt (list i v)))))
 
 (define sqlite3_bind_int64 (c-lambda (sqlite3_stmt* int int64) int "sqlite3_bind_int64"))
 (define sqlite3_bind_zeroblob (c-lambda (sqlite3_stmt* int int) int "sqlite3_bind_zeroblob"))
@@ -496,7 +496,7 @@ c-declare-end
   ;; source code compatibility no-op with Askemos code
   `(,cont (,fn ,param) ,param))
 
-(define-macro (sqlite3-column-value statement i)
+(define-macro (macro-sqlite3-column-value statement i)
   (let ((type (gensym 'type)))
     `(let ((,type ((c-lambda (sqlite3_stmt* int) int "sqlite3_column_type") ,statement ,i)))
        (cond
@@ -510,18 +510,21 @@ c-declare-end
         ((eq? ,type SQLITE_BLOB) (sqlite3-column-blob ,statement ,i))
         (else (error "Wrong sqlite3 column type"))))))
 
-(define (sqlite3-values->vector st)
+(define (%%sqlite3-values->vector st)
   (let* ((n (sqlite3-column-count st))
 	 (result (make-vector n)))
     (do ((i 0 (+ i 1)))
 	((eqv? i n) result)
-      (vector-set! result i (sqlite3-column-value st i)))))
+      (vector-set! result i (macro-sqlite3-column-value st i)))))
 
 (define (call-with-sqlite3-values statement proc)
   (let* ((n (sqlite3-column-count statement)))
     (do ((i (- n 1) (- i 1))
-         (result '() (cons (sqlite3-column-value statement i) result)))
+         (result '() (cons (macro-sqlite3-column-value statement i) result)))
 	((eqv? i -1) (apply proc result)))))
+
+(define (sqlite3-statement->values statement)
+  (call-with-sqlite3-values statement values))
 
 (define #;-inline (sqlite3-for-each db stmt fn)
   (do ((exit #f))
@@ -599,7 +602,7 @@ c-declare-end
     (sqlite3-for-each
      db stmt
      (lambda (stmt)
-       (set! r (cons (sqlite3-values->vector stmt) r))))
+       (set! r (cons (%%sqlite3-values->vector stmt) r))))
     (let ((r0 (list->vector
 	       (cond
                 (include-header
@@ -639,7 +642,13 @@ c-declare-end
           result)))))
    (else (sqlite3-exec/prepared db stmt args include-header))))
 
-(define (sqlite3-exec* db stmt args)
+(define (sqlite3-exec*
+         db stmt args #!key
+         ;; IMPORTANT: Avoid passing the statement reference to user
+         ;; code because has limitted dynamic scope.
+         (accu (lambda (size) (and (positive? size) (make-ggb size: size))))
+         (row #f #; (lambda args (for-each (lambda (e) (ggb-insert! accu e)) args) accu))
+         (out (lambda (e i) i)))
   (define (sqlite3-exec/prepared db stmt args)
     (if (sqlite3-debug-statements)
         (print port: (current-error-port) db ": \"" '(sqlite3-statement-name stmt) "\" (prepared) on \n"  (object->string args)))
@@ -647,15 +656,24 @@ c-declare-end
         (let ((exn (begin
 		     (sqlite3-statement-reset! db stmt args)
 		     (sqlite3-bind! db stmt args))))
-	  (if exn (begin (sqlite3-statement-reset! stmt args) (raise exn)))))
+	  (if exn (begin (sqlite3-statement-reset! db stmt args) (raise exn)))))
     (let* ((n (sqlite3-column-count stmt))
-           (result (make-ggb size: n)))
+           (result (accu n)))
       (sqlite3-for-each
        db stmt
-       (lambda (stmt)
-         (do ((i 0 (+ i 1)))
-	     ((eqv? i n) result)
-           (ggb-insert! result (sqlite3-column-value stmt i)))))
+       (cond
+        ((procedure? row)
+         ;;
+         ;; Note: there is some overhead converting values to list and
+         ;; back.  To derive a clean API we better suport this way
+         ;; 1st.
+         (lambda (step)
+           (out (call-with-sqlite3-values step row) accu)))
+        (else
+         (lambda (stmt)
+           (do ((i 0 (+ i 1)))
+	       ((eqv? i n) result)
+             (ggb-insert! result (macro-sqlite3-column-value stmt i)))))))
       ;; See also "bind!": It is IMPORTANT that we keep a reference
       ;; to the args list here.
       ;;
@@ -664,11 +682,15 @@ c-declare-end
       (if (pair? args) (sqlite3-statement-reset! db stmt args))
       (cond
        ((eqv? n 0) #t)
+       ((not (ggb? result)) result)
        (else
         (let ((rows (/ (ggb-length result) n)))
-          (make-mdvector
-           (make-range (vector n rows))
-           (ggb#ggb-buffer #;ggb->vector result)))))))
+          (cond
+           ((positive? rows)
+            (make-mdvector
+             (make-range (vector n rows))
+             (ggb#ggb-buffer #;ggb->vector result)))
+           (else #f)))))))
   (cond
    ((string? stmt)
     (let ((prepared (sqlite3-prepare db stmt)))
@@ -680,7 +702,7 @@ c-declare-end
           result)))))
    (else (sqlite3-exec/prepared db stmt args))))
 
-(define (sqlite3-exec db stmt . args) (sqlite3-exec* db stmt args))
+(define (sqlite3-exec db stmt #!key (row #f) #!rest args) (sqlite3-exec* db stmt args row: row))
 
 ;;** File API
 
@@ -724,7 +746,9 @@ c-declare-end
    mode: 'r/o)
   accu)
 
-(define (sqlite3-file-command-for-each! dbn sql lst)
+(define (sqlite3-file-command-for-each!
+         dbn sql lst #!key
+         (row (lambda (st) #f)))
   ;; lst is a list of lists of SQL parameters
   (let ((db
          (sqlite3-open
@@ -752,7 +776,7 @@ c-declare-end
                   (error (sqlite3-error-message db)))
                  (else
                   (for-each
-                   (lambda (params) (sqlite3-exec* db statement params))
+                   (lambda (params) (sqlite3-exec* db statement params row: row))
                    lst)
                   (sqlite3-statement-finalize db statement)))))
            (sqlite3-exec db "commit")
@@ -760,6 +784,7 @@ c-declare-end
            result))))
      (else (raise (%%abort-sqlite3-error with-sqlite3-database #f dbn 'open))))))
 
-(define (sqlite3-file-command*! filename sql params)
-  (define (return . _) (error "never reached for commands"))
-  (sqlite3-for-each* filename return sql params))
+(define (sqlite3-file-command*!
+         filename sql params #!key
+         (row sqlite3-statement->values))
+  (sqlite3-for-each* filename row sql params))
