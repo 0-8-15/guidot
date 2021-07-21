@@ -532,10 +532,7 @@ c-declare-end
        (cond
 	((eqv? rc SQLITE_ROW) (fn s))
 	((eqv? rc SQLITE_DONE) (set! exit #t) #f)
-	(else
-         (let ((exn (%%abort-sqlite3-error sqlite3-for-each rc db s '())))
-           ((c-lambda (sqlite3_stmt*) int "sqlite3_finalize") stmt)
-           (raise exn))))))))
+	(else (raise (%%abort-sqlite3-error sqlite3-for-each rc db s '()))))))))
 
 (define (sqlite3-for-each* ;; opens and closes db
          dbn fn sql params #!key
