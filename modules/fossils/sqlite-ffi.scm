@@ -786,5 +786,11 @@ c-declare-end
 
 (define (sqlite3-file-command*!
          filename sql params #!key
-         (row sqlite3-statement->values))
-  (sqlite3-for-each* filename row sql params))
+         (accu (make-ggb))
+         (row (lambda args (for-each (lambda (e) (ggb-insert! accu e)) args) accu))
+         (out (lambda (e i) i)))
+  (sqlite3-for-each*
+   filename
+   (lambda (step)
+     (out (call-with-sqlite3-values step row) accu))
+   sql params))
