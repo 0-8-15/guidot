@@ -23,6 +23,11 @@ EXTRACONF="${EXTRACONF} --with-zlib=${SYS_PREFIX}"
 
 package_configure --host=${SYS_ARCH} --static ${EXTRACONF}
 
+case $SYS_PLATFORM in
+    android)
+        sed -i 's/-lpthread//' Makefile
+esac
+
 # package_configure ${EXTRACONF}
 
 sed -i '3i#define FOSSIL_OMIT_DNS 1' autoconfig.h # TBD: likely no longer useful:
