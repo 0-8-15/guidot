@@ -537,6 +537,17 @@ c-declare-end
 	((eqv? rc SQLITE_DONE) (set! exit #t) #f)
 	(else (raise (%%abort-sqlite3-error sqlite3-for-each rc db s '()))))))))
 
+(define #;-inline (MATURITY+2:sqlite3-for-each db stmt fn init)
+  (do ((exit #f) (init init))
+      (exit init)
+    (sqlite3-run-fn
+     (sqlite3-database-callback db) stmt (c-lambda (sqlite3_stmt*) int "sqlite3_step")
+     (lambda (rc s)
+       (cond
+	((eqv? rc SQLITE_ROW) (set! init (call-with-sqlite3-values s fn)))
+	((eqv? rc SQLITE_DONE) (set! exit #t) #f)
+	(else (raise (%%abort-sqlite3-error sqlite3-for-each rc db s '()))))))))
+
 (define (sqlite3-for-each* ;; opens and closes db
          dbn fn sql params #!key
          (mode #f)
