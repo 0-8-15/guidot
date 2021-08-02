@@ -71,4 +71,24 @@
 	     (string-append pds dir)) )
        file ext) ) ) )
 
+(define (delete-directory-recursive! dir)
+  (cond
+   ((not (file-exists? dir)) (error "directory does not exists" delete-directory-recursive! dir))
+   ((eq? (file-type dir) 'directory)
+    (let loop ((dir dir))
+      (for-each
+       (lambda (fn)
+         (cond
+          ((equal? fn "."))
+          ((equal? fn ".."))
+          (else
+           (let ((pfn (make-pathname dir fn)))
+             (cond
+              ((eq? (file-type pfn) 'directory)
+               (loop pfn))
+              (else (delete-file pfn)))))))
+       (directory-files (list path: dir ignore-hidden: #f)))
+      (delete-directory dir)))
+   (else (error "not a directory " delete-directory-recursive! dir))))
+
 ;; #!eof
