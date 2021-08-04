@@ -785,12 +785,9 @@
                             log: (lambda (args) (debug 'fossil-go args))
                             proxy: proxy)))
                       (output-control! insert: output wrap: #t)
-                      ;; BEWARE: strange dependency: insert resets to
-                      ;; begin of buffer when wrap mod is used (in the
-                      ;; line above).  This *might* change.
-                      (let ((summary (string-append "Exited with: " (number->string (/ (process-status output) 256)))))
-                        (output-control! insert: summary wrap: #f)
-                        (output-control! insert: #\newline)))
+                      (let ((summary (string-append "Exited with: " (number->string (/ (process-status output) 256)) "\n")))
+                        (output-control! goto: position: 'absolute row: 1 col: 0)
+                        (output-control! insert: summary wrap: #f)))
                     (set! running #f))))
               async: #t)))))
       (define (mk-kx area row col)
