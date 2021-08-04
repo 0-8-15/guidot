@@ -828,6 +828,7 @@
               (else (error "unhandled text representation" 'textarea-payload text: value)))
              #t)
            more))
+         ((goto:) (apply ggb2d-goto! value-buffer more))
          ((insert:)
           (check-not-observable-speculative! 'textarea-mutation key more)
           (apply
