@@ -276,6 +276,7 @@ NULL;
           `(path: ,(system-cmdargv 0) arguments: ,arguments
                   directory: ,directory
                   char-encoding: ,char-encoding
+                  buffering: #f
                   stdout-redirection: #t stdin-redirection: #t
                   stderr-redirection: ,(and stderr #t) show-console: #f))))))))
 
