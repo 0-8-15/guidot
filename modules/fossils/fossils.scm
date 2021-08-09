@@ -54,7 +54,7 @@
          (repository #t)
          #!rest args)
   (let ((working-directory (or directory (current-directory)))
-        (stderr-redirection #f)
+        (stderr-redirection #t)
         (arguments
          (cond
           ((not repository) args)
