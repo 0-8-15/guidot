@@ -201,6 +201,33 @@
    "insert or replace into config (name, value, mtime) values(?1, ?2, ?3)"
    (list key value (current-seconds))))
 
+(define (fossil-config-get-pin
+         key #!key
+         (repository (fossils-project-filename (fossils-fallback-name (beaver-local-unit-id))))
+         (initial #f)
+         (pred #f)
+         (filter #f)
+         (name key))
+  ;; TBD: rewrite to collect all changes into a single call-with-sqlite3-database
+  ;;
+  ;; Usage: (kick (set! xx (fossil-config-get-pin "autosync")))
+  (let ((result (make-pin initial: initial pred: pred filter: filter name: name)))
+    (call-with-sqlite3-database
+     repository
+     (lambda (db)
+       (let* ((sql "select value from config where name = ?1")
+              (stmt (sqlite3-prepare db sql)))
+         (sqlite3-bind! db stmt (list key))
+         (MATURITY+2:sqlite3-for-each db result stmt)))
+     mode: 'r/o)
+    (wire!
+     result critical:
+     (lambda _
+       (sqlite3-file-command*!
+        repository "insert or replace into config(name, value) values(?1, ?2)"
+        (list key (result)))))
+    result))
+
 (define (fossil-project-title-set! repository title)
   (fossil-config-set! repository "project-name" title))
 
@@ -215,6 +242,16 @@
      (sqlite3-exec*
       db "INSERT OR REPLACE INTO config (name, value, mtime) VALUES(?1, ?2, ?3)"
       (list "self-register" 0 tmstmp)))))
+
+(define (fossil-user-create! repository login pw #!key (cap "") (info "") (photo (sql-null)))
+  (sqlite3-file-command*!
+   repository
+   "insert or replace into user (login, pw, cap, cookie, ipaddr, cexpire, info, photo, mtime)
+values(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)"
+   (let ((cookie (sql-null))
+         (ipaddr (sql-null))
+         (cexpire (sql-null)))
+     (list login pw cap cookie ipaddr cexpire info  photo (current-seconds)))))
 
 ;;** fossils directory and service
 
