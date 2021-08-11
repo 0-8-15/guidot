@@ -210,16 +210,10 @@
    repository
    (lambda (db)
      (define tmstmp (current-seconds))
+     (sqlite3-exec* db "UPDATE user SET cap='' WHERE login IN ('nobody','anonymous')" '())
+     (sqlite3-exec* db "DELETE FROM config WHERE name='public-pages'" '())
      (sqlite3-exec*
-      db
-      #<<EOS
-UPDATE user SET cap=''
-WHERE login IN ('nobody','anonymous');
-DELETE FROM config WHERE name='public-pages';
-EOS
-'())
-     (sqlite3-exec*
-      db "insert or replace into config (name, value, mtime) values(?1, ?2, ?3)"
+      db "INSERT OR REPLACE INTO config (name, value, mtime) VALUES(?1, ?2, ?3)"
       (list "self-register" 0 tmstmp)))))
 
 ;;** fossils directory and service
