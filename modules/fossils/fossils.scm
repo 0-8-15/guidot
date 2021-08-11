@@ -204,6 +204,24 @@
 (define (fossil-project-title-set! repository title)
   (fossil-config-set! repository "project-name" title))
 
+(define (fossil-take-private! repository)
+  ;; Mirrors (stolen from) fossils security_audit.c
+  (call-with-sqlite3-database
+   repository
+   (lambda (db)
+     (define tmstmp (current-seconds))
+     (sqlite3-exec*
+      db
+      #<<EOS
+UPDATE user SET cap=''
+WHERE login IN ('nobody','anonymous');
+DELETE FROM config WHERE name='public-pages';
+EOS
+'())
+     (sqlite3-exec*
+      db "insert or replace into config (name, value, mtime) values(?1, ?2, ?3)"
+      (list "self-register" 0 tmstmp)))))
+
 ;;** fossils directory and service
 
 (define (fossils-fallback-name unit-id)
