@@ -313,6 +313,13 @@
      (define-macro ,expr ,nexpr)
      (eval '(define-macro ,expr ,nexpr))))
 
+(define-macro/rt (define a . b) ;; SRFI-219
+  (cond
+   ((and (pair? a) (pair? (car a)))
+    `(define ,(car a)
+       (lambda ,(cdr a) . ,b)))
+   (else `(##define ,a . ,b))))
+
 (define-macro/rt (kick expr . more)
   `(kick! (lambda () ,expr . ,more)))
 
