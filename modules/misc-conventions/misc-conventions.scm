@@ -313,6 +313,50 @@
      (define-macro ,expr ,nexpr)
      (eval '(define-macro ,expr ,nexpr))))
 
+(define-macro/rt (and-let* claws . body) ;; SRFI-2
+  ;;
+  ;; Borrowed from Askemos/RScheme code base.  Real provenance
+  ;; forgotten.
+  (let* ((new-vars '())
+         (result (cons 'and '()))
+         (growth-point result))
+
+    (define (syntax-error msg arg)
+      (error "and-let*" msg (list arg)))
+    (define (andjoin! clause)
+      (let ((prev-point growth-point)
+            (clause-cell (cons clause '())))
+        (set-cdr! growth-point clause-cell)
+        (set! growth-point clause-cell)))
+
+    (if (not (list? claws))
+        (syntax error "Bindings are not a list: %s" claws))
+    (for-each
+     (lambda (claw)
+       (cond
+        ((symbol? claw)            ; BOUND-VARIABLE form
+         (andjoin! claw))
+        ((and (pair? claw) (null? (cdr claw)))  ; (EXPRESSION) form
+         (andjoin! (car claw)))
+        ((and (pair? claw) (symbol? (car claw)) ; (VARIABLE EXPRESSION) form
+              (pair? (cdr claw)) (null? (cddr claw)))
+         (let* ((var (car claw))
+                (var-cell (cons var '())))
+           (if (memq var new-vars)
+               (syntax-error "Duplicate variable in bindings: %s" var))
+           (set! new-vars (cons var new-vars))
+           (set-cdr! growth-point `((let (,claw) (and . ,var-cell))))
+           (set! growth-point var-cell)))
+        (else
+         (syntax-error "Ill-formed binding:" claw))))
+     claws)
+    (if (not (null? body))
+        (if (null? (cdr body))
+            (andjoin! (car body))
+            (andjoin! `(begin ,@body))))
+                                        ;    (newline) (display result) (newline)  ; uncomment to show expansion
+    result))
+
 (define-macro/rt (define a . b) ;; SRFI-219
   (cond
    ((and (pair? a) (pair? (car a)))
