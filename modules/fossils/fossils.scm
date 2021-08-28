@@ -310,7 +310,7 @@ values(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)"
        (let* ((admin (fossils-fallback-name unit-id))
               (fn (fossils-project-filename admin)))
          (unless (file-exists? fn)
-           (let* ((port (fossil-command "init" "-A" admin fn))
+           (let* ((port (fossil-command directory: (current-directory) "init" "-A" admin fn))
                   (rc (process-status port)))
              ;;(fossil-command repository: fn "user" "new" "u") ;; FIXME: remove!
              (case rc
