@@ -995,24 +995,25 @@
                             output: source
                             success: (lambda _ (dialog-set! #f))))))))
                    (lambda (in col row)
-                     (guide-valuelabel
-                      in: in size: 'medium label-width: label-width
-                      label: "forward"
-                      value: beaver-socks-forward-addr
-                      value-display:
-                      (lambda (v)
-                        (cond
-                         ((string? v) v)
-                         ((not v) '#())
-                         (else (object->string v))))
-                      input:
-                      (lambda (rect payload event x y)
-                        (dialog-set!
-                         (beaverchat-service-address-edit
-                          in: interval label: label size: size
-                          input: check
-                          output: source
-                          success: (lambda _ (dialog-set! #f)))))))
+                     (let ((label "forward"))
+                       (guide-valuelabel
+                        in: in size: 'medium label-width: label-width
+                        label: label
+                        value: beaver-socks-forward-addr
+                        value-display:
+                        (lambda (v)
+                          (cond
+                           ((string? v) v)
+                           ((not v) '#())
+                           (else (object->string v))))
+                        input:
+                        (lambda (rect payload event x y)
+                          (dialog-set!
+                           (beaverchat-service-address-edit
+                            in: interval label: label size: size
+                            input: check
+                            output: source
+                            success: (lambda _ (dialog-set! #f))))))))
                    (lambda (area col row)
                      (guide-button
                       in: area
