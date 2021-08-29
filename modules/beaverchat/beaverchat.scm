@@ -558,7 +558,7 @@
    data-char-encoding: #f
    data:
    (case-lambda
-    (() (input))
+    (() (or (input) ""))
     ((val)
      (if (or (not (procedure? validate)) (validate val))
          (begin
@@ -995,24 +995,24 @@
                             output: source
                             success: (lambda _ (dialog-set! #f))))))))
                    (lambda (in col row)
-                     (let ((label "forward"))
+                     (let ((label "forward")
+                           (source beaver-socks-forward-addr))
                        (guide-valuelabel
                         in: in size: 'medium label-width: label-width
                         label: label
-                        value: beaver-socks-forward-addr
+                        value: source
                         value-display:
                         (lambda (v)
                           (cond
-                           ((string? v) v)
                            ((not v) '#())
+                           ((string? v) v)
                            (else (object->string v))))
                         input:
                         (lambda (rect payload event x y)
                           (dialog-set!
                            (beaverchat-service-address-edit
                             in: interval label: label size: size
-                            input: check
-                            output: source
+                            input: source
                             success: (lambda _ (dialog-set! #f))))))))
                    (lambda (area col row)
                      (guide-button
