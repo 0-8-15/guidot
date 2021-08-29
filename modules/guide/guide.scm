@@ -1727,9 +1727,13 @@
     (define (guide-main
              init #!key
              ;; (events #f)
-             (suspend (lambda () #f))
+             (suspend (lambda ()
+                        (log-status "suspended")
+                        (set! app:suspended #t)
+                        #f))
              (resume (lambda ()
                        (set! glCore:needsinit #t) ;; reinitialize OpenGL pipeline
+                       (set! app:suspended #f)
                        (guide-wakeup!)
                        ;; this helps android to ALMOST SURE sit in
                        ;;
@@ -1743,7 +1747,9 @@
              (wait-cv (mutex-specific %%guide-wait-mutex)))
       (define suspend-state app:suspended)
       (define (draw-once)
-        (when (and (not app:suspended) glgui:active app:width app:height) ;; ???
+        (when (and (not app:suspended)
+                   (not app:mustinit)
+                   glgui:active app:width app:height) ;; ???
           (set! ##now (current-time-seconds))
           (let ((cpl (if (procedure? payload) (payload) payload)))
             (guide-default-event-dispatch/toplevel gui cpl EVENT_REDRAW 0 0))))
