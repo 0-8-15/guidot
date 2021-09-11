@@ -329,7 +329,7 @@
         (set-cdr! growth-point clause-cell)
         (set! growth-point clause-cell)))
 
-    (if (not (list? claws))
+    #;(if (not (list? claws)) ;; does NOT compile under gambit 4.9.3
         (syntax error "Bindings are not a list: %s" claws))
     (for-each
      (lambda (claw)
