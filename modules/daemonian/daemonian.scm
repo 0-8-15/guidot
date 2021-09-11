@@ -263,6 +263,7 @@ NULL;
                     #f)))))))))
    (else
     (let ((arguments `(,(daemonian-semifork-key) ,cmd . ,args)))
+      ;; Note: do NOT use `show-console: #f` - it interfers with redirection.
       (case stderr
         ((raise)
          (open-process
@@ -270,7 +271,7 @@ NULL;
                   directory: ,directory
                   char-encoding: ,char-encoding
                   stdout-redirection: #t stdin-redirection: #t
-                  stderr-redirection: ,(and stderr #t) show-console: #f)))
+                  stderr-redirection: ,(and stderr #t))))
         (else
          (open-process
           `(path: ,(system-cmdargv 0) arguments: ,arguments
@@ -278,7 +279,7 @@ NULL;
                   char-encoding: ,char-encoding
                   buffering: #f
                   stdout-redirection: #t stdin-redirection: #t
-                  stderr-redirection: ,(and stderr #t) show-console: #f))))))))
+                  stderr-redirection: ,(and stderr #t)))))))))
 
 (define (semi-run cmd args)
   (let ((port (semi-fork cmd args)))
