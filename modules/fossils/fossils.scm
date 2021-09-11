@@ -80,12 +80,44 @@
         (close-output-port port)))
       port)))
 
+(define (fossil-command/option+rest
+         #!key
+         (log (and #f (lambda (args) (debug 'fossil-command args))))
+         (directory (fossils-directory))
+         (input #f)
+         (repository #f)
+         (command "version")
+         (options '())
+         (user (user-name))
+         #!rest args)
+  (let ((working-directory (or directory (current-directory)))
+        (stderr-redirection #t)
+        (arguments
+         `(,command
+           ,@options
+           ,@(if user `("-user" ,user) '())
+           ,@(if repository `("-R" ,repository) '())
+           ,@args)))
+    (assume
+     (begin
+       (when (procedure? log)
+         (log `(cwd: ,working-directory arguments: ,@arguments)))
+       #t)
+     "unreachable")
+    (let ((port (semi-fork "fossil" arguments stderr-redirection directory: working-directory)))
+      (cond
+       ((not input) (close-output-port port))
+       ((string? input)
+        (display input port)
+        (close-output-port port)))
+      port)))
+
 (define (fossil-command-port/json
          #!key
          (log (and #f (lambda (args) (debug 'fossil-command/json args))))
          (directory #f)
          (repository #t)
-         (user (getenv "USER" "u")))
+         (user (user-name)))
   (let ((working-directory (or directory (current-directory)))
         (stderr-redirection #f)
         (arguments
@@ -114,7 +146,7 @@
          (log (and #f (lambda (args) (debug 'fossil-command/json args))))
          (directory (fossils-directory))
          (repository #t)
-         (user (getenv "USER" "u")))
+         (user (user-name)))
   (let ((port (fossil-command-port/json repository: repository user: user)))
     (json-write json-sexpr port)
     (close-output-port port)
@@ -145,7 +177,7 @@
          (log (and #f (lambda (args) (debug 'fossil-command/sql args))))
          (directory (fossils-directory))
          (repository #f)
-         (user (getenv "USER" "u")))
+         (user (user-name)))
   (let ((port 
          (let ((working-directory (or directory (current-directory)))
                (stderr-redirection 'raise)
@@ -250,8 +282,12 @@
 values(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)"
    (let ((cookie (sql-null))
          (ipaddr (sql-null))
-         (cexpire (sql-null)))
-     (list login pw cap cookie ipaddr cexpire info  photo (current-seconds)))))
+         (cexpire (sql-null))
+         (mtime
+          (cond-expand
+           (win32 (number->string (current-seconds)))
+           (else (current-seconds)))))
+     (list login pw cap cookie ipaddr cexpire info  photo mtime))))
 
 ;;** fossils directory and service
 
