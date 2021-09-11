@@ -290,11 +290,19 @@ NULL;
   (cond
    ((source-fossil)
     (let* ((port (fossil-command repository: (source-fossil) "cat" fn))
-           (exprs (read-all port))
+           ;; (exprs (read-all port))
+           (instr (read-line port #f))
            (status (process-status port)))
       (cond
-       ((eqv? status 0) (for-each eval exprs))
-       (else (error "fossil failed on" (source-fossil) fn (modulo status 255))))))
+       ((eqv? status 0)
+        ;; (for-each eval exprs)
+        (call-with-input-string
+         instr
+         (lambda (port)
+           (do ((expr (read port) (read port)))
+               ((eof-object? expr))
+             (eval expr)))))
+       (else (error "fossil failed on" (source-fossil) fn (modulo status 255) instr)))))
    (else (load fn))))
 
 (define (debug-adhoc-network-port) 3333)
@@ -647,8 +655,9 @@ Note that outgoing links into the network work **only** when the service is used
         (guide-toplevel-payload ((guide-payload-ref (car more)) area))
         (when (pair? (cdr more)) (parse (cons CMD (cdr more)))))))
      ((CMD "-in" FOSSIL then . more) ;; TBD: more: options like version
-      (unless (file-exists? FOSSIL) (error "file not found" FOSSIL))
-      (kick (source-fossil FOSSIL))
+      (let ((fn (path-expand FOSSIL (current-directory))))
+        (unless (file-exists? fn) (error "file not found" fn))
+        (kick (source-fossil fn)))
       (parse `(,CMD ,then ,@more)))
      ((CMD "-in") (error "usage -in FOSSIL ..."))
      ((CMD "-load" FN . more) (begin (xload FN) (parse (cons CMD more))))
