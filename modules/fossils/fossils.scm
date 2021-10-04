@@ -46,6 +46,9 @@
             (n (length args)))
        ((c-lambda (int char**) int "fossil_main") n args))))))
 
+(define $fossil-user-name ;; just distinguish from user-name
+  (make-parameter (user-name)))
+
 (define (fossil-command
          #!key
          (log (and #f (lambda (args) (debug 'fossil-command args))))
@@ -88,7 +91,7 @@
          (repository #f)
          (command "version")
          (options '())
-         (user (user-name))
+         (user ($fossil-user-name))
          #!rest args)
   (let ((working-directory (or directory (current-directory)))
         (stderr-redirection #t)
@@ -117,7 +120,7 @@
          (log (and #f (lambda (args) (debug 'fossil-command/json args))))
          (directory #f)
          (repository #t)
-         (user (user-name)))
+         (user ($fossil-user-name)))
   (let ((working-directory (or directory (current-directory)))
         (stderr-redirection #f)
         (arguments
@@ -146,7 +149,7 @@
          (log (and #f (lambda (args) (debug 'fossil-command/json args))))
          (directory (fossils-directory))
          (repository #t)
-         (user (user-name)))
+         (user ($fossil-user-name)))
   (let ((port (fossil-command-port/json repository: repository user: user)))
     (json-write json-sexpr port)
     (close-output-port port)
@@ -177,7 +180,7 @@
          (log (and #f (lambda (args) (debug 'fossil-command/sql args))))
          (directory (fossils-directory))
          (repository #f)
-         (user (user-name)))
+         (user ($fossil-user-name)))
   (let ((port 
          (let ((working-directory (or directory (current-directory)))
                (stderr-redirection 'raise)
@@ -228,10 +231,14 @@
       str))
 
 (define (fossil-config-set! repository key value)
+  (define mtime
+    (cond-expand
+     (win32 (exact->inexact (current-seconds)))
+     (else (current-seconds))))
   (sqlite3-file-command*!
    repository
    "insert or replace into config (name, value, mtime) values(?1, ?2, ?3)"
-   (list key value (current-seconds))))
+   (list key value mtime)))
 
 (define (fossil-config-get-pin
          key #!key
@@ -268,7 +275,10 @@
   (call-with-sqlite3-database
    repository
    (lambda (db)
-     (define tmstmp (current-seconds))
+     (define tmstmp
+       (cond-expand
+        (win32 (exact->inexact (current-seconds)))
+        (else (current-seconds))))
      (sqlite3-exec* db "UPDATE user SET cap='' WHERE login IN ('nobody','anonymous')" '())
      (sqlite3-exec* db "DELETE FROM config WHERE name='public-pages'" '())
      (sqlite3-exec*
@@ -285,7 +295,7 @@ values(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)"
          (cexpire (sql-null))
          (mtime
           (cond-expand
-           (win32 (number->string (current-seconds)))
+           (win32 (exact->inexact (current-seconds)))
            (else (current-seconds)))))
      (list login pw cap cookie ipaddr cexpire info  photo mtime))))
 
