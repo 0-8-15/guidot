@@ -59,6 +59,10 @@ EOF
         (https-regex (rx "^https"))
         (atphone-decoder #f)
         (connect-handler (lambda (tag host port) (display "NOT Initialized: httproxy connect"))))
+    (define (log . msg)
+      (cond-expand
+       (debug (apply println port: (current-error-port) msg))
+       (else (apply log-status msg))))
     (define (init!)
       (set! http-proxy-connect-line
             (rx "^CONNECT (\\[(?:[^]]+])|(?:[^:/]+))(?:(?:[:])([0-9]+))? (HTTP/[0-9]\\.[0-9])\r?$"))
@@ -70,7 +74,7 @@ EOF
       (let ((line (u8-read-line2 port 10 max-line-length)))
         (or (equal? line "") (equal? line "\r") (ingore-headers! port))))
     (define (connect host port proto)
-      (println port: (current-error-port) "CONNECT " host " " port)
+      (when ($httpproxy-log-requests) (log "CONNECT " host " " port))
       (ingore-headers! (current-input-port))
       (let ((conn (with-exception-catcher
                    (lambda (exn) #f)
@@ -87,8 +91,8 @@ EOF
     (define (forward host port cmd scheme path proto)
       (let ((nl1 (string-append cmd " " path " " proto "\r\n"))
             (port (or (and port (string->number port)) (if (rx~ https-regex scheme) 443 80))))
-        (println port: (current-error-port) "HTTP FORWARD "
-                 host " " port " "  scheme " : " nl1)
+        (when ($httpproxy-log-requests)
+          (log "HTTP FORWARD " host " " port " "  scheme " : " nl1))
         (let ((conn (with-exception-catcher
                      (lambda (exn)
                        (handle-debug-exception exn nl1))
@@ -120,7 +124,7 @@ EOF
                    handle-replloop-exception
                    (lambda () (rx~ http-proxy-connect-line ln1)))))
           (when ($httpproxy-log-requests)
-            (println port: (current-error-port) "HTTPproxy request: " ln1))
+            (log "HTTPproxy request: " ln1))
           (if m
               (connect (rxm-ref m 1) (string->number (rxm-ref m 2)) (rxm-ref m 3))
               (let ((m (rx~ http-proxy-request-line ln1)))
