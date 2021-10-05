@@ -117,9 +117,10 @@
           (cond
            ((active) =>
             (lambda (payload)
-              (guide-payload-contains/xy? payload x y)
-              (guide-event-dispatch-to-payload rect payload event x y)))
-           (else (mdvector-rect-interval-contains/xy? interval x y))))))
+              (when (and (guide-event-graphics? event) (guide-payload-contains/xy? payload x y))
+                (guide-event-dispatch-to-payload rect payload event x y))))
+           ((guide-event-graphics? event) (mdvector-rect-interval-contains/xy? interval x y))
+           (else #f)))))
     (define result
       (cond
        ((null? content-constructors)

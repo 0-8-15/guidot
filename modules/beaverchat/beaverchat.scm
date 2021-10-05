@@ -833,7 +833,7 @@
          (dialog (guide-event-dispatch-to-payload rect dialog event x y))
          ((case event ((press: release:) #t) (else #f))
           (guide-event-dispatch-to-payload rect chat-payload event x y))
-         ((guide-payload-contains/xy? to-display x y)
+         ((and (guide-event-graphics? event) (guide-payload-contains/xy? to-display x y))
           (guide-event-dispatch-to-payload rect to-display event x y))
          (else (guide-event-dispatch-to-payload rect chat-payload event x y))))
       (update-to-display!)
@@ -1097,7 +1097,8 @@
              (else (otherwise interval x y))))
            ((or (eqv? press: event) (eqv? release: event))
             #t)
-           (else (otherwise interval x y))))))
+           ((guide-event-graphics? event) (otherwise interval x y))
+           (else #f)))))
     (make-guide-payload
      name: 'beaverchat-about
      in: interval widget: #f on-redraw: redraw! on-any-event: events lifespan: 'ephemeral)))

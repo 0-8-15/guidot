@@ -246,13 +246,14 @@
           #f)
          ((case event ((press: release:) #t) (else #f))
           (guide-event-dispatch-to-payload rect content event x y))
-         (else
+         ((guide-event-graphics? event)
           (let ((x (- x (vector-ref position 0)))
                 (y (- y (vector-ref position 1))))
             (cond
              ((guide-payload-contains/xy? content x y)
               (guide-event-dispatch-to-payload rect content event x y))
-             (else #f)))))))
+             (else #f))))
+         (else #f))))
     (define (set-content! obj)
       (when obj (check-zero-based! obj))
       (set! content obj))
@@ -788,7 +789,9 @@
                   ;; TBD: update only if things have changed
                   (update-cursor!))
                 #t))
-             (else (mdvector-rect-interval-contains/xy? in x y)))))))
+             ((eqv? focus: event) #t)
+             ((guide-event-graphics? event) (mdvector-rect-interval-contains/xy? in x y))
+             (else #f))))))
     (really-update-cursor!)
     (results
      (let ((result
@@ -933,6 +936,15 @@
        (value-buffer (input->buffer data)) ;; central value
        (value-display-offset 0)
        (value-buffer-as-string "")
+       (update-data-from-buffer!
+        (lambda ()
+          (cond ;; speculative
+           ;; TBD: should we use value-buffer-as-string here?
+           ((procedure? validate)
+            (when (validate value-buffer)
+              (data (ggb->string value-buffer 0 (ggb-length value-buffer) encoding: data-char-encoding)) ))
+           (else (data (ggb->string value-buffer 0 (ggb-length value-buffer) encoding: data-char-encoding))))
+          #t))
        (update-value-string!
         (lambda ()
           (set! value-buffer-as-string (%%value-buffer->string value-buffer value-display-offset))))
@@ -1060,12 +1072,7 @@
            (let ((key (on-key p/r key mod)))
              (cond
               ((eqv? key EVENT_KEYENTER)
-               (cond ;; speculative
-                ;; TBD: should we use value-buffer-as-string here?
-                ((procedure? validate)
-                 (when (validate value-buffer)
-                   (data (ggb->string value-buffer 0 (ggb-length value-buffer) encoding: data-char-encoding)) ))
-                (else (data (ggb->string value-buffer 0 (ggb-length value-buffer) encoding: data-char-encoding))))
+               (update-data-from-buffer!)
                (%%guide-post-speculative (handle-key p/r key mod)))
               (key (%%guide-post-speculative (handle-key p/r key mod)))
               (else #t))))))
@@ -1078,6 +1085,10 @@
           (lambda (rect payload event x y)
             (case event
               ((press: release:) (local-on-key event x y))
+              ((focus:)
+               (case x
+                 ((#f) (update-data-from-buffer!))
+                 (else #t)))
               ((reload:) ;;  Bad style!
                ;;
                ;; NOTE: This is to document possible style as bad.  TBD:
@@ -1111,7 +1122,8 @@
                               (min (ggb-length value-buffer)
                                    (+ o0 (round (/ (- x0 x) font-size-treshold)))))))
                  #t)
-                (else (mdvector-rect-interval-contains/xy? in x y)))))))))
+                ((guide-event-graphics? event) (mdvector-rect-interval-contains/xy? in x y))
+                (else #f))))))))
     (when (procedure? validate) (validate value-buffer))
     (update-cursor!)
     (let ((result ;; a letrec* on `this-payload`
@@ -1717,7 +1729,8 @@
                   (begin
                     (debug 'value-edit-ignored-key x)
                     #f))))
-           (else (mdvector-rect-interval-contains/xy? in x y))))))
+           ((guide-event-graphics? event) (mdvector-rect-interval-contains/xy? in x y))
+           (else #f)))))
     (guide-focus line)
     (let ((result
            (make-guide-payload
@@ -1890,7 +1903,8 @@
             (guide-focus lines) ;; questionable?
             (let ((v (on-key event x y)))
               (if v (guide-event-dispatch-to-payload rect lines event x y) v)))
-           (else (mdvector-rect-interval-contains/xy? in x y))))))
+           ((guide-event-graphics? event) (mdvector-rect-interval-contains/xy? in x y))
+           (else #f)))))
     (if (eq? results values)
         (set! lines-control!
               (let ((ctrl lines-control!))
@@ -2129,15 +2143,14 @@
                 ((press: release:)
                  (and (eq? (guide-focus) this-payload) (key-event event x y)))
                 (else
-                 (let ((y (- y y-shift)))
-                   (cond
-                    ((guide-payload-contains/xy? payload x y)
-                     (pointer-event rect payload event x y))
-                    (else
-                     #;(MATURITY
-                     -1 "NOT handling event outside, TBD: don't pass here!"
-                     loc: 'make-figure-list-payload2)
-                     #f))))))))
+                 (cond
+                  ((guide-event-graphics? event)
+                   (let ((y (- y y-shift)))
+                     (cond
+                      ((guide-payload-contains/xy? payload x y)
+                       (pointer-event rect payload event x y))
+                      (else #f))))
+                  (else #f)))))))
         (update-content!)
         (let ((result
                (make-guide-payload
