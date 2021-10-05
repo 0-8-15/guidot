@@ -251,7 +251,15 @@
      ((value)
       (cond
        ((or (not value) (guide-payload? value))
-        (set! guide-focus value))
+        (let ((before guide-focus))
+          (unless (eq? before value)
+            (set! guide-focus value)
+            (when before
+              (guide-event-dispatch-to-payload
+               (guide-payload-measures before) before focus: #f 0))
+            (when value
+              (guide-event-dispatch-to-payload
+               (guide-payload-measures value) value focus: #t 0)))))
        (else "invalid payload" guide-focus value))))))
 
 (define guide-meta-menu (make-parameter #f))
@@ -1270,7 +1278,7 @@
        (cond
         ((or (eqv? press: event) (eqv? release: event))
          (if on-key (on-key event x y) #t))
-        ((guide-payload-contains/xy? payload x y)
+        ((and (guide-event-graphics? event) (guide-payload-contains/xy? payload x y))
          (do ((i (fx- (vector-length content) 1) (fx- i 1))
               (result #f)
               (hit #f))
@@ -1428,7 +1436,8 @@
                         (begin
                           (set! armed #f)
                           #f)))
-                   (else (guide-figure-contains? view! x y)))))))))
+                   ((guide-event-graphics? event) (guide-figure-contains? view! x y))
+                   (else #f))))))))
       (make-guide-payload
        in: in name: name widget: #f
        on-redraw: (view!) on-any-event: events lifespan: 'ephemeral))))
@@ -1509,7 +1518,8 @@
            (lambda (rect payload event x y)
              (cond
               ((or (eqv? press: event) (eqv? release: event)))
-              ((guide-figure-contains? box! x y)
+              ((and (guide-event-graphics? event)
+                    (guide-figure-contains? box! x y))
                (or (not input) (input rect payload event x y)))
               (else #f)))))
       (let ((payload (make-guide-payload
