@@ -938,12 +938,14 @@
        (value-buffer-as-string "")
        (update-data-from-buffer!
         (lambda ()
-          (cond ;; speculative
-           ;; TBD: should we use value-buffer-as-string here?
-           ((procedure? validate)
-            (when (validate value-buffer)
-              (data (ggb->string value-buffer 0 (ggb-length value-buffer) encoding: data-char-encoding)) ))
-           (else (data (ggb->string value-buffer 0 (ggb-length value-buffer) encoding: data-char-encoding))))
+          (let ((current
+                 (cond ;; speculative
+                  ;; TBD: should we use value-buffer-as-string here?
+                  ((procedure? validate)
+                   (when (validate value-buffer)
+                     (ggb->string value-buffer 0 (ggb-length value-buffer) encoding: data-char-encoding) ))
+                  (else (ggb->string value-buffer 0 (ggb-length value-buffer) encoding: data-char-encoding)))))
+            (unless (equal? (data) current) (data current)))
           #t))
        (update-value-string!
         (lambda ()
