@@ -345,10 +345,15 @@ c-declare-end
 (define sqlite3-error-message
   (c-lambda (sqlite3_db*) UTF-8-string "___return((const char*)(___arg1 ? sqlite3_errmsg(___arg1->cnx) : \"connection lost\"));"))
 
+(define sqlite3-stmt-sql (c-lambda (sqlite3_stmt*) UTF-8-string "sqlite3_sql"))
+
 (define-type sqlite3-error loc code db stmt more)
 
 (define-macro (%%abort-sqlite3-error loc code db stmt . more)
-  `(make-sqlite3-error ,loc (or (and ,db (sqlite3-error-message ,db)) ,code) ,db ,stmt (list ,@more)))
+  `(make-sqlite3-error
+    ,loc (or (and ,db (sqlite3-error-message ,db)) ,code) ,db
+    (if (sqlite3-stmt? ,stmt) (sqlite3-stmt-sql ,stmt) ,stmt)
+    (list ,@more)))
 
 (define (sqlite3-open
          dbn #!optional
@@ -418,7 +423,8 @@ c-declare-end
  }
  ___return(stmt);
 "))
-  (return db sql 0 (string-length sql)))
+  (or (return db sql 0 (string-length sql))
+      (raise (%%abort-sqlite3-error sqlite3-prepare 42 db sql))))
 
 (define sqlite3-column-count (c-lambda (sqlite3_stmt*) int "sqlite3_column_count"))
 
@@ -460,7 +466,7 @@ c-declare-end
 	       stmt (+ i 1))))
       (if (eqv? rc SQLITE_OK) #f (%%abort-sqlite3-error 'bind! rc db stmt i v))))
    (else
-    (make-sqlite3-error sqlite3-bind-index! "bind! blob, number, boolean, string or sql-null" db stmt (list i v)))))
+    (make-sqlite3-error sqlite3-bind-index! "bind! blob, number, boolean, string or sql-null" db (sqlite3-stmt-sql stmt) (list i v)))))
 
 (define sqlite3_bind_int64 (c-lambda (sqlite3_stmt* int int64) int "sqlite3_bind_int64"))
 (define sqlite3_bind_zeroblob (c-lambda (sqlite3_stmt* int int) int "sqlite3_bind_zeroblob"))
@@ -679,7 +685,7 @@ c-declare-end
          ;; back.  To derive a clean API we better suport this way
          ;; 1st.
          (lambda (step)
-           (out (call-with-sqlite3-values step row) accu)))
+           (set! result (out (call-with-sqlite3-values step row) result))))
         (else
          (lambda (stmt)
            (do ((i 0 (+ i 1)))
