@@ -106,8 +106,11 @@
      #; (debug 'LookupFamily family)
      #f))
   ($httpproxy-log-requests #t)
+  (eval '(define-cond-expand-feature debug))
   )
  (else #f))
+
+(eval `(define-cond-expand-feature ,(string->symbol (system-platform))))
 
 (cond-expand
  (android
