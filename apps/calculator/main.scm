@@ -58,16 +58,25 @@
 
 (log-status "Startup")
 
-(define (debug l v)
-  (let ((p  (current-error-port)))
-    (display l p)
-    (display ": " p)
-    (write v p)
-    (newline p)
-    (force-output p)
-    v))
+(define debug
+  (let ((format
+         (lambda (l v)
+           (lambda (p)
+             (display l p)
+             (display ": " p)
+             (write v p)
+             (newline p)))))
+    (cond-expand
+     (debug
+      (lambda (l v)
+        ((format l v) (current-error-port))
+        v))
+     (else
+      (lambda (l v)
+        (log-debug (call-with-output-string (format l v)) 0)
+        v)))))
 
-(set!
+#;(set!
  ##exit
  (let ((old ##exit))
    (lambda args
@@ -96,6 +105,7 @@
      (debug 'LOOKUP (hexstr nodeid 12))
      #; (debug 'LookupFamily family)
      #f))
+  ($httpproxy-log-requests #t)
   )
  (else #f))
 
@@ -668,8 +678,14 @@ Note that outgoing links into the network work **only** when the service is used
        (else (call-with-input-file FN (lambda (port) (load-into-toplevel area port))))))
      ((CMD "-start") (error "usage: -start file OR -start path fossil"))
      ((CMD "-l" FILE . more)
-      (load FILE)
-      (when (pair? (cdr more)) (parse (cons CMD more))))
+      (begin
+        (load FILE)
+        (when (pair? (cdr more)) (parse (cons CMD more)))))
+     ((CMD (? (lambda (x) (string-prefix? "-:d" x)) dbg) . more) (parse (cons CMD more)))
+     ((CMD "-fossil-user" NAME . more)
+      (begin
+        ($fossil-user-name NAME)
+        (parse (cons CMD more))))
      ((CMD "-version" . more)
       (begin
         (println (system-appversion))
