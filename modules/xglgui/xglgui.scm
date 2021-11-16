@@ -942,10 +942,12 @@
                  (cond ;; speculative
                   ;; TBD: should we use value-buffer-as-string here?
                   ((procedure? validate)
-                   (when (validate value-buffer)
-                     (ggb->string value-buffer 0 (ggb-length value-buffer) encoding: data-char-encoding) ))
+                   (cond
+                    ((validate value-buffer)
+                     (ggb->string value-buffer 0 (ggb-length value-buffer) encoding: data-char-encoding) )
+                    (else #t)))
                   (else (ggb->string value-buffer 0 (ggb-length value-buffer) encoding: data-char-encoding)))))
-            (unless (equal? (data) current) (data current)))
+            (unless (or (eq? current #t) (equal? (data) current)) (data current)))
           #t))
        (update-value-string!
         (lambda ()
