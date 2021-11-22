@@ -575,9 +575,6 @@ Note that outgoing links into the network work **only** when the service is used
   ;; (lwip-tcp-service-register! 80 fossils-directory-service)
   (log-status "beaver.dam done")
   (let ((job (lambda () (beaver-process-commands (args)))))
-    (cond-expand
-     ((or #;debug linux) #f)
-     (else (kick/sync! forward-logging-to-daemonian!)))
     (log-status "begin of log for run in \"" dir "\" with arguments " (object->string (args)))
     (thread-start! (make-thread job 'beaver))))
 
@@ -608,6 +605,10 @@ Note that outgoing links into the network work **only** when the service is used
   ))
 
 ;; command line
+
+(cond-expand
+ ((or #;debug linux) #f)
+ (else (kick/sync! forward-logging-to-daemonian!)))
 
 (let ((area (make-mdv-rect-interval 0 0 320 480)))
   (define (read-and-evaluate port)
