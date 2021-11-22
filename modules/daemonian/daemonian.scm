@@ -129,6 +129,7 @@ NULL;
  (lambda (args)
    (let ((conn (open-process
                 `(path: ,(system-cmdargv 0) arguments: (,(daemonian-semifork-key) . ,(cdr args))
+                        eol-encoding: lf
                         stdin-redirection: #f stdout-redirection: #f
                         stderr-redirection: #t show-console: #f))))
      (cond
@@ -263,12 +264,14 @@ NULL;
                     #f)))))))))
    (else
     (let ((arguments `(,(daemonian-semifork-key) ,cmd . ,args)))
-      ;; Note: do NOT use `show-console: #f` - it interfers with redirection.
+      ;; FIXME: is this really true? Note: do NOT use `show-console: #f` - it interfers with redirection.
       (case stderr
         ((raise)
          (open-process
           `(path: ,(system-cmdargv 0) arguments: (,(daemonian-semifork-key) "daemonian-captured-run" ,@arguments)
                   directory: ,directory
+                  show-console: #f
+                  eol-encoding: lf
                   char-encoding: ,char-encoding
                   stdout-redirection: #t stdin-redirection: #t
                   stderr-redirection: ,(and stderr #t))))
@@ -276,7 +279,10 @@ NULL;
          (open-process
           `(path: ,(system-cmdargv 0) arguments: ,arguments
                   directory: ,directory
-                  char-encoding: ,char-encoding
+                  show-console: #f
+                  eol-encoding: lf
+                  ;; input-eol-encoding: cr-lf output-eol-encoding: lf
+                  ;; char-encoding: ,char-encoding
                   buffering: #f
                   stdout-redirection: #t stdin-redirection: #t
                   stderr-redirection: ,(and stderr #t)))))))))
