@@ -1,8 +1,8 @@
-VERSION=2.1.2
+VERSION=2.1.3
 VERSION_CONTRIB=2.1.0
 
 PKGURL=http://git.savannah.gnu.org/git/lwip.git
-PKGHASH=159e31b6    # 159e31b6 == STABLE-2_1_2_RELEASE
+PKGHASH=ed6c951a    # STABLE-2_1_3_RELEASE
 CONTRIBURL=http://git.savannah.gnu.org/git/lwip/lwip-contrib.git
 CONTRIBHASH=35b011d # 35b011d == STABLE-2_1_0_RELEASE
 
