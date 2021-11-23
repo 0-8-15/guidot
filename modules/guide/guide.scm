@@ -1763,10 +1763,12 @@
           (set! ##now (current-time-seconds))
           (let ((cpl (if (procedure? payload) (payload) payload)))
             (guide-default-event-dispatch/toplevel gui cpl EVENT_REDRAW 0 0))))
+      (define (wait-for-frame-period)
+        (mutex-lock! wait-mutex 0)
+        (mutex-unlock! wait-mutex wait-cv ($guide-frame-period)))
       (define (draw-loop) ;; TBD: add optional "no draw required"
         (draw-once)
-        (mutex-lock! wait-mutex 0)
-        (mutex-unlock! wait-mutex wait-cv ($guide-frame-period))
+        (wait-for-frame-period)
         (draw-loop))
       (let ((gui #f)
             (draw-thread #f)
@@ -1799,7 +1801,9 @@
            (cond
             ((eqv? event EVENT_REDRAW)
              (guide-wakeup!)
-             (unless draw-thread (draw-once)))
+             (unless draw-thread
+               (draw-once)
+               (wait-for-frame-period)))
             (else
              (let ((cpl (if (procedure? payload) (payload) payload)))
                (guide-default-event-dispatch/toplevel gui cpl event x y))
