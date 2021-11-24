@@ -901,6 +901,7 @@
          #!key
          (direction 0)
          (fixed #f)
+         (x-motion-opaque #f) ;; hide motion events from content
          (on-key #f)
          (shrink-to-content #t)
          (clip #f) ;; clip content display to area
@@ -1123,7 +1124,7 @@
              ((and (eqv? event EVENT_BUTTON1DOWN))
               (set! armed (vector x y))
               (set! armed-at armed)
-              #t)
+              (or x-motion-opaque (pass-event! rect payload event x y)))
              ((and (or (eqv? event EVENT_BUTTON1DOWN) (eqv? event EVENT_BUTTON1UP)
                        (eqv? event EVENT_MOTION))
                    (not (mdvector-rect-interval-contains/xy? area x y)))
@@ -1142,13 +1143,17 @@
                            ((procedure? x) (x))
                            ((promise? x) (force x))
                            (else (error "invalid return" x))))))
-                   (let* ((r1 (pass-event! rect payload EVENT_BUTTON1DOWN x y))
-                          (r2 (pass-event! rect payload event x y)))
-                     (%%guide-post-speculative (begin (handle r1) (handle r2)))))))
+                   (cond
+                    ((not x-motion-opaque)
+                     (pass-event! rect payload event x y))
+                    (else
+                     (let* ((r1 (pass-event! rect payload EVENT_BUTTON1DOWN x y))
+                            (r2 (pass-event! rect payload event x y)))
+                       (%%guide-post-speculative (begin (handle r1) (handle r2)))))))))
                (else
                 (set! armed #f)
                 (set! armed-at #f)
-                #t)))
+                (or x-motion-opaque (pass-event! rect payload event x y)))))
              ((and armed (eqv? event EVENT_MOTION))
               (cond
                (armed
@@ -1164,7 +1169,7 @@
                     (case direction
                       ((1) (set! lower-bound-x (+ armed dx)))
                       ((2 -2) (set! lower-bound-y (+ armed dy)))))
-                  #t))
+                  (or x-motion-opaque (pass-event! rect payload event x y))))
                (else #t)))
              (else (pass-event! rect payload event x y)))))))
     (results
