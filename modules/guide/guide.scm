@@ -901,7 +901,7 @@
          #!key
          (direction 0)
          (fixed #f)
-         (x-motion-opaque #f) ;; hide motion events from content
+         (x-motion-opaque #t) ;; hide motion events from content
          (on-key #f)
          (shrink-to-content #t)
          (clip #f) ;; clip content display to area
@@ -978,7 +978,7 @@
                  ((1)
                   (let ((x offset))
                     (if (or fixed
-                            (and (> (+ x width) lower-bound-x0) (<= x upper-bound-x)))
+                            (and (<= x upper-bound-x) (>= (+ x width) lower-bound-x)))
                         (begin (view! visible: #t) (view! position: x lower-bound-y))
                         (view! visible: #f)))
                   ;; update running
