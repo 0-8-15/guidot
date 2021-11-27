@@ -40,7 +40,7 @@ package_make CFLAGS=-pthread
 # note: this does not yet work when compiled at window
 sed -i  '/FOSSIL_FUZZ/s/$/||1/' src/main.c
 rmifexists bld/main.o bld/main_.c
-rmifexists $SYS_PREFIX/lib/libfossil.a
+rmifexists $SYS_PREFIX/lib/libfossilscm.a
 
 # export SYS_AR SYS_PREFIX; echo warte in fossil build auf edit; pwd; bash -i
 
@@ -56,18 +56,18 @@ case $SYS_PLATFORM in
 /' src/main.c
         package_make bld/main.o
         assertfile bld/main.o
-        $SYS_AR crs $SYS_PREFIX/lib/libfossil.a bld/*.o
+        $SYS_AR crs $SYS_PREFIX/lib/libfossilscm.a bld/*.o
     ;;
     *)
         $SYS_STRIP fossil
         cp fossil $SYS_PREFIX/bin
         make bld/main.o
-        $SYS_AR crs $SYS_PREFIX/lib/libfossil.a bld/*.o
+        $SYS_AR crs $SYS_PREFIX/lib/libfossilscm.a bld/*.o
     ;;
 esac
 
 asserterror $?
-assertfile $SYS_PREFIX/lib/libfossil.a
+assertfile $SYS_PREFIX/lib/libfossilscm.a
 
 # export SYS_AR SYS_PREFIX; echo warte in fossil build; pwd; bash -i
 
