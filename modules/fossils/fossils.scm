@@ -1,5 +1,9 @@
 (include "sqlite-ffi.scm")
 
+;; (include "libfsl.scm")
+
+(include "fossil-ffi.scm")
+
 (define %%fossils%at-phone-decoder (make-parameter (lambda (x) #f)))
 
 (cond-expand
