@@ -298,6 +298,19 @@ AND tagxref.rid=leaf.rid
 -- LIMIT 1
 ")
 
+(define (fossil-content/db+query+params db sql params)
+  ;; TBD: use GGB for result and replace
+  ;; `fossil-subu8vector-delta-apply` code parsing and applying the
+  ;; delta to the current result.  Or maybe use GGB2D when appropriate.
+  (define result #f)
+  (define (row rid blob)
+    (let ((blob (fossil-subu8vector-uncompress blob))
+          (sofar result))
+      (set! result (if sofar (fossil-subu8vector-delta-apply sofar blob) blob))
+      #f))
+  (sqlite3-exec* db sql params row: row)
+  result)
+
 (define (fossil-content/db+rid db rid)
   (define sql "
 with linkage
@@ -313,28 +326,18 @@ as
 select blob.rid, content from linkage join blob on linkage.srcid=blob.rid
 order by level desc
 ")
-  ;; TBD: use GGB for result and replace
-  ;; `fossil-subu8vector-delta-apply` code parsing and applying the
-  ;; delta to the current result.  Or maybe use GGB2D when appropriate.
-  (define result #f)
-  (define (row rid blob)
-    (let ((blob (fossil-subu8vector-uncompress blob))
-          (sofar result))
-      (set! result (if sofar (fossil-subu8vector-delta-apply sofar blob) blob))
-      #f))
-  (sqlite3-exec db sql row: row rid)
+
+  (define result (fossil-content/db+query+params db sql (list rid)))
+  (unless result (error "failed to load content from row with rid, deltas" fossil-content/db+rid db rid ndeltas))
   result)
 
-(define (%fossil-artifact->rid/db
-         db artifact #!key
-         (tag "trunk"))
-  (define sql
-    (string-append
-     "WITH Target(filename,branch) AS (SELECT ?1, 'sym-'||?2),"
-     "
+(define %fossil*sql-source%filename+brach->rid
+  (string-append
+   "WITH Target(filename,branch) AS (SELECT ?1, 'sym-'||?2),"
+   "
 Checkin(rid,sym,mtime) AS ("
-     %fossil*sql-source%checkin
-     "),
+   %fossil*sql-source%checkin
+   "),
 SelectedCheckin AS (
 SELECT * FROM Checkin
 WHERE sym IN (SELECT branch from Target)
@@ -347,7 +350,7 @@ Ancestors AS (
  SELECT plink.*, Ancestors.level+1 as level FROM Ancestors JOIN plink ON Ancestors.pid=plink.cid
 )
 "
-     "
+   "
 SELECT
 mlink.fid as rid
 FROM Ancestors
@@ -359,7 +362,12 @@ filename.name=Target.filename
 ORDER BY level
 LIMIT 1
 "
-     ))
+   ))
+
+(define (%fossil-artifact->rid/db
+         db artifact #!key
+         (tag "trunk"))
+  (define sql %fossil*sql-source%filename+brach->rid)
   (define result #f)
   (sqlite3-exec db sql row: (lambda (rid) (set! result rid)) artifact tag)
   result)
@@ -383,7 +391,7 @@ LIMIT 1
   (let ((blob (fossil-content repository artifact)))
     (cond
      (blob (open-input-u8vector `(init: ,blob char-encoding: UTF-8)))
-     (else (error "artifact not found" open-fossil-content repository artifact)))))
+     (else (debug %fossil*sql-source%filename+brach->rid 'query) (error "artifact not found" open-fossil-content repository artifact)))))
 
 ;;*** Config
 

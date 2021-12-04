@@ -137,7 +137,6 @@ c-declare-end
     (cond
      ((##fx< rc 0) (error "failed" zlib-subu8vector-uncompress rc))
      ((eqv? rc room) dst-vector)
-     ((##fx> rc room) (loop rc))
      (else (subu8vector dst-vector 0 rc)))))
 
 (c-declare
