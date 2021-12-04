@@ -53,6 +53,8 @@
 (define $fossil-user-name ;; just distinguish from user-name
   (make-parameter (user-name)))
 
+;;** Using Subprocess
+
 (define (fossil-command
          #!key
          (log (and #f (lambda (args) (debug 'fossil-command args))))
@@ -185,7 +187,7 @@
          (directory (fossils-directory))
          (repository #f)
          (user ($fossil-user-name)))
-  (let ((port 
+  (let ((port
          (let ((working-directory (or directory (current-directory)))
                (stderr-redirection 'raise)
                (arguments
@@ -234,6 +236,157 @@
                       res))))))
       str))
 
+;;** Using FFI
+
+(define %fossil*sql-source%filename-history
+  ;; I found this in libfossil/sql
+  "
+-- For a given file name, find all changes in the history of
+-- that file, stopping at the point where it was added or
+-- renamed.
+SELECT
+substr(b.uuid,0,12) as manifestUuid,
+datetime(p.mtime) as manifestTime,
+--       ml.*,
+ml.mid AS manifestRid,
+-- b.size AS manifestSize,
+ml.pid AS parentManifestRid,
+ml.fid AS fileContentRid
+
+-- fileContentRid=0 at the point of a rename (under the old name). The
+-- fields (manifest*, prevFileContentRid) will match at the rename
+-- point across this query and the same query against the renamed
+-- file. Only (fileContentRid, filename) always differ across the
+-- rename-point records.
+-- renamedEntry.fileContentRid=origEntry.prevFileContentRid if no
+-- changes were made to the file between renaming and committing.
+,
+ml.pid AS prevFileContentRid
+  -- prevFileContentRid=0 at start of history,
+  -- prevFileContentRid=fileContentRid for a file which was just
+  -- renamed UNLESS it was modified after the rename, in which case...
+  -- ???
+,
+fn.name AS filename,
+prevfn.name AS priorname
+FROM
+mlink ml, -- map of files/filenames to checkins
+filename fn,
+blob b, -- checkin manifest
+plink p -- checkin heritage
+-- This LEFT JOIN adds rename info:
+LEFT JOIN filename prevfn ON ml.pfnid=prevfn.fnid
+WHERE
+ml.fnid=fn.fnid
+AND ml.mid=b.rid
+-- Interesting: with this is will ONLY report the rename point:
+--   AND ml.pfnid=prevfn.fnid
+AND p.cid=ml.mid -- renamed file will have non-0 here
+ORDER BY manifestTime DESC
+")
+
+(define %fossil*sql-source%checkin
+  "
+SELECT blob.rid AS rid, tag.tagname AS sym, tagxref.mtime AS mtime
+FROM leaf, blob, tag, tagxref
+WHERE blob.rid=leaf.rid
+-- AND tag.tagname='sym-'||'trunk'
+AND tagxref.tagid=tag.tagid
+AND tagxref.tagtype>1
+AND tagxref.rid=leaf.rid
+-- ORDER BY mtime DESC
+-- LIMIT 1
+")
+
+(define (fossil-content/db+rid db rid)
+  (define sql "
+with linkage
+as
+(
+ select blob.rid, srcid, 0 as level from blob left join delta on delta.rid=blob.rid
+ where delta.srcid=?1
+ union all
+ select delta.rid, delta.srcid, linkage.level+1 as level
+ from linkage join delta on delta.rid=linkage.srcid
+)
+-- select * from linkage
+select blob.rid, content from linkage join blob on linkage.srcid=blob.rid
+order by level desc
+")
+  ;; TBD: use GGB for result and replace
+  ;; `fossil-subu8vector-delta-apply` code parsing and applying the
+  ;; delta to the current result.  Or maybe use GGB2D when appropriate.
+  (define result #f)
+  (define (row rid blob)
+    (let ((blob (fossil-subu8vector-uncompress blob))
+          (sofar result))
+      (set! result (if sofar (fossil-subu8vector-delta-apply sofar blob) blob))
+      #f))
+  (sqlite3-exec db sql row: row rid)
+  result)
+
+(define (%fossil-artifact->rid/db
+         db artifact #!key
+         (tag "trunk"))
+  (define sql
+    (string-append
+     "WITH Target(filename,branch) AS (SELECT ?1, 'sym-'||?2),"
+     "
+Checkin(rid,sym,mtime) AS ("
+     %fossil*sql-source%checkin
+     "),
+SelectedCheckin AS (
+SELECT * FROM Checkin
+WHERE sym IN (SELECT branch from Target)
+ORDER BY mtime DESC
+LIMIT 1
+),
+Ancestors AS (
+ SELECT plink.*, 0 as level FROM SelectedCheckin JOIN plink ON cid=rid
+ UNION ALL
+ SELECT plink.*, Ancestors.level+1 as level FROM Ancestors JOIN plink ON Ancestors.pid=plink.cid
+)
+"
+     "
+SELECT
+mlink.fid as rid
+FROM Ancestors
+JOIN mlink ON mlink.mid=Ancestors.cid
+WHERE mlink.fnid=(
+SELECT fnid from Target join filename on Target.filename=filename.name WHERE
+filename.name=Target.filename
+)
+ORDER BY level
+LIMIT 1
+"
+     ))
+  (define result #f)
+  (sqlite3-exec db sql row: (lambda (rid) (set! result rid)) artifact tag)
+  result)
+
+;;; Unfortunately this fails badly:
+;;; (define (fossil-db-deltafunc-init! db)
+;;;   (unless (eqv? ((c-lambda (sqlite3_db*) int "deltafunc_init") db) SQLITE_OK)
+;;;     (error "failed to init fossil delta functions" db)))
+
+(define (fossil-content repository artifact)
+  (define (doit db)
+    ;;; too badly it failes (fossil-db-deltafunc-init! db)
+    (let ((rid
+           (cond ;; TBD: sort out what the special case "string?" should be
+            ((string? artifact) (%fossil-artifact->rid/db db artifact tag: "trunk"))
+            (else (apply %fossil-artifact->rid/db db artifact)))))
+      (and rid (fossil-content/db+rid db rid))))
+  (call-with-sqlite3-database repository doit mode: 'r/o))
+
+(define (open-fossil-content repository artifact)
+  (let ((blob (fossil-content repository artifact)))
+    (cond
+     (blob (open-input-u8vector `(init: ,blob char-encoding: UTF-8)))
+     (else (error "artifact not found" open-fossil-content repository artifact)))))
+
+;;*** Config
+
 (define (fossil-config-set! repository key value)
   (define mtime
     (cond-expand
@@ -246,7 +399,9 @@
 
 (define (fossil-config-get-pin
          key #!key
-         (repository (fossils-project-filename (fossils-fallback-name (beaver-local-unit-id))))
+         (repository
+          ;; The used to use (beaver-local-unit-id) - until we needed it too fast.
+          (fossils-project-filename (fossils-fallback-name (ot0-address))))
          (initial #f)
          (pred #f)
          (filter #f)

@@ -14,7 +14,7 @@ search for "magic number".
 static int zlib_compressed_p(___SCMOBJ u8v, size_t offset)
 {
   unsigned char* memory = ___CAST(unsigned char*, ___BODY(u8v));
-  int16_t const header = (memory[offset] << 8) | memory[offset+1]; //|
+  ___S16 const header = (memory[offset] << 8) | memory[offset+1]; //|
   switch(header) {
     case 0x083c: case 0x087a: case 0x08b8: case 0x08f6:
     case 0x1838: case 0x1876: case 0x18b4: case 0x1872:
