@@ -300,9 +300,8 @@ NULL;
   name: "fossil used to look up to find source code")
 
 (define (xload fn)
-  (cond
-   ((source-fossil)
-    (let* ((port (fossil-command repository: (source-fossil) "cat" fn))
+  (define (load-via-process repository fn)
+    (let* ((port (fossil-command repository: repository "cat" fn))
            ;; (exprs (read-all port))
            (instr (read-line port #f))
            (status (process-status port)))
@@ -315,7 +314,19 @@ NULL;
            (do ((expr (read port) (read port)))
                ((eof-object? expr))
              (eval expr)))))
-       (else (error "fossil failed on" (source-fossil) fn (modulo status 255) instr)))))
+       (else (error "fossil failed on" repository fn (modulo status 255) instr)))))
+  (define (load-via-sqlite3 repository fn)
+    ;; BEWARE: API of `open-fossil-content`not yet stable!
+    (let ((port (open-fossil-content repository fn)))
+      (do ((expr (read port) (read port)))
+          ((eof-object? expr))
+        (eval expr))))
+  (cond
+   ((source-fossil)
+    (case 2
+      ((1) (load-via-process (source-fossil) fn))
+      ((2) (load-via-sqlite3 (source-fossil) fn))
+      (else (NYIE "else case" loc: xload))))
    (else (load fn))))
 
 (define (debug-adhoc-network-port) 3333)
