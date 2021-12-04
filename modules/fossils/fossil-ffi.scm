@@ -137,6 +137,7 @@ c-declare-end
     (cond
      ((##fx< rc 0) (error "failed" zlib-subu8vector-uncompress rc))
      ((eqv? rc room) dst-vector)
+     ((##fx> rc room) (error "invalid fossil encoded buffer" fossil-subu8vector-uncompress rc))
      (else (subu8vector dst-vector 0 rc)))))
 
 (c-declare
