@@ -59,8 +59,8 @@
        (lambda (,current)
          (cond
           ((and
-            (,cmp ,current ,last)
-            (not (macro-absent? ,value)))
+            (not (macro-absent? ,value))
+            (,cmp ,current ,last))
            ,value)
           (else
            (set! ,value (,f ,current))
@@ -79,9 +79,9 @@
        (lambda (,current-1 ,current-2)
          (cond
           ((and
+            (not (macro-absent? ,value))
             (,cmp2 ,current-2 ,last-2)
-            (,cmp1 ,current-1 ,last-1)
-            (not (macro-absent? ,value)))
+            (,cmp1 ,current-1 ,last-1))
            ,value)
           (else
            (set! ,value (,f ,current-1  ,current-2))
@@ -104,10 +104,10 @@
        (lambda (,current-1 ,current-2 ,current-3)
          (cond
           ((and
+            (not (macro-absent? ,value))
             (,cmp3 ,current-3 ,last-3)
             (,cmp2 ,current-2 ,last-2)
-            (,cmp1 ,current-1 ,last-1)
-            (not (macro-absent? ,value)))
+            (,cmp1 ,current-1 ,last-1))
            ,value)
           (else
            (set! ,value (,f ,current-1 ,current-2 ,current-3))
@@ -134,11 +134,11 @@
        (lambda (,current-1 ,current-2 ,current-3 ,current-4)
          (cond
           ((and
+            (not (macro-absent? ,value))
             (,cmp4 ,current-4 ,last-4)
             (,cmp3 ,current-3 ,last-3)
             (,cmp2 ,current-2 ,last-2)
-            (,cmp1 ,current-1 ,last-1)
-            (not (macro-absent? ,value)))
+            (,cmp1 ,current-1 ,last-1))
            ,value)
           (else
            (set! ,value (,f ,current-1 ,current-2 ,current-3 ,current-4))
