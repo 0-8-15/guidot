@@ -1358,7 +1358,7 @@
          (label-display
           (lambda (value)
             (cond
-             ((or (string? value) (glC:image? label) (vector? label))
+             ((or (string? value) (glC:image? value) (vector? value))
               value)
              (else (object->string value)))))
          (color (or (guide-style-ref style color:) (guide-select-color-2)))
