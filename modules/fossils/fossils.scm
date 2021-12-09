@@ -313,22 +313,22 @@ AND tagxref.rid=leaf.rid
 
 (define (fossil-content/db+rid db rid)
   (define sql "
-with linkage
+with Target(rid) AS (SELECT ?1),
+linkage
 as
 (
- select blob.rid, srcid, 0 as level from blob left join delta on delta.rid=blob.rid
- where delta.srcid=?1
+ select blob.rid, srcid, 1 as level from blob left join delta on delta.rid=blob.rid
+ join Target on blob.rid=Target.rid
  union all
  select delta.rid, delta.srcid, linkage.level+1 as level
  from linkage join delta on delta.rid=linkage.srcid
 )
 -- select * from linkage
-select blob.rid, content from linkage join blob on linkage.srcid=blob.rid
+select blob.rid, content from linkage join blob on linkage.rid=blob.rid
 order by level desc
 ")
-
   (define result (fossil-content/db+query+params db sql (list rid)))
-  (unless result (error "failed to load content from row with rid, deltas" fossil-content/db+rid db rid ndeltas))
+  (unless result (error "failed to load content from row with rid" fossil-content/db+rid db rid))
   result)
 
 (define %fossil*sql-source%filename+brach->rid
