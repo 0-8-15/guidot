@@ -1430,8 +1430,9 @@
                (case event
                  ((press: release:)
                   (and accesskey (eqv? x accesskey)
-                       (macro-guide-sanitize-payload-result
-                        (guide-callback rect payload event x y))))
+                       (or (not (procedure? guide-callback))
+                           (macro-guide-sanitize-payload-result
+                            (guide-callback rect payload event x y)))))
                  (else
                   (cond
                    ((eqv? event EVENT_BUTTON1DOWN)
@@ -1440,8 +1441,9 @@
                     (if (and (guide-figure-contains? view! x y) armed)
                         (begin
                           (set! armed #f)
-                          (macro-guide-sanitize-payload-result
-                           (guide-callback rect payload event x y)))
+                          (or (not (procedure? guide-callback))
+                              (macro-guide-sanitize-payload-result
+                               (guide-callback rect payload event x y))))
                         (begin
                           (set! armed #f)
                           #f)))
