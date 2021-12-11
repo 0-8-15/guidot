@@ -695,7 +695,7 @@ Note that outgoing links into the network work **only** when the service is used
      ((CMD "-l" FILE . more)
       (begin
         (load FILE)
-        (when (pair? (cdr more)) (parse (cons CMD more)))))
+        (when (pair? more) (parse (cons CMD more)))))
      ((CMD (? (lambda (x) (string-prefix? "-:d" x)) dbg) . more) (parse (cons CMD more)))
      ((CMD "-fossil-user" NAME . more)
       (begin
