@@ -824,7 +824,10 @@
 ;;*** Widget Utilities
 
 (define %%guide-default-background
-  (make-glC:image 4 4 (glCoreTextureCreate 4 4 (make-u8vector 16 #xff)) 0.1 0.1 .9 .9))
+  (let* ((fuzz 0.2) (fuzz- (fl- 1. fuzz)))
+    ;; Without the fuzz factor at least win32 renders gradient
+    ;; transparency at the edges.
+    (make-glC:image 4 4 (glCoreTextureCreate 4 4 (make-u8vector 16 #xff)) fuzz fuzz fuzz- fuzz-)))
 
 (define (guide-background
          key
@@ -840,10 +843,11 @@
      (cond
       ((not in) %%guide-default-background)
       (else
-       (make-glC:image
-        (mdv-rect-interval-width in)
-        (mdv-rect-interval-height in)
-        (glC:image-t %%guide-default-background) 0. 0. 1. 1.))))
+       (let* ((fuzz 0.2) (fuzz- (fl- 1. fuzz)))
+         (make-glC:image
+          (mdv-rect-interval-width in)
+          (mdv-rect-interval-height in)
+          (glC:image-t %%guide-default-background) fuzz fuzz fuzz- fuzz-)))))
     (else (error "invalid argument" guide-background key))))
 
 (define-macro (macro-guide-default-background) `((lambda () %%guide-default-background)))
