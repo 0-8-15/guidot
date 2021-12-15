@@ -59,11 +59,11 @@
 (define (make-x0y0x1y1-interval/coerce x0 y0 x1 y1)
   (define (convl x)
     (cond
-     ((integer? x) x)
+     ((integer? x) (inexact->exact x))
      (else (inexact->exact (floor x)))))
   (define (convu x)
     (cond
-     ((integer? x) x)
+     ((integer? x) (inexact->exact x))
      (else (inexact->exact (ceiling x)))))
   (make-mdv-rect-interval (convl x0) (convl y0) (convu x1) (convu y1)))
 
