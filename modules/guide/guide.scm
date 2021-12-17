@@ -156,6 +156,10 @@
 
 (include "../misc-conventions/observable-syntax.sch")
 
+(include "guide-pikchr.scm")
+
+(include "guide-frame.scm")
+
 ;;* ACTUAL CODE
 
 ;;** Keys
@@ -1734,17 +1738,21 @@
       (case-lambda
        (() payload)
        ((new)
-        (unless (guide-payload? new) (error "invalid payload" 'guide-toplevel-payload new))
-        (when payload
-          (let ((after (guide-payload-gui-after payload)))
-            (when after (after payload (guide-payload-measures payload)))))
-        (set! payload new)
-        ;; enforcing a garbace collection as the before/after
-        ;; mechanism is often too weak and may be worth to be removed
-        (##gc)
-        (let ((before (guide-payload-gui-before payload)))
-          (when before (before payload (guide-payload-measures payload))))
-        payload)))
+        (cond
+         ((not (guide-payload? new)) (error "invalid payload" 'guide-toplevel-payload new))
+         ((eq? payload new) payload)
+         (else
+          (when payload
+            (let ((after (guide-payload-gui-after payload)))
+              (when after (after payload (guide-payload-measures payload)))))
+          (set! payload new)
+          ;; enforcing a garbace collection as the before/after
+          ;; mechanism is often too weak and may be worth to be removed
+          (##gc)
+          (let ((before (guide-payload-gui-before payload)))
+            (when before (before payload (guide-payload-measures payload))))
+          (guide-wakeup!)
+          payload)))))
     (define (guide-main
              init #!key
              ;; (events #f)
