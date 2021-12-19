@@ -1359,7 +1359,7 @@
          (in (current-guide-gui-interval))
          (done #f)
          (style (guide-current-style))
-         (font #f)
+         (font (guide-style-ref ($current-guide-style) font:))
          (accesskey #f)
          (label "exit")
          (label-equal equal?)
