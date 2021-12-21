@@ -1,5 +1,5 @@
-PKGURL=https://fossil-scm.org/home/tarball/54ebad01/Fossil-54ebad01.tar.gz
-PKGHASH=db66ff10a73746aded561874a610fe242043b159
+PKGURL=https://fossil-scm.org/home/tarball/4ff45df4/Fossil-4ff45df4.tar.gz
+PKGHASH=b735656548c232302be58d6d8fcc7e529ed49a83
 
 # To rebuild the package do:
 #
