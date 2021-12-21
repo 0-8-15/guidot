@@ -1642,50 +1642,37 @@
                    (color (guide-select-color-4))
                    (background-color (guide-select-color-3))
                    (button-size (* 10/16 line-height)))
+               (define (button name label cb)
+                 (lambda (area row col)
+                   (guide-button
+                    name: name in: area
+                    label: label font: #f background-color: background-color color: color
+                    guide-callback: cb)))
                (make-guide-table
                 (make-mdvector
                  (range (vector buttons 1))
                  (vector
-                  (lambda (area row col)
-                    (guide-button
-                     name: 'clear
-                     in: area
-                     label: "C" background-color: background-color color: color
-                     guide-callback:
-                     (lambda (rect payload event x y) (data "") (refresh-line! rect))))
-                  (lambda (area row col)
-                    (guide-button
-                     name: 'snarf
-                     in: area
-                     label: "M" background-color: background-color color: color
-                     guide-callback:
-                     (lambda (rect payload event x y)
-                       (clipboard-copy (data)) #t)))
-                  (lambda (area row col)
-                    (guide-button
-                     name: 'recall
-                     in: area
-                     label: "R" background-color: background-color color: color
-                     guide-callback:
-                     (lambda (rect payload event x y)
-                       (guide-critical-add!
-                        (lambda ()
-                          (let ((value (clipboard-paste)))
-                            (thread-start! (make-thread (lambda () (kick! (lambda () (data value) (refresh-line! rect))))))))
-                        ;; clipboard-paste can not be run
-                        ;; asynchroneous under X11 but should be
-                        ;; asynchroneous under Android
-                        async:
-                        (cond-expand
-                         ((or android) #t)
-                         (else #f)))
-                       #t)))
-                  (lambda (area row col)
-                    (guide-button
-                     name: 'close
-                     in: area
-                     label: "X" background-color: background-color color: color
-                     guide-callback: (lambda (rect payload event x y) (done))))))
+                  (button 'clear "C" (lambda (rect payload event x y) (data "") (refresh-line! rect)))
+                  (button
+                   'snarf "M"
+                   (lambda (rect payload event x y)
+                     (clipboard-copy (data)) #t))
+                  (button
+                   'recall "R"
+                   (lambda (rect payload event x y)
+                     (guide-critical-add!
+                      (lambda ()
+                        (let ((value (clipboard-paste)))
+                          (thread-start! (make-thread (lambda () (kick! (lambda () (data value) (refresh-line! rect))))))))
+                      ;; clipboard-paste can not be run
+                      ;; asynchroneous under X11 but should be
+                      ;; asynchroneous under Android
+                      async:
+                      (cond-expand
+                       ((or android) #t)
+                       (else #f)))
+                     #t))
+                  (button 'close "X" (lambda (rect payload event x y) (done)))))
                 in: (make-x0y0x1y1-interval/coerce
                      (- xno-inner (* buttons button-size)) (- yno-inner button-size)
                      xno-inner yno-inner)
