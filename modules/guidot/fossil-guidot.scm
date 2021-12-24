@@ -56,20 +56,27 @@
       cfpn post:
       (lambda ()
         (cond
-         ((cfpn)
-          (let ((stored (read-line (fossil-command "remote-url"))))
-            (set! current-fossil-remote-url
-                  (cond
-                   ((eof-object? stored) #f)
-                   ((rx~
-                     (rx '(submatch
-                           (seq "http://"
-                                (or domain ip-address)
-                                (? ":" (+ numeric)) ;; port
-                                (? "/" (* (or url-char "/"))))))
-                     stored) =>
-                     (lambda (matched) (rxm-ref matched 1)))
-                   (else stored)))))
+         ((cfpn) =>
+          (lambda (repository)
+            (let ((stored
+                   ;; (read-line (fossil-command "remote-url"))
+                   (unbox
+                    (let ((x (box #f)))
+                      (sqlite3-file-query
+                       repository "select value from config where name = 'last-sync-url'"
+                       accu: x row: (lambda (v) (set-box! x v)))))))
+              (set! current-fossil-remote-url
+                    (cond
+                     ((eof-object? stored) #f)
+                     ((rx~
+                       (rx '(submatch
+                             (seq "http://"
+                                  (or domain ip-address)
+                                  (? ":" (+ numeric)) ;; port
+                                  (? "/" (* (or url-char "/"))))))
+                       stored) =>
+                       (lambda (matched) (rxm-ref matched 1)))
+                     (else stored))))))
          (else (set! current-fossil-remote-url #f)))))
      (values
       current-fossil
