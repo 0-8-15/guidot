@@ -2,6 +2,8 @@
 ;;;
 ;;; Bindings to ontierzero, the last GPLed version of zerotier.
 
+(declare (not interrupts-enabled))
+
 (cond-expand
  ((or android-api19)
   (c-declare
