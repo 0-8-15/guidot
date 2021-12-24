@@ -795,6 +795,15 @@
                       (let ((summary (string-append "Exited with: " (number->string (/ (process-status output) 256)) "\n")))
                         (output-control! goto: position: 'absolute row: 1 col: 0)
                         (output-control! insert: summary wrap: #f)))
+                    ;; WORKAROUND BUG in end-2021 fossil: it replaces
+                    ;; the `last-sync-url` with the proxy it used.
+                    (let ((into (or into (current-fossil-pathname))))
+                      (when (file-exists? into)
+                        (sqlite3-file-command*!
+                         into
+                         "insert or replace into config(name,value) values('last-sync-url',?1)"
+                         (list remote-url)
+                         accu: #f row: (lambda (v) #f))))
                     (set! running #f))))
               async: #t)))))
       (define (mk-kx area row col)
