@@ -565,7 +565,7 @@
       (when (maturity-tolerated? 1) ;; experimental checks
         (unless (fixnum? w) (error "glC:image: w" w))
         (unless (fixnum? h) (error "glC:image: h" h))
-        (unless (or (fixnum? t) (glCore:texture? t)) (error "glC:image: t" t))
+        (unless (glCore:texture? t) (error "glC:image: t" t))
         (unless (inexact? xsw) (error "glC:image: xsw" xsw))
         (unless (inexact? ysw) (error "glC:image: ysw" ysw))
         (unless (inexact? xno) (error "glC:image: xno" xno))
@@ -1144,6 +1144,7 @@
                  ((procedure? scale) (scale)))
                 |#
                 (cond
+                 ((not shift)) ;; short cut
                  ((f32vector? shift)
                   (unless (eqv? (##f32vector-length shift) 3) (error "illegal shift" shift))
                   (glTranslatef/f32vector//checks shift))
