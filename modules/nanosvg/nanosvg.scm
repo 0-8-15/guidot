@@ -4517,19 +4517,14 @@ end-of-c-declare
     ;; NOTE: changes source string - TBD: verify this does NOT change actual source OTHERWISE copy!
     ((c-lambda (char-string char-string double) NSVGimage "nsvgParse") source units dpi))
    ((u8vector? source)
-    ;; NOTE: changes source string - TBD: verify this does NOT change actual source OTHERWISE copy!
-#|
-
-    We'd rather not have to jump through these loops here!  However
-    the nanosvg parser is NOT well done.
-
-    ((c-lambda
-      (scheme-object char-string double) NSVGimage
-      "___return(nsvgParse(___CAST(char*, ___arg1), ___arg2, ___arg3));")
-     source units dpi)
-|#
-    (let ((horrible-workaround (read-line (open-input-u8vector source) #f)))
-      (make-nanosvg-image horrible-workaround units dpi)))
+    ;; NOTE: this version actually copies the input, though first
+    ;; experiments indicate we might not really need to.
+    (let ((zero-terminated-mutable-source (make-u8vector (+ (u8vector-length source) 1))))
+      (u8vector-copy! zero-terminated-mutable 0 source)
+      ((c-lambda
+        (scheme-object char-string double) NSVGimage
+        "___return(nsvgParse(___CAST(char*, ___BODY(___arg1)), ___arg2, ___arg3));")
+       zero-terminated-mutable-source units dpi)))
    (else (error "unsupported source type" location source))))
 
 (define nanosvg-load-file
