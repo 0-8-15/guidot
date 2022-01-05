@@ -51,6 +51,11 @@ end-of-c-declare
 
   )) ;; cond-expand
 
+(on-ot0-uncaught-exception
+ (lambda (location exception)
+   (debug location exception)
+   (MATUTIRY "UNCAUGHT EXCEPTION which MUST be caught" loc: location exception)))
+
 (on-ot0-path-lookup #f)
 
 (define beaver-local-unit-id (make-pin #f))
