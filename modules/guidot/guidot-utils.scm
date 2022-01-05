@@ -178,3 +178,60 @@
          (else (guide-critical-add! (lambda () (apply close! more))))))
        ((content) (ggb->vector dialog))
        (else (error "invalid layer control key" name key more))))))
+
+(define-values (guidot-load-svg-image guidot-make-svg-image)
+  (define (xof x)
+    (cond
+     ((complex? x) (real-part x))
+     ((vector? x) (vector-ref x 0))
+     (else (error "xof" x))))
+  (define (yof x)
+    (cond
+     ((complex? x) (imag-part x))
+     ((vector? x) (vector-ref x 1))
+     (else (error "xof" x))))
+  (define (prepare in img position scale)
+    (let* ((iw (nsvgimage-width img))
+           (w (if in (pikchr-area in 'width) iw))
+           (ih (nsvgimage-height img))
+           (h (if in (pikchr-area in 'height) ih))
+           (scale
+            (cond
+             (scale scale)
+             ((and (eqv? iw w) (eqv? ih h)) 1.0)
+             (else (exact->inexact (min (/ w iw) (/ h ih))))))
+           (result (nanosvg-rasterize
+                    img w h
+                    scale
+                    (cond
+                     (position (exact->inexact (xof position)))
+                     (else (* (- w (* scale iw)) 0.5)))
+                    (cond
+                     (position (exact->inexact (yof position)))
+                     (else (* (- h (* scale ih)) 0.5))))))
+      (nanosvg-finalize-image img)
+      ;;(values w h result)
+      (make-glC:image w h (glCoreTextureCreate w h result) 0. 1. 1. 0.)))
+  (define (load-svg-image
+           filename #!key
+           (units 'px)
+           (dpi 96.)
+           (in #f)
+           (position #f)
+           (scale #f))
+    (let ((img (nanosvg-load-file filename (symbol->string units) dpi)))
+      (cond
+       (img (prepare in img position scale))
+       (else (error "guidot-load-svg-image failed to load" filename)))))
+  (define (make-svg-image
+           source #!key
+           (units 'px)
+           (dpi 96.)
+           (in #f)
+           (position #f)
+           (scale #f))
+    (let ((img (make-nanosvg-image source (symbol->string units) dpi)))
+      (cond
+       (img (prepare in img position scale))
+       (else (error "guidot-make-svg-image failed parse" source)))))
+  (values load-svg-image make-svg-image))
