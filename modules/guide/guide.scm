@@ -316,7 +316,8 @@
             (cond
              ((boolean? finally)) ;; OK, expected
              (else (debug 'ignored-payload-result (list finally payload)))))))
-        (guide-wakeup!)
+        (and #f ;; $guide-wakeup-on-any-event
+             (guide-wakeup!))
         ;; not sure what needs to be returned, we are done handling results
         #t)
       (cond-expand
