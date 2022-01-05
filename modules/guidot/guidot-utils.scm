@@ -49,6 +49,7 @@
                  (a 140))
             (color-rgba r g b a)))
          (background (guide-background default: in: in))
+         (clip #f)
          (name 'guidot-frame))
   (define-values (xsw xno ysw yno) (guide-boundingbox->quadrupel in))
   (let* ((view! (make-guide-figure-view))
@@ -68,6 +69,7 @@
      (else (view! color: color)))
     (view! size: width height)
     (view! position: xsw ysw)
+    (view! clip: clip)
     (make-guide-payload
      in: in name: name
      on-redraw:
