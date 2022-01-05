@@ -1725,7 +1725,13 @@
 (define $guide-frame-period
   (case-lambda
    (() (/ (microgl-redraw-period) 1000000))
-   ((x) (microgl-redraw-period (inexact->exact (* x 1000000))))))
+   ((x)
+    (let ((fix (lambda (n)
+                 (cond
+                  ((##ratnum? n) (##floor n))
+                  ((##flonum? n) (##flonum->fixnum n))
+                  (else n)))))
+      (microgl-redraw-period (fix (* x 1000000)))))))
 
 (define-values
     (guide-toplevel-payload guide-main guide-exit)
