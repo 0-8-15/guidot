@@ -225,6 +225,35 @@
       (cond
        (img (prepare in img position scale))
        (else (error "guidot-load-svg-image failed to load" filename)))))
+  (define (%sxsvg->u8v tree)
+    (call-with-output-u8vector
+     '(char-encoding: UTF-8 eol-encoding: lf)
+     (lambda (port)
+       (let* ((result
+               (match ;; force PI with UTF-8 encoding
+                tree
+                (('*TOP* aux pi document-element) tree)
+                (('*TOP* aux document-element)
+                 `(*TOP* ,aux (*PI* xml "version=\"1.0\" encoding=\"UTF-8\"") ,document-element))
+                (_
+                 `(*TOP*
+                   (@@ (*NAMESPACES* (svg "http://www.w3.org/2000/svg")))
+                   (*PI* xml "version=\"1.0\" encoding=\"utf-8\"")
+                   ,tree))))
+              (ns-prefix-assig
+               (match
+                result
+                (('*TOP* ('@@ ('*NAMESPACES* . nmsps)) pi document-element)
+                 (map (lambda (x) (apply cons x)) nmsps))
+                (_ (error "impossible case" guidot-make-svg-image result)))))
+         (srl:parameterizable
+          result port
+          `(ns-prefix-assig . ,ns-prefix-assig)
+          '(method . xml)
+          '(indent . #f)
+          '(cdata-section-elements)
+          '(omit-xml-declaration? #t)
+          '(standalone #t))))))
   (define (make-svg-image
            source #!key
            (units 'px)
@@ -232,7 +261,12 @@
            (in #f)
            (position #f)
            (scale #f))
-    (let ((img (make-nanosvg-image source (symbol->string units) dpi)))
+    (let* ((source
+            (match
+             source
+             (((? symbol?) . more) (%sxsvg->u8v source))
+             (_ source)))
+           (img (make-nanosvg-image source (symbol->string units) dpi)))
       (cond
        (img (prepare in img position scale))
        (else (error "guidot-make-svg-image failed parse" source)))))
