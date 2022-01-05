@@ -220,6 +220,8 @@ static int call_scm_lwip_nd6_get_gw(void *in, struct lwip_nd6_get_gw__args *args
 #include <errno.h>
 #endif
 
+#include <string.h> // memcpy
+
 const char *lwip_inet_ntop(int af, const void *src, char *dst, socklen_t size)
 {
  struct sockaddr* sa = src;

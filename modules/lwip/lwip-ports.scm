@@ -117,7 +117,7 @@
          (else
           (do ((r (await) (await))) ((not r)))
           (set! outstanding #f)
-          (%%close-tcp-connection 'port-copy-to-lwip/always-copy conn 'output)
+          (%%close-tcp-connection 'quasi-output-port conn 'output)
           (continue buffer 0 0 mx (lambda _ #f)))))
        (else
         (let retry ((pcb (tcp-connection-pcb conn)))
@@ -132,7 +132,7 @@
                ((eq? rc ERR_MEM)
                 (if (await)
                     (retry (tcp-connection-pcb conn))
-                    (%%close-tcp-connection 'port-copy-to-lwip/always-copy+error conn 'output)))
+                    (%%close-tcp-connection 'quasi-output-port+error conn 'output)))
                (else (debug 'port-copy-to-lwip:fail (lwip-err rc)))))))))))
     (receive
         (read-port s) (open-u8vector-pipe '(buffering: #f) '(buffering: #f))
@@ -327,7 +327,16 @@
       (if (procedure? arg) (set! proc arg) (error "setting port-copy-to-lwip: illegal argument" arg)))
     #;(set! port-copy-to-lwip-set! setter)
     (set! port-copy-to-lwip-set! (lambda _ #f))
-    (lambda (in conn #!optional (MTU (lwip-MTU))) (proc in conn MTU))))
+    (lambda (in conn #!optional (MTU (lwip-MTU)))
+      (with-exception-catcher
+       (lambda (exn)
+         (close-input-port in)
+         (close-output-port conn)
+         (when (##in-safe-callback?)
+           (MATURITY -2 "copying to lwIP left lwIP locked" loc: port-copy-to-lwip)
+           (%lwip-unlock!))
+         (lwip-exception-handler exn))
+       (lambda () (proc in conn MTU))))))
 
 (define (open-lwip-tcp-server*/ipv6 port #!key (local-addr lwip-ip6addr-any)) ;; half EXPORT
   (let* ((srv (tcp-new-ip-type lwip-IPADDR_TYPE_V6)))
