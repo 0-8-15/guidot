@@ -901,6 +901,32 @@
 
 ;;*** Widget Composition
 
+(define (guide-scissor-layout
+         content
+         #!key
+         (in (guide-payload-measures content))
+         (name `(guide-scissor-layout ,(guide-payload-name content))))
+  ;;; NOTE: `glScissor` expects "window coordinates"
+  ;;  BEWARE: this likely does not nest after re-positioning
+  ;;; BEWARE: `GL_SCISSOR_TEST` enable/disable looks like not nesting
+  ;;; either!
+  (MATURITY -1 "GL_SCISSOR_TEST handling may not properly nest and requires window coordinates" loc: guide-scissor-layout)
+  (make-guide-payload
+   in: in name: name
+   on-redraw:
+   (receive (xsw xne ysw yne) (guide-boundingbox->quadrupel in)
+     (let ((w (- xne xsw))
+           (h (- yne ysw))
+           (foreground (guide-payload-on-redraw content)))
+       (lambda ()
+         (glEnable GL_SCISSOR_TEST)
+         (glScissor xsw ysw w h)
+         (foreground)
+         (glDisable GL_SCISSOR_TEST))))
+   on-any-event:
+   (guide-payload-on-any-event content)
+   lifespan: 'ephemeral widget: #f))
+
 ;;**** GGB Composition
 
 ;; Arranges content (a generic gap buffer) in a direction (x, y, z).
