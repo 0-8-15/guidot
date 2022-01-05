@@ -4525,6 +4525,8 @@ end-of-c-declare
         (scheme-object char-string double) NSVGimage
         "___return(nsvgParse(___CAST(char*, ___BODY(___arg1)), ___arg2, ___arg3));")
        zero-terminated-mutable-source units dpi)))
+   ((input-port? source)
+    (make-nanosvg-image (read-line source #f) units dpi))
    (else (error "unsupported source type" location source))))
 
 (define nanosvg-load-file
