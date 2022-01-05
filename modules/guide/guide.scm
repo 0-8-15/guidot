@@ -1816,7 +1816,7 @@
                 (set! gui a)
                 (set! payload b)
                 (cond-expand
-                 ((or android)
+                 ((or android linux)
                   (set! draw-thread (thread-start! (make-thread draw-loop 'draw-thread))))
                  (else #!void))))))
          ;; events
