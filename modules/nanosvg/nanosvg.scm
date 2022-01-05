@@ -4520,7 +4520,7 @@ end-of-c-declare
     ;; NOTE: this version actually copies the input, though first
     ;; experiments indicate we might not really need to.
     (let ((zero-terminated-mutable-source (make-u8vector (+ (u8vector-length source) 1))))
-      (u8vector-copy! zero-terminated-mutable 0 source)
+      (u8vector-copy! zero-terminated-mutable-source 0 source)
       ((c-lambda
         (scheme-object char-string double) NSVGimage
         "___return(nsvgParse(___CAST(char*, ___BODY(___arg1)), ___arg2, ___arg3));")
