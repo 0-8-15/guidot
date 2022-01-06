@@ -2091,7 +2091,7 @@
                       (set! armed-content-offset #f)
                       (cond
                        (action
-                        (let ((selected-item (+ content-offset in-sel))
+                        (let ((selected-item (min (+ content-offset in-sel) (- len 1)))
                               (relative-width (/ (- x xsw) (- xno xsw))))
                           (macro-guide-sanitize-payload-result
                            (action selected-item relative-width))))
