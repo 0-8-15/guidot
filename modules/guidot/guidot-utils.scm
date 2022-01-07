@@ -96,8 +96,8 @@
             (or (cond
                  ((guide-event-graphics? event)
                   (and (guide-payload-contains/xy? inner x y)
-                       (guide-event-dispatch-to-payload rect payload event x y)))
-                 (else (guide-event-dispatch-to-payload rect payload event x y)))
+                       (guide-event-dispatch-to-payload rect inner event x y)))
+                 (else (guide-event-dispatch-to-payload rect inner event x y)))
                 #t)))
          ((opaque pass #f) (lambda _ #f))
          (else (lambda _ #t)))))
