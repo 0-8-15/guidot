@@ -50,7 +50,8 @@
             (color-rgba r g b a)))
          (background (guide-background default: in: in))
          (clip #f)
-         (name 'guidot-frame))
+         (events 'swallow)
+         (name 'guidot-background-frame))
   (define-values (xsw xno ysw yno) (guide-boundingbox->quadrupel in))
   (let* ((view! (make-guide-figure-view))
          (pad (%%guide:parse-padding guidot-frame in (or padding border-ratio)))
@@ -86,13 +87,20 @@
              (else (view!)))))
        (lambda () (bg) (guide-event-dispatch-to-payload/redraw inner)))
      on-any-event:
-     (guide-payload-on-any-event inner)
-     #;(lambda (rect payload event x y)
-       (cond
-        ((and (guide-event-graphics? event)
-              (guide-payload-contains/xy? inner x y))
-         (guide-payload-on-any-event inner))
-        (else #f)))
+     (cond
+      ((procedure? events) events)
+      (else
+       (case events
+         ((swallow)
+          (lambda (rect payload event x y)
+            (or (cond
+                 ((guide-event-graphics? event)
+                  (and (guide-payload-contains/xy? inner x y)
+                       (guide-event-dispatch-to-payload rect payload event x y)))
+                 (else (guide-event-dispatch-to-payload rect payload event x y)))
+                #t)))
+         ((opaque pass #f) (lambda _ #f))
+         (else (lambda _ #t)))))
      lifespan: 'ephemeral widget: #f)))
 
 (define (guidot-frame
