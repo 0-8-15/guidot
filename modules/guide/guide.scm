@@ -960,6 +960,12 @@
          (lower-bound-y0 (mdvector-interval-lower-bound area 1))
          (lower-bound-x lower-bound-x0)
          (lower-bound-y lower-bound-y0))
+    (define (lower-bound-x-set! v)
+      (set! lower-bound-x v)
+      (guide-wakeup!))
+    (define (lower-bound-y-set! v)
+      (set! lower-bound-y v)
+      (guide-wakeup!))
     (define (make-drawing)
       (let ((offset
              (case direction
@@ -1206,8 +1212,8 @@
                       ((2 -2) (set! armed lower-bound-y))))
                   (when (number? armed)
                     (case direction
-                      ((1) (set! lower-bound-x (+ armed dx)))
-                      ((2 -2) (set! lower-bound-y (+ armed dy)))))
+                      ((1) (lower-bound-x-set! (+ armed dx)))
+                      ((2 -2) (lower-bound-y-set! (+ armed dy)))))
                   (or x-motion-opaque (pass-event! rect payload event x y))))
                (else #t)))
              (else (pass-event! rect payload event x y)))))))
