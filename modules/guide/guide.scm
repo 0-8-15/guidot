@@ -937,6 +937,7 @@
          (direction 0)
          (fixed #f)
          (x-motion-opaque #t) ;; hide motion events from content
+         (x-volatile #t)
          (on-key #f)
          (shrink-to-content #t)
          (clip #f) ;; clip content display to area
@@ -961,11 +962,13 @@
          (lower-bound-x lower-bound-x0)
          (lower-bound-y lower-bound-y0))
     (define (lower-bound-x-set! v)
-      (set! lower-bound-x v)
-      (guide-wakeup!))
+      (unless (eqv? v lower-bound-x)
+        (set! lower-bound-x v)
+        (guide-wakeup!)))
     (define (lower-bound-y-set! v)
-      (set! lower-bound-y v)
-      (guide-wakeup!))
+      (unless (eqv? v lower-bound-y)
+        (set! lower-bound-y v)
+        (guide-wakeup!)))
     (define (make-drawing)
       (let ((offset
              (case direction
@@ -1221,13 +1224,13 @@
      (make-guide-payload
       in: area name: name
       widget: #f lifespan: 'ephemeral ;; TBD: change defaults here!
-      on-redraw: redraw!
+      on-redraw: (if x-volatile redraw! (make-drawing))
       on-any-event: events)
      (lambda (key val . more)
        (case key
         ((position:)
          (cond
-          ((null? more) (set! lower-bound-x val) (set! lower-bound-y val))
+          ((null? more) (lower-bound-x-set! val) (lower-bound-y-set! val))
           (else #f)))
         ((fix) (make-drawing))
         (else (error "unhandled" name key)))))))
