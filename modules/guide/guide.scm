@@ -1137,7 +1137,11 @@
                             ((-2) (- y y-offset))
                             (else (- y lower-bound-y)))))
                   (when (mdvector-rect-interval-contains/xy? interval x y)
-                    (return (guide-event-dispatch-to-payload rect v event x y)))
+                    (case direction
+                      ((0)
+                       (let ((hit (guide-event-dispatch-to-payload rect v event x y)))
+                         (when hit (return hit))))
+                      (else (return (guide-event-dispatch-to-payload rect v event x y)))))
                   ;; update running
                   (case direction
                     ((2) (set! y-offset (- y-offset height)))
