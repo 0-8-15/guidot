@@ -70,7 +70,11 @@ static unsigned int daemonian_daemonize()
  signal(SIGCHLD,SIG_IGN);
  signal(SIGINT,SIG_IGN);
  // for(i=3;i<FD_SETSIZE;++i) close(i);
- if(setsid() == -1) fprintf(stderr, "ERROR: setsid: %s\n", strerror(errno));
+ if(setsid() == -1) {
+   fprintf(stderr, "ERROR: setsid: %s\n", strerror(errno));
+   exit(1);
+ }
+ if(fork() != 0) return(0);
  return(1);
 }
 #endif
