@@ -5,8 +5,9 @@
       (make-guide-payload name: 'guide-drawing in: area on-redraw: thunk))))
 
 (define (guide-line-drawing
-         vertices lines
-         #!key in color (width 1.) (mode GL_LINES))
+         #!key
+         vertices elements
+         in color (width 1.) (mode GL_LINES))
   (let ((size (exact->inexact width))
         (w (exact->inexact (pikchr-area in 'width)))
         (h (exact->inexact (pikchr-area in 'height)))
@@ -15,10 +16,10 @@
           ((u8vector? color) GL_UNSIGNED_BYTE)
           ((u32vector? color) GL_UNSIGNED_BYTE)
           (else #f))))
-    (define-values (line-kind nlines)
+    (define-values (line-kind nelements)
       (cond
-       ((u16vector? lines) (values GL_UNSIGNED_INT (u16vector-length lines)))
-       (else (values GL_UNSIGNED_BYTE (u8vector-length lines)))))
+       ((u16vector? elements) (values GL_UNSIGNED_INT (u16vector-length elements)))
+       (else (values GL_UNSIGNED_BYTE (u8vector-length elements)))))
     ;; TBD: add checks that no array is out of bounds
     (lambda ()
       (glVertexPointer
@@ -37,7 +38,9 @@
       (glDisable GL_TEXTURE_2D)
       (glTranslatef//checks (* 0.5 w) (* 0.5 h) 1.) ;;(guide-glCenter in)
       (glScalef//checks w h 1.) ;; (guide-glScale in)
-      (glDrawElements mode nlines line-kind lines)
+      (cond
+       (elements (glDrawElements mode nelements line-kind elements))
+       (else (glDrawArrays mode 0 (f32vector-length vertices))))
       (glEnableClientState GL_COLOR_ARRAY))))
 
 (define (guide-frame-drawing
