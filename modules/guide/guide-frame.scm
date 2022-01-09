@@ -7,8 +7,20 @@
 (define (guide-line-drawing
          #!key
          vertices elements
-         in color (width 1.) (mode GL_LINES))
-  (let ((size (exact->inexact width))
+         in color
+         (align 'center)
+         (pencil-size 1.)
+         (width #f)
+         (mode GL_LINES)
+         )
+  (when width
+    (MATURITY -2 "rename parameter `width` to `pencil-size`" loc: guide-line-drawing)
+    (set! pencil-size width))
+  (let ((pencil-size (exact->inexact
+               (cond
+                (width
+                 )
+                (else pencil-size))))
         (w (exact->inexact (pikchr-area in 'width)))
         (h (exact->inexact (pikchr-area in 'height)))
         (color-kind
@@ -20,6 +32,10 @@
       (cond
        ((u16vector? elements) (values GL_UNSIGNED_INT (u16vector-length elements)))
        (else (values GL_UNSIGNED_BYTE (u8vector-length elements)))))
+    (define-values (shift-x shift-y)
+      (case align
+        ((center) (values (* 0.5 w) (* 0.5 h)))
+        (else (NYIE "align:" align guide-line-drawing))))
     ;; TBD: add checks that no array is out of bounds
     (lambda ()
       (glVertexPointer
@@ -33,10 +49,10 @@
         (glColor color))
        (else (glColorPointer 4 GL_UNSIGNED_BYTE 0 color)))
       (cond
-       ((eqv? mode GL_POINTS) (glPointSize width))
-       (else (glLineWidth size)))
+       ((eqv? mode GL_POINTS) (glPointSize pencil-size))
+       (else (glLineWidth pencil-size)))
       (glDisable GL_TEXTURE_2D)
-      (glTranslatef//checks (* 0.5 w) (* 0.5 h) 1.) ;;(guide-glCenter in)
+      (glTranslatef//checks shift-x shift-y 1.) ;;(guide-glCenter in)
       (glScalef//checks w h 1.) ;; (guide-glScale in)
       (cond
        (elements (glDrawElements mode nelements line-kind elements))
