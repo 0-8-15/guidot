@@ -479,6 +479,7 @@
   ;; 2012-02-11: glVertexPointer here appears to be the to candidate
   ;; to optimizations
   (glVertexPointer (MACRO-glC:vertex-set-d23 glc-vertexset) GL_FLOAT 0 (MACRO-glC:vertex-set-v glc-vertexset))
+  (glEnableClientState GL_COLOR_ARRAY)
   (glColorPointer 4 GL_UNSIGNED_BYTE 0 (MACRO-glC:vertex-set-c glc-vertexset))
   (cond
    ((or (eqv? line-type GL_LINES) (eqv? line-type GL_LINE_LOOP) (eqv? line-type GL_LINE_STRIP))
@@ -513,6 +514,12 @@
   (when (or scale shft rot)
     (glPopMatrix))
   #!void)
+
+(define (guide-glScale area)
+  (glScalef//checks (exact->inexact (pikchr-area area 'width)) (exact->inexact (pikchr-area area 'height)) 1.))
+
+(define (guide-glCenter area)
+  (glTranslatef//checks (* 0.5 (pikchr-area area 'width)) (* 0.5 (exact->inexact (pikchr-area area 'height))) 1.))
 
 ;;;** Clipping
 

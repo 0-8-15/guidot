@@ -1,3 +1,46 @@
+(define-values (%guide-tag-drawing guide-drawing?)
+  (let ((tag (list 'guide-drawing)))
+    (values
+     (lambda (thunk) (tag-thunk thunk tag))
+     (lambda (obj) (procedure-tagged? obj tag)))))
+
+(define (guide-line-drawing
+         vertices lines
+         #!key in color (width 1.) (mode GL_LINES))
+  (let ((size (exact->inexact width))
+        (w (exact->inexact (pikchr-area in 'width)))
+        (h (exact->inexact (pikchr-area in 'height)))
+        (color-kind
+         (cond
+          ((u8vector? color) GL_UNSIGNED_BYTE)
+          ((u32vector? color) GL_UNSIGNED_BYTE)
+          (else #f))))
+    (define-values (line-kind nlines)
+      (cond
+       ((u16vector? lines) (values GL_UNSIGNED_INT (u16vector-length lines)))
+       (else (values GL_UNSIGNED_BYTE (u8vector-length lines)))))
+    ;; TBD: add checks that no array is out of bounds
+    (%guide-tag-drawing
+     (lambda ()
+       (glVertexPointer
+        2 ;; #coord per vertex
+        GL_FLOAT ;; kind of vertices
+        0 ;; stride, no gap
+        vertices)
+       (cond
+        ((not color-kind)
+         (glDisableClientState GL_COLOR_ARRAY)
+         (glColor color))
+        (else (glColorPointer 4 GL_UNSIGNED_BYTE 0 color)))
+       (cond
+        ((eqv? mode GL_POINTS) (glPointSize width))
+        (else (glLineWidth size)))
+       (glDisable GL_TEXTURE_2D)
+       (glTranslatef//checks (* 0.5 w) (* 0.5 h) 1.) ;;(guide-glCenter in)
+       (glScalef//checks w h 1.) ;; (guide-glScale in)
+       (glDrawElements mode nlines line-kind lines)
+       (glEnableClientState GL_COLOR_ARRAY)))))
+
 (define (guide-frame-drawing
          area content-area #!key
          (color ;; maybe a procedure
@@ -38,7 +81,7 @@
                            all)))
                   (lambda () (for-each (lambda (view!) (view!)) av))))
               eqv?)))
-        (lambda () ((cached (color))))))
+        (%guide-tag-drawing (lambda () ((cached (color)))))))
      (else
       (let ((frozen (map (lambda (view!) (view!)) all)))
-        (lambda () (for-each (lambda (view!) (view!)) frozen)))))))
+        (%guide-tag-drawing (lambda () (for-each (lambda (view!) (view!)) frozen))))))))
