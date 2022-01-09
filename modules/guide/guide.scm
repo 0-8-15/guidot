@@ -507,7 +507,7 @@
        (error "invalid event handler" 'make-guide-payload on-any-event))
      (cond
       ((or (eq? lifespan #f) (eq? lifespan 'ephemeral))
-       (make-guide-payload name in widget on-redraw on-any-event gui-before remove))
+       (make-guide-payload name in widget on-redraw on-any-event gui-before gui-after))
       (else
        (when widget ;; legacy glgui backward compatibility
          (set! gui-before exposed)
