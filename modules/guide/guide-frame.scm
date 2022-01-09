@@ -1,8 +1,5 @@
-(define-values (%guide-tag-drawing guide-drawing?)
-  (let ((tag (list 'guide-drawing)))
-    (values
-     (lambda (thunk) (tag-thunk thunk tag))
-     (lambda (obj) (procedure-tagged? obj tag)))))
+(define (%guide-tag-drawing thunk)
+  (make-guide-payload name: 'guide-drawing on-redraw! thunk))
 
 (define (guide-line-drawing
          vertices lines

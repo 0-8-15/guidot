@@ -1441,7 +1441,7 @@
     (view! size: w h)
     ;; finally - in order to not trigger useless recalculations
     (cond
-     ((or (string? label) (glC:image? label) (guide-drawing? label) (vector? label))
+     ((or (string? label) (glC:image? label) (vector? label))
       (label! foreground: label)
       (view! foreground: (label!)))
      ((procedure? label)
