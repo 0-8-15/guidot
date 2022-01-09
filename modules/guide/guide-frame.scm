@@ -1,5 +1,8 @@
-(define (%guide-tag-drawing thunk)
-  (make-guide-payload name: 'guide-drawing on-redraw! thunk))
+(define guide-drawing->guide-payload
+  (let ((area (make-mdv-rect-interval 0 0 1 1))
+        (events (lambda (rect payload event x y) #f)))
+    (lambda (thunk)
+      (make-guide-payload name: 'guide-drawing in: area on-redraw: thunk))))
 
 (define (guide-line-drawing
          vertices lines
@@ -17,26 +20,25 @@
        ((u16vector? lines) (values GL_UNSIGNED_INT (u16vector-length lines)))
        (else (values GL_UNSIGNED_BYTE (u8vector-length lines)))))
     ;; TBD: add checks that no array is out of bounds
-    (%guide-tag-drawing
-     (lambda ()
-       (glVertexPointer
-        2 ;; #coord per vertex
-        GL_FLOAT ;; kind of vertices
-        0 ;; stride, no gap
-        vertices)
-       (cond
-        ((not color-kind)
-         (glDisableClientState GL_COLOR_ARRAY)
-         (glColor color))
-        (else (glColorPointer 4 GL_UNSIGNED_BYTE 0 color)))
-       (cond
-        ((eqv? mode GL_POINTS) (glPointSize width))
-        (else (glLineWidth size)))
-       (glDisable GL_TEXTURE_2D)
-       (glTranslatef//checks (* 0.5 w) (* 0.5 h) 1.) ;;(guide-glCenter in)
-       (glScalef//checks w h 1.) ;; (guide-glScale in)
-       (glDrawElements mode nlines line-kind lines)
-       (glEnableClientState GL_COLOR_ARRAY)))))
+    (lambda ()
+      (glVertexPointer
+       2 ;; #coord per vertex
+       GL_FLOAT ;; kind of vertices
+       0 ;; stride, no gap
+       vertices)
+      (cond
+       ((not color-kind)
+        (glDisableClientState GL_COLOR_ARRAY)
+        (glColor color))
+       (else (glColorPointer 4 GL_UNSIGNED_BYTE 0 color)))
+      (cond
+       ((eqv? mode GL_POINTS) (glPointSize width))
+       (else (glLineWidth size)))
+      (glDisable GL_TEXTURE_2D)
+      (glTranslatef//checks (* 0.5 w) (* 0.5 h) 1.) ;;(guide-glCenter in)
+      (glScalef//checks w h 1.) ;; (guide-glScale in)
+      (glDrawElements mode nlines line-kind lines)
+      (glEnableClientState GL_COLOR_ARRAY))))
 
 (define (guide-frame-drawing
          area content-area #!key
@@ -78,7 +80,7 @@
                            all)))
                   (lambda () (for-each (lambda (view!) (view!)) av))))
               eqv?)))
-        (%guide-tag-drawing (lambda () ((cached (color)))))))
+        (lambda () ((cached (color))))))
      (else
       (let ((frozen (map (lambda (view!) (view!)) all)))
-        (%guide-tag-drawing (lambda () (for-each (lambda (view!) (view!)) frozen))))))))
+        (lambda () (for-each (lambda (view!) (view!)) frozen)))))))
