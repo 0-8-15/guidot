@@ -1,3 +1,31 @@
+(c-declare "#include <stdio.h>") ;; OH NOOO
+
+(define %allocate-u8vector
+  ;; allocate without initialization
+  (c-lambda
+   (size_t) scheme-object
+   "___SCMOBJ result = ___EXT(___alloc_scmobj) (___PSTATE, ___sU8VECTOR, ___arg1);
+if(___FIXNUMP(result)) { fprintf(stderr, \"OH NOOO\\n\"); ___return(___FAL); }
+___EXT(___release_scmobj)(result);
+___return(result);"))
+
+(define (%allocate-still-u8vector size)
+  ;; allocate still u8vector sans initialization
+  (declare (not interrupts-enabled))
+  (let ((o ((c-lambda
+            (size_t) scheme-object
+   "___SCMOBJ result = ___EXT(___alloc_scmobj) (___PSTATE, ___sU8VECTOR, ___arg1);
+if(___FIXNUMP(result)) { ___return(___FAL); }
+//___EXT(___release_scmobj)(result);
+___still_obj_refcount_dec(result);
+___return(result);")
+            size)))
+    (if (##fixnum? o)
+        (begin
+          (##raise-heap-overflow-exception)
+          (%allocate-still-u8vector size))
+        o)))
+
 ;;;*** copied from lwip/datastructures
 
 (c-declare "#include <stdint.h>")

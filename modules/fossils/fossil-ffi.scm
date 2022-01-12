@@ -83,7 +83,7 @@ c-declare-end
    src-u8vector src-start src-end dst-u8vector dst-start compression-level))
 
 (define (zlib-subu8vector-compress u8vec #!optional (start 0) (end (u8vector-length u8vec)))
-  (let* ((dst-vector (make-u8vector (zlib-compress-bound (- end start))))
+  (let* ((dst-vector (%allocate-u8vector (zlib-compress-bound (- end start))))
          (rc (zlib-subu8vector-compress! u8vec start end dst-vector 0)))
     (cond
      ((##fx< rc 0) (error "failed" zlib-subu8vector-compress rc))
@@ -96,7 +96,7 @@ c-declare-end
 
 (define (zlib-subu8vector-uncompress u8vec #!optional (start 0) (end (u8vector-length u8vec)))
   (let loop ((room (* (- end start) 5)))
-    (let* ((dst-vector (make-u8vector room))
+    (let* ((dst-vector (%allocate-u8vector room))
            (rc (zlib-subu8vector-uncompress! u8vec start end dst-vector 0)))
       (cond
        ((##fx< rc 0) (error "failed" zlib-subu8vector-uncompress rc))
@@ -115,7 +115,7 @@ c-declare-end
 
 (define (fossil-subu8vector-compress u8vec #!optional (start 0) (end (u8vector-length u8vec)))
   (let* ((uncompressed-size (- end start))
-         (dst-vector (make-u8vector (+ (zlib-compress-bound uncompressed-size) 4)))
+         (dst-vector (%allocate-u8vector (+ (zlib-compress-bound uncompressed-size) 4)))
          (rc (zlib-subu8vector-compress! u8vec start end dst-vector 4)))
     (cond
      ((##fx< rc 0) (error "failed" zlib-subu8vector-compress rc))
@@ -132,10 +132,10 @@ c-declare-end
 
 (define (fossil-subu8vector-uncompress u8vec #!optional (start 0) (end (u8vector-length u8vec)))
   (let* ((room (fossil-u8vector-uncompressed-size u8vec start))
-         (dst-vector (make-u8vector room))
+         (dst-vector (%allocate-u8vector room))
          (rc (zlib-subu8vector-uncompress! u8vec (+ start 4) end dst-vector 0)))
     (cond
-     ((##fx< rc 0) (error "failed" zlib-subu8vector-uncompress rc))
+     ((##fx< rc 0) (error "failed" zlib-subu8vector-uncompress! rc))
      ((eqv? rc room) dst-vector)
      ((##fx> rc room) (error "invalid fossil encoded buffer" fossil-subu8vector-uncompress rc))
      (else (subu8vector dst-vector 0 rc)))))
@@ -242,7 +242,13 @@ c-declare-end
   ((c-lambda (scheme-object size_t size_t scheme-object size_t size_t scheme-object size_t) int "scm_delta_apply")
    src src-start src-end delta delta-start delta-end dst dst-start))
 
-(define (fossil-subu8vector-delta-apply src delta)
-  (let* ((result (make-u8vector (fossil-u8vector-delta-applied-size delta))))
-    (fossil-subu8vector-delta-apply! src 0 (u8vector-length src) delta 0 (u8vector-length delta) result 0)
+(define (fossil-subu8vector-delta-apply src delta rid)
+  (let* ((result (%allocate-u8vector (fossil-u8vector-delta-applied-size delta)))
+         (rc
+          (fossil-subu8vector-delta-apply! src 0 (u8vector-length src) delta 0 (u8vector-length delta) result 0)))
+    (when (##fx< rc 0)
+      (error "failed" fossil-subu8vector-delta-apply rc
+             rid
+             (read-line (open-input-u8vector src) #f)
+             (read-line (open-input-u8vector delta) #f)))
     result))
