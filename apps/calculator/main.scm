@@ -323,9 +323,16 @@ NULL;
         (eval expr))))
   (cond
    ((source-fossil)
-    (case 2
+    (case 3
       ((1) (load-via-process (source-fossil) fn))
       ((2) (load-via-sqlite3 (source-fossil) fn))
+      ((3)
+       (with-exception-catcher
+        (lambda (exn)
+          (MATURITY -2 "native load is broken falling back" loc: xload)
+          (debug 'xload-exn exn)
+          (load-via-process (source-fossil) fn))
+        (lambda () (load-via-sqlite3 (source-fossil) fn))))
       (else (NYIE "else case" loc: xload))))
    (else (load fn))))
 
