@@ -901,31 +901,47 @@
 
 ;;*** Widget Composition
 
-(define (guide-scissor-layout
-         content
-         #!key
-         (in (guide-payload-measures content))
-         (name `(guide-scissor-layout ,(guide-payload-name content))))
+(define guide-scissor-layout
+  (let ((current-scissor-area #f))
+    (define (set-current! area)
+      (set! current-scissor-area area)
+      (cond
+       (current-scissor-area
+        (receive (xsw xne ysw yne) (guide-boundingbox->quadrupel area)
+          (let ((w (- xne xsw))
+                (h (- yne ysw)))
+            (glEnable GL_SCISSOR_TEST)
+            (glScissor xsw ysw w h))))
+       (else (glDisable GL_SCISSOR_TEST))))
+    (define (guide-scissor-layout
+             content
+             #!key
+             (in (guide-payload-measures content))
+             (name `(guide-scissor-layout ,(guide-payload-name content))))
   ;;; NOTE: `glScissor` expects "window coordinates"
   ;;  BEWARE: this likely does not nest after re-positioning
-  ;;; BEWARE: `GL_SCISSOR_TEST` enable/disable looks like not nesting
   ;;; either!
-  (MATURITY -1 "GL_SCISSOR_TEST handling may not properly nest and requires window coordinates" loc: guide-scissor-layout)
-  (make-guide-payload
-   in: in name: name
-   on-redraw:
-   (receive (xsw xne ysw yne) (guide-boundingbox->quadrupel in)
-     (let ((w (- xne xsw))
-           (h (- yne ysw))
-           (foreground (guide-payload-on-redraw content)))
-       (lambda ()
-         (glEnable GL_SCISSOR_TEST)
-         (glScissor xsw ysw w h)
-         (foreground)
-         (glDisable GL_SCISSOR_TEST))))
-   on-any-event:
-   (guide-payload-on-any-event content)
-   lifespan: 'ephemeral widget: #f))
+      (MATURITY -1 "GL_SCISSOR_TEST handling requires window coordinates (and might not properly nest)" loc: guide-scissor-layout)
+      (make-guide-payload
+       in: in name: name
+       on-redraw:
+       (let ((foreground (guide-payload-on-redraw content)))
+         (lambda ()
+           ;; NOTE: a correct implementation might require dynamic-wind,
+           ;; which is expensive, and a parameter for
+           ;; current-scissor-area, trying to get away with a simpler
+           ;; solution, since we do NOT expect non-local escapes while
+           ;; drawing.
+           (let* ((old current-scissor-area)
+                  (in (if old (pikchr-area in `(intersect: ,old)) in)))
+             (when in
+               (set-current! in)
+               (foreground)
+               (set-current! old)))))
+       on-any-event:
+       (guide-payload-on-any-event content)
+       lifespan: 'ephemeral widget: #f))
+    guide-scissor-layout))
 
 ;;**** GGB Composition
 
