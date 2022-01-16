@@ -200,11 +200,26 @@
      ((complex? x) (imag-part x))
      ((vector? x) (vector-ref x 1))
      (else (error "xof" x))))
-  (define (prepare in img position scale)
-    (let* ((iw (nsvgimage-width img))
-           (w (if in (pikchr-area in 'width) iw))
+  (define (fit-in-power-of-two area)
+    ;; some opengl implementations do NOT like textures when
+    ;; dimensions are not a power of two (notably win32).  Experiments
+    ;; suggest further restrictions on texture size.
+    (let* ((w (pikchr-area area 'width))
+           (h (pikchr-area area 'height))
+           (mx (* 1024 1024))
+           (l2 (log 2)))
+      (do ((vol (* w h) (* w h)))
+          ((<= vol mx))
+        (let ((s (sqrt (/ mx vol))))
+          (set! w (* s w))
+          (set! h (* s h))))
+      (pikchr-area (vector (expt 2 (floor (/ (log w) l2))) (expt 2 (floor (/ (log h) l2)))))))
+  (define (prepare in f2 img position scale)
+    (let* ((img-in (if f2 (fit-in-power-of-two in) in))
+           (iw (nsvgimage-width img))
+           (w (if in (pikchr-area img-in 'width) iw))
            (ih (nsvgimage-height img))
-           (h (if in (pikchr-area in 'height) ih))
+           (h (if in (pikchr-area img-in 'height) ih))
            (scale
             (cond
              (scale scale)
@@ -221,17 +236,29 @@
                      (else (* (- h (* scale ih)) 0.5))))))
       (nanosvg-finalize-image img)
       ;;(values w h result)
-      (make-glC:image w h (glCoreTextureCreate w h result) 0. 1. 1. 0.)))
+#|
+      (do ((i 0 (+ i 4))
+           (t 0 (+ t 1))
+           (r2 (make-u8vector (* 1 (/ (u8vector-length result) 4)))))
+          ((>= (+ i 4) (u8vector-length result))
+           #;(set! result (or r2 (make-u8vector (* 1 (/ (u8vector-length result) 4)) #x00))))
+	(u8vector-set! r2 (+ t 1) (u8vector-ref result (+ i 3)))
+        #;(u8vector-set! r2 (+ t 2) (u8vector-ref result (+ i 0)))
+        #;(u8vector-set! r2 (+ t 1) (u8vector-ref result (+ i 1)))
+        #;(u8vector-set! r2 (+ t 0) (u8vector-ref result (+ i 2))))
+|#
+      (make-glC:image (pikchr-area in 'width) (pikchr-area in 'height) (glCoreTextureCreate w h result) 0. 1. 1. 0.)))
   (define (load-svg-image
            filename #!key
            (units 'px)
            (dpi 96.)
            (in #f)
            (position #f)
-           (scale #f))
+           (scale #f)
+           (fit-as-power-of-two #f))
     (let ((img (nanosvg-load-file filename (symbol->string units) dpi)))
       (cond
-       (img (prepare in img position scale))
+       (img (prepare in fit-as-power-of-two img position scale))
        (else (error "guidot-load-svg-image failed to load" filename)))))
   (define (%sxsvg->u8v tree)
     (call-with-output-u8vector
@@ -268,7 +295,8 @@
            (dpi 96.)
            (in #f)
            (position #f)
-           (scale #f))
+           (scale #f)
+           (fit-as-power-of-two #t))
     (let* ((source
             (match
              source
@@ -276,6 +304,6 @@
              (_ source)))
            (img (make-nanosvg-image source (symbol->string units) dpi)))
       (cond
-       (img (prepare in img position scale))
+       (img (prepare in fit-as-power-of-two img position scale))
        (else (error "guidot-make-svg-image failed parse" source)))))
   (values load-svg-image make-svg-image))
