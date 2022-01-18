@@ -434,7 +434,7 @@
         (do ((i (fx- (##vector-length handler) 1) (fx- i 1))
              (hit #f (and hit ((##vector-ref handler i) rect payload event x y))))
             ((or hit (eqv? i -1)) hit)))
-       ((not handler) (MATURITY -1 "no event handler " loc: guide-event-dispatch-to-payload))
+       ((not handler) (MATURITY -1 "no event handler " loc: guide-event-dispatch-to-payload) #f)
        (else (MATURITY -10 "invalid event handler" loc: guide-event-dispatch-to-payload)))))))
 
 (cond-expand
