@@ -923,7 +923,7 @@
   ;;; either!
       (MATURITY -1 "GL_SCISSOR_TEST handling requires window coordinates (and might not properly nest)" loc: guide-scissor-layout)
       (make-guide-payload
-       in: in name: name
+       in: (guide-payload-measures content) name: name
        on-redraw:
        (let ((foreground (guide-payload-on-redraw content)))
          (lambda ()
@@ -1185,15 +1185,14 @@
              ((or (eqv? press: event) (eqv? release: event))
               (and on-key (on-key event x y)))
              (fixed (pass-event! rect payload event x y))
+             ((and (guide-event-graphics? event)
+                   (not (mdvector-rect-interval-contains/xy? area x y)))
+              (MATURITY -2 "pointer event outside of payload" loc: name)
+              #f)
              ((and (eqv? event EVENT_BUTTON1DOWN))
               (set! armed (vector x y))
               (set! armed-at armed)
               (or x-motion-opaque (pass-event! rect payload event x y)))
-             ((and (or (eqv? event EVENT_BUTTON1DOWN) (eqv? event EVENT_BUTTON1UP)
-                       (eqv? event EVENT_MOTION))
-                   (not (mdvector-rect-interval-contains/xy? area x y)))
-              (MATURITY -1 "pointer event outside of payload" loc: 'ggb-layout)
-              #f)
              ((and (eqv? event EVENT_BUTTON1UP))
               (cond
                ((eq? armed armed-at)
