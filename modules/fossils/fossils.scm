@@ -453,18 +453,22 @@ LIMIT 1
       (list "self-register" 0 tmstmp)))))
 
 (define (fossil-user-create! repository login pw #!key (cap "") (info "") (photo (sql-null)))
-  (sqlite3-file-command*!
-   repository
-   "insert or replace into user (login, pw, cap, cookie, ipaddr, cexpire, info, photo, mtime)
+  (define (doit db)
+    (sqlite3-exec*
+     db
+     "insert or replace into user (login, pw, cap, cookie, ipaddr, cexpire, info, photo, mtime)
 values(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)"
-   (let ((cookie (sql-null))
-         (ipaddr (sql-null))
-         (cexpire (sql-null))
-         (mtime
-          (cond-expand
-           (win32 (exact->inexact (current-seconds)))
-           (else (current-seconds)))))
-     (list login pw cap cookie ipaddr cexpire info  photo mtime))))
+     (let ((cookie (sql-null))
+           (ipaddr (sql-null))
+           (cexpire (sql-null))
+           (mtime
+            (cond-expand
+             (win32 (exact->inexact (current-seconds)))
+             (else (current-seconds)))))
+       (list login pw cap cookie ipaddr cexpire info  photo mtime)) ))
+  (cond
+   ((sqlite3-db? repository) (doit repository))
+   (else (call-with-sqlite3-database repository doit))))
 
 ;;** fossils directory and service
 
