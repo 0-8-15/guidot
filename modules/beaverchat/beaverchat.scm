@@ -236,7 +236,7 @@
 (define (chat-post-message! to reference payload)
   ((ot0cli-send!) 'post to reference payload))
 
-(let ((orig (unbox ot0cli-on-ot0-received))
+(let ((orig (on-ot0-received))
       (payload-seen (encode-ot0-message-payload '(chat seen))))
   (define (on-incomming-message type from reference data)
     (define (sanitized-message msg)
@@ -274,7 +274,7 @@
                         (equal? (cadr msg) reference))))))
           (_ (orig type from reference data)))))
       (else (orig type from reference data))))
-  (set-box! ot0cli-on-ot0-received on-incomming-message))
+  (on-ot0-received on-incomming-message))
 
 (define-pin chat-pending-messages '())
 
