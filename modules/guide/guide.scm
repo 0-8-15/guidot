@@ -1844,12 +1844,12 @@
                      (not app:mustinit)
                      glgui:active app:width app:height) ;; ???
             (set! ##now (current-time-seconds))
+            (set! next-frame-time (seconds->time (+ (time->seconds (current-time)) ($guide-frame-period-minimum))))
             (let ((cpl (if (procedure? payload) (payload) payload)))
-              (guide-default-event-dispatch/toplevel gui cpl EVENT_REDRAW 0 0))
-            (set! next-frame-time (seconds->time (+ (time->seconds (current-time)) ($guide-frame-period-minimum))))))
+              (guide-default-event-dispatch/toplevel gui cpl EVENT_REDRAW 0 0))))
         (define (wait-for-frame-period)
           (mutex-lock! wait-mutex 0)
-          (unless (mutex-unlock! wait-mutex wait-cv ($guide-frame-period))
+          (when (mutex-unlock! wait-mutex wait-cv ($guide-frame-period))
             (thread-sleep! next-frame-time)))
         (define (draw-loop) ;; TBD: add optional "no draw required"
           (draw-once)
