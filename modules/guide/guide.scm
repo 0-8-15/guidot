@@ -1788,7 +1788,7 @@
       (microgl-redraw-period (fix (* x 1000000)))))))
 
 (define-values
-    (guide-toplevel-payload guide-main guide-exit)
+    (guide-toplevel-payload guide-main guide-exit $guide-frame-period-minimum)
   (let ((once main) ;; lambdanative `main` called at most once
         (attributes #f)
         (payload #f))
@@ -1835,24 +1835,26 @@
              (terminate (lambda () #t))
              (wait-mutex %%guide-wait-mutex)
              (wait-cv (mutex-specific %%guide-wait-mutex)))
-      (define suspend-state app:suspended)
-      (define (draw-once)
-        (when (and (not app:suspended)
-                   (not app:mustinit)
-                   glgui:active app:width app:height) ;; ???
-          (set! ##now (current-time-seconds))
-          (let ((cpl (if (procedure? payload) (payload) payload)))
-            (guide-default-event-dispatch/toplevel gui cpl EVENT_REDRAW 0 0))))
-      (define (wait-for-frame-period)
-        (mutex-lock! wait-mutex 0)
-        (mutex-unlock! wait-mutex wait-cv ($guide-frame-period)))
-      (define (draw-loop) ;; TBD: add optional "no draw required"
-        (draw-once)
-        (wait-for-frame-period)
-        (draw-loop))
       (let ((gui #f)
+            (next-frame-time (current-time))
             (draw-thread #f)
             (todo once))
+        (define (draw-once)
+          (when (and (not app:suspended)
+                     (not app:mustinit)
+                     glgui:active app:width app:height) ;; ???
+            (set! ##now (current-time-seconds))
+            (let ((cpl (if (procedure? payload) (payload) payload)))
+              (guide-default-event-dispatch/toplevel gui cpl EVENT_REDRAW 0 0))
+            (set! next-frame-time (seconds->time (+ (time->seconds (current-time)) ($guide-frame-period-minimum))))))
+        (define (wait-for-frame-period)
+          (mutex-lock! wait-mutex 0)
+          (unless (mutex-unlock! wait-mutex wait-cv ($guide-frame-period))
+            (thread-sleep! next-frame-time)))
+        (define (draw-loop) ;; TBD: add optional "no draw required"
+          (draw-once)
+          (wait-for-frame-period)
+          (draw-loop))
         (set! once (lambda _ (exit 23)))
         (todo
          ;; initialization
@@ -1926,7 +1928,7 @@
         ;; recurse
         (guide-exit code))
        (else (exit code))))
-    (values guide-toplevel-payload guide-main guide-exit)))
+    (values guide-toplevel-payload guide-main guide-exit (make-parameter 1/60))))
 
 (define (guide-toplevel-capture-return)
   (let ((before (guide-toplevel-payload)))
