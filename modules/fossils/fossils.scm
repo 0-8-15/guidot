@@ -418,17 +418,14 @@ LIMIT 1
   ;;
   ;; Usage: (kick (set! xx (fossil-config-get-pin "autosync")))
   (let ((result (make-pin initial: initial pred: pred filter: filter name: name)))
-    (with-exception-catcher
-     (lambda (exn) (log-error "fossil config failed '" repository "' key: " key))
-     (lambda ()
-       (call-with-sqlite3-database
-        repository
-        (lambda (db)
-          (let* ((sql "select value from config where name = ?1")
-                 (stmt (sqlite3-prepare db sql)))
-            (sqlite3-bind! db stmt (list key))
-            (MATURITY+2:sqlite3-for-each db result stmt)))
-        mode: 'r/o)))
+    (call-with-sqlite3-database
+     repository
+     (lambda (db)
+       (let* ((sql "select value from config where name = ?1")
+              (stmt (sqlite3-prepare db sql)))
+         (sqlite3-bind! db stmt (list key))
+         (MATURITY+2:sqlite3-for-each db result stmt)))
+     mode: 'r/o)
     (wire!
      result critical:
      (lambda _
