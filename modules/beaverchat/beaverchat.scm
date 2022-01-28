@@ -349,14 +349,12 @@
         (write-subu8vector content 0 (u8vector-length content) port)))))
 
 (define (set-data-persistent!)
-  (let ((current (let ((old #;(read-file-as-u8vector (persistant-file-name))
-                        (with-exception-catcher
-                         ;;; TBD: remove this ASAP, for backward
-                         ;;; compatibility we ignore deserialization
-                         ;;; issues.
-                         (lambda (exn) #f)
-                         (lambda () (read-file-as-u8vector (persistant-file-name))))))
-                   (if old (u8vector->object old) (current-persistant-data)))))
+  (let ((current ;; (read-file-as-u8vector (persistant-file-name))
+         (with-exception-catcher
+          ;;; TBD: remove this ASAP, for backward compatibility we
+          ;;; ignore all deserialization issues.
+          (lambda (exn) (current-persistant-data))
+          (lambda () (u8vector->object (read-file-as-u8vector (persistant-file-name)))))))
     (kick/sync
      (do ((i 0 (fx+ i 1)))
          ((fx= i (vector-length current)))
