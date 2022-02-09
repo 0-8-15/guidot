@@ -60,18 +60,13 @@
          (log (and #f (lambda (args) (debug 'fossil-command args))))
          (directory (fossils-directory))
          (input #f)
-         (repository #t)
+         (repository #f)
          #!rest args)
   (let ((working-directory (or directory (current-directory)))
         (stderr-redirection #t)
         (arguments
          (cond
           ((not repository) args)
-          ((eq? repository #t)
-           (let ((fn (current-fossil-pathname)))
-             (cond
-              (fn (append args (list "-R" fn)))
-              (else args))))
           ((string? repository) ;; TBD: file,exists,etc...
            (append args (list "-R" repository)))
           (else args))))
