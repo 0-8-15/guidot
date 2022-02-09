@@ -1,5 +1,59 @@
 ;;; Protect Callbacks into threaded gambit
 
+;;;* History
+
+;; Original attempt was to suppress thead switches during C-to-Scheme
+;; call sections.  This turned out to be tricky.  Since the Gambit
+;; manual suggests to work the other way around: allow Scheme-to-C
+;; calls which may call back from C to Scheme only in a single thread.
+
+;;;* Second Approach
+
+(define current-safe-thunk #f)
+
+(define ##safe-thunk-exec!
+  (let ((thread #f))
+    (define (loop2)
+      (let ((msg (thread-receive)))
+        (cond
+         ((procedure? msg)
+          (set! current-safe-thunk msg)
+          (msg)
+          (set! current-safe-thunk #f))))
+      (loop2))
+    (define (loop1)
+      (with-exception-catcher
+       (lambda (exn)
+         (stm-log 'safe-lambda-exec! current-safe-thunk exn)
+         (set! current-safe-thunk #f))
+       loop2)
+      (loop1))
+    #;(define (loop)
+      (let ((msg (thread-receive)))
+        (cond
+         ((procedure? msg)
+          (set! current-safe-thunk msg)
+          (with-exception-catcher
+           (lambda (exn) (stm-log 'safe-lambda-exec! msg exn))
+           msg)
+          (set! current-safe-thunk #f))))
+      (loop))
+    (set! thread (make-thread loop1 'safe-thunk-exec!))
+    (thread-start! thread)
+    (lambda (thunk) (thread-send thread thunk))))
+
+(define (##safe-thunk-call thunk)
+  (let ((mutex (make-mutex thunk)))
+    (mutex-lock! mutex)
+    (##safe-thunk-exec!
+     (lambda ()
+       (mutex-specific-set! mutex (thunk))
+       (mutex-unlock! mutex)))
+    (mutex-lock! mutex)
+    (mutex-specific mutex)))
+
+;;;* Old Approach
+
 ;;;** Internal
 
 (define ##safe-lambda-mutex (make-mutex 'safe-lambda))
@@ -39,6 +93,8 @@
 
 ;(define-macro (trace-lock phase ref posted) #!void)
 
+(define ##safe-lambda-busy #f) ;; more tracing - TBD: remove once done!
+
 (define (##safe-lambda-lock! location)
   ;; Jump through loops to err out on dead locks,
   ;; report, trace etc.
@@ -46,6 +102,7 @@
   (if (eq? (mutex-state ##safe-lambda-mutex) (current-thread))
       (##raise-safe-lambda-exception location (debug location "deadlock")))
   (mutex-lock! ##safe-lambda-mutex)
+  (set! ##safe-lambda-busy (cons (current-thread) location))
   ((c-lambda () void "___mask_heartbeat_interrupts_begin(&heartbeat_interrupts);"))
   (trace-lock 'P location #f)
   ;; report trace
@@ -83,6 +140,7 @@
         (set! last post)
         ;; report trace
         (trace-lock 'V location tbd)
+        (set! ##safe-lambda-busy #f)
         ((c-lambda () void "___mask_heartbeat_interrupts_end(&heartbeat_interrupts);"))
         (mutex-unlock! ##safe-lambda-mutex)
         ;; enforce delayed operations now
@@ -148,3 +206,5 @@
        (let ((,tmp ((c-lambda ,formals ,return ,c-code) . ,argument-names)))
          (##safe-lambda-unlock! ,(car formals))
          ,tmp))))
+
+(set! ##safe-lambda-post! ##safe-thunk-exec!)
