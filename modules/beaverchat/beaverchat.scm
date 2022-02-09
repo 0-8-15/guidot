@@ -488,6 +488,7 @@
       (or (string-empty? str)
           (let ((n (string->number str)))
             (and n (or (eqv? n 0)
+                       (eqv? n (input))
                        (and
                         (< 1000 n #xffff)
                         (port-free? n))))))))
