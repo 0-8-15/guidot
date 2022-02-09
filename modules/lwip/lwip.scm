@@ -785,7 +785,7 @@ ___return( the_gambit_owner==0 ? 0 : the_gambit_owner==pthread_self() ? 1 : -1 )
  (let ()
    (define (lwip-tcp-loop tmo)
      (thread-sleep! (max (lwip-tcp-min-sleep) (/ tmo 1000.0)))
-     (lwip-tcp-loop (lwip-check-timeouts 100)))
+     (lwip-tcp-loop (##safe-thunk-call (lambda () (lwip-check-timeouts 100)))))
    (and ((c-lambda () bool "lwip_init_once"))
         (begin
           (thread-start!
