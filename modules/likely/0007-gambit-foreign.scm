@@ -44,12 +44,13 @@
 
 (define (##safe-thunk-call thunk)
   (let ((mutex (make-mutex thunk)))
-    (mutex-lock! mutex)
+    (mutex-lock! mutex #f #f)
     (##safe-thunk-exec!
      (lambda ()
        (mutex-specific-set! mutex (thunk))
        (mutex-unlock! mutex)))
-    (mutex-lock! mutex)
+    (mutex-lock! mutex #f #f)
+    (mutex-unlock! mutex) ;; may avoid space leak (?)
     (mutex-specific mutex)))
 
 ;;;* Old Approach
