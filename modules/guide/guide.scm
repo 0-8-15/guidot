@@ -249,22 +249,21 @@
 (define guide-terminate-on-key (make-parameter EVENT_KEYESCAPE))
 
 (define guide-focus
-  (let ((guide-focus #f))
-    (case-lambda
-     (() guide-focus)
-     ((value)
-      (cond
-       ((or (not value) (guide-payload? value))
-        (let ((before guide-focus))
-          (unless (eq? before value)
-            (set! guide-focus value)
-            (when before
-              (guide-event-dispatch-to-payload
-               (guide-payload-measures before) before focus: #f 0))
-            (when value
-              (guide-event-dispatch-to-payload
-               (guide-payload-measures value) value focus: #t 0)))))
-       (else "invalid payload" guide-focus value))))))
+  (make-pin
+   initial: #f
+   pred: (lambda (x) (or (not x) (guide-payload? x)))
+   name: 'guide-focus))
+
+(wire!
+ guide-focus sequence:
+ (lambda (before value)
+   (kick
+     (when before
+       (guide-event-dispatch-to-payload
+        (guide-payload-measures before) before focus: #f 0))
+     (when value
+       (guide-event-dispatch-to-payload
+        (guide-payload-measures value) value focus: #t 0)))))
 
 (define guide-meta-menu (make-parameter #f))
 (define MATURITY+4:%%guide-overlay ;; note: keeping %%-prefix as this
