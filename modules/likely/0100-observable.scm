@@ -327,7 +327,7 @@
     ;; FIXME: $implicit-current-transactions was a bad idea
     ;;
     ;; TODO: await this check failing for a while and abstain from testing
-    (if (not (current-transaction)) (error "make-rval: $implicit-current-transactions are a bad idea"))
+    (if (not (current-transaction)) (error "make-rval: $implicit-current-transactions are a bad idea" (observable-name x)))
     (observable-set! x v) #!void)
    ((k p . more) ;; INTERNAL API; TODO protect from uncontrolled access
     (cond
