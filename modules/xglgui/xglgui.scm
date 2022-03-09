@@ -290,6 +290,15 @@
           (fix-redraw!))
          (else (error "unhandled" 'Xguide-transformed-payload key more)))))))
 
+;;** Backward Compatibility
+
+(define (guide-focus-set! x)
+  (cond
+   ((stm-atomic?)
+    (thread-start! (make-thread (lambda () (kick! (lambda () (guide-focus x)))) 'guide-focus-set!))
+    #!void)
+   (else (guide-focus x))))
+
 ;;** Textarea Payload
 
 (define (guide-textarea-payload
@@ -846,13 +855,13 @@
                  #f))
              (cond
               ((char? data)
-               (guide-focus this-payload)
+               (guide-focus-set! this-payload)
                (cond
                 ((char=? data #\newline) (insert-newline!))
                 (else (ggb-insert! current-line (char->integer data))))
                (update-cursor!))
               ((string? data)
-               (guide-focus this-payload)
+               (guide-focus-set! this-payload)
                (continuation-capture
                 (lambda (cont)
                   (with-exception-catcher
@@ -1722,7 +1731,7 @@
                     #f))))
            ((guide-event-graphics? event) (mdvector-rect-interval-contains/xy? in x y))
            (else #f)))))
-    (guide-focus line)
+    (guide-focus-set! line)
     (let ((result
            (make-guide-payload
             name: name in: in widget: #f
@@ -2624,7 +2633,7 @@
             (ggb-goto! messages 0)
             (ggb-insert! messages (chat-message msg timestamp mode))))
          ((focus:)
-          (guide-focus (and msg input-edit)))
+          (guide-focus-set! (and msg input-edit)))
          ((load:)
           (check-not-observable-speculative! name key msg)
           (message-display-control! position: 0)
