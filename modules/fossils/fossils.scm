@@ -128,11 +128,6 @@
          (let ((args `("json" "-json-input" "-" "-user" ,user)))
            (cond
             ((not repository) args)
-            ((eq? repository #t)
-             (let ((fn (current-fossil-pathname)))
-               (cond
-                (fn (append args (list "-R" fn)))
-                (else args))))
             ((string? repository) ;; TBD: file,exists,etc...
              (append args (list "-R" repository)))
             (else args)))))
