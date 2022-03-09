@@ -67,7 +67,7 @@
                        accu: x row: (lambda (v) (set-box! x v)))))))
               (set! current-fossil-remote-url
                     (cond
-                     ((eof-object? stored) #f)
+                     ((not stored) #f)
                      ((rx~
                        (rx '(submatch
                              (seq "http://"
@@ -109,7 +109,9 @@
 (define (fossil-timeline
          #!key
          (type 'event))
-  (fossil-command/json `((command . ,(string-append "timeline/" (fossil-object-type->string type))))))
+  (fossil-command/json
+   `((command . ,(string-append "timeline/" (fossil-object-type->string type))))
+   repository: (current-fossil-pathname)))
 
 (define (%%fossil-cmd
          cmd url//proto #!key
@@ -913,8 +915,8 @@
       (guidot-frame
        (let ((options
               (cond
-               ((use-notes) (list->vector (read-all (fossil-command "wiki" "list" "-t") read-line)))
-               (else (fossil-command/json '((command . "wiki/list")))))))
+               ((use-notes) (list->vector (read-all (fossil-command repository: (current-fossil-pathname) "wiki" "list" "-t") read-line)))
+               (else (fossil-command/json '((command . "wiki/list")) repository: (current-fossil-pathname))))))
          (lambda (area)
            (cond
             ((eof-object? options)
@@ -927,9 +929,9 @@
               area (lambda () options)
               action:
               (lambda (n x)
-                (wiki-selected (vector-ref options n))
+                (wiki-selected (and (< 0 n (vector-length options)) (vector-ref options n)))
                 (off)
-                (%%guide-post-speculative (begin (dialog-control top: (with-page)) #t))))))))
+                (%%guide-post-speculative (begin (when (wiki-selected) (dialog-control top: (with-page))) #t))))))))
        in: area
        border-ratio: 1/4
        color: color background: background
@@ -937,8 +939,8 @@
     (define (get-wiki-page)
       (read-line
        (cond
-        ((use-notes) (fossil-command "wiki" "export" "-t" (wiki-selected) "-"))
-        (else (fossil-command "wiki" "export" (wiki-selected) "-")))
+        ((use-notes) (fossil-command repository: (current-fossil-pathname) "wiki" "export" "-t" (wiki-selected) "-"))
+        (else (fossil-command repository: (current-fossil-pathname) "wiki" "export" (wiki-selected) "-")))
        #f))
     (define (with-page #!key (mode 'commit))
       (define page-content
@@ -1012,7 +1014,7 @@
                      (cmd (case mode
                             ((create) "create")
                             (else "commit"))))
-                 (fossil-command input: content "wiki" cmd comment "-" "-t" name "-M" "text/x-markdown")))
+                 (fossil-command repository: (current-fossil-pathname) input: content "wiki" cmd comment "-" "-t" name "-M" "text/x-markdown")))
               (else
                ;; ignoring the response upon success
                (fossil-command/json
@@ -1023,7 +1025,8 @@
                    (name . ,name)
                    (content . ,content)
                    (mimetype . "text/x-markdown")
-                   (contentFormat . "raw"))))))))))
+                   (contentFormat . "raw")))
+                repository: (current-fossil-pathname))))))))
       this)
     (let ((tl-options '#("create" "list" "timeline"#; "close")))
       (define (no-fossil-selected area done)
@@ -1103,7 +1106,7 @@
              (guide-critical-add!
               (lambda ()
                 (dismiss)
-                (let* ((result (fossil-command/json '((command . "wiki/timeline"))))
+                (let* ((result (fossil-command/json '((command . "wiki/timeline")) repository: (current-fossil-pathname)))
                        (rows 50)
                        (buffer (make-ggb size: 2))
                        (all (box #f)))
