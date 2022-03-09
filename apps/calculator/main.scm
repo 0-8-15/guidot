@@ -300,6 +300,10 @@ NULL;
   name: "fossil used to look up to find source code")
 
 (define (xload fn)
+  (define (port-load port)
+    (do ((expr (read port) (read port)))
+        ((eof-object? expr) (close-input-port port))
+      (eval expr)))
   (define (load-via-process repository fn)
     (let* ((port (fossil-command repository: repository "cat" fn))
            ;; (exprs (read-all port))
@@ -308,31 +312,32 @@ NULL;
       (cond
        ((eqv? status 0)
         ;; (for-each eval exprs)
-        (call-with-input-string
-         instr
-         (lambda (port)
-           (do ((expr (read port) (read port)))
-               ((eof-object? expr))
-             (eval expr)))))
+        (call-with-input-string instr port-load))
        (else (error "fossil failed on" repository fn (modulo status 255) instr)))))
   (define (load-via-sqlite3 repository fn)
     ;; BEWARE: API of `open-fossil-content`not yet stable!
     (let ((port (open-fossil-content repository fn)))
-      (do ((expr (read port) (read port)))
-          ((eof-object? expr))
-        (eval expr))))
+      (port-load port)))
   (cond
    ((source-fossil)
     (case 3
       ((1) (load-via-process (source-fossil) fn))
       ((2) (load-via-sqlite3 (source-fossil) fn))
       ((3)
-       (with-exception-catcher
-        (lambda (exn)
-          (MATURITY -2 "native load is broken falling back" loc: xload)
-          (debug 'xload-exn exn)
-          (load-via-process (source-fossil) fn))
-        (lambda () (load-via-sqlite3 (source-fossil) fn))))
+       (port-load
+        (let ((repository (source-fossil)))
+          (with-exception-catcher
+           (lambda (exn)
+             (MATURITY -2 "native load is broken falling back" loc: xload)
+             (debug 'xload-exn exn)
+             (let* ((port (fossil-command repository: repository "cat" fn))
+                    ;; (exprs (read-all port))
+                    (instr (read-line port #f))
+                    (status (process-status port)))
+               (cond
+                ((eqv? status 0) (open-input-string instr))
+                (else (error "fossil failed on" repository fn (modulo status 255) instr)))))
+           (lambda () (open-fossil-content repository fn))))))
       (else (NYIE "else case" loc: xload))))
    (else (load fn))))
 
