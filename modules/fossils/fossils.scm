@@ -51,7 +51,10 @@
        ((c-lambda (int char**) int "fossil_main") n args))))))
 
 (define $fossil-user-name ;; just distinguish from user-name
-  (make-parameter (user-name)))
+  (make-parameter
+   (cond-expand
+    (android "u")
+    (else (user-name)))))
 
 ;;** Using Subprocess
 
