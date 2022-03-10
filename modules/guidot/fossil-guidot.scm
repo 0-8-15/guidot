@@ -929,11 +929,11 @@
               area (lambda () options)
               action:
               (lambda (n x)
-                (wiki-selected (and (< 0 n (vector-length options)) (vector-ref options n)))
+                (wiki-selected (and (< -1 n (vector-length options)) (vector-ref options n)))
                 (off)
                 (%%guide-post-speculative (begin (when (wiki-selected) (dialog-control top: (with-page))) #t))))))))
        in: area
-       border-ratio: 1/4
+       padding: 20
        color: color background: background
        name: "wiki list"))
     (define (get-wiki-page)
